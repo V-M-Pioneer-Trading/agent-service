@@ -19,11 +19,6 @@ import (
 	"vnm/agent-info-service/spacetraders/schema"
 )
 
-// @title Agent Info Service API
-// @version 1.0
-// @description Service for accessing information about the agent - profile, fleet, contracts.
-// @BasePath /
-
 type CurrentAgentResponse struct {
 	Agent     schema.Agent      `json:"agent"`
 	Ships     []schema.Ship     `json:"ships"`
@@ -49,19 +44,21 @@ func SetUpRouter(conn *sql.DB) *mux.Router {
 	// never calls this handler, but a route has to exist here for OPTIONS to match at all.
 	r.Methods(http.MethodOptions).HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
-	r.HandleFunc("/current-agent", h.getCurrentAgent).Methods(http.MethodGet)
-	r.HandleFunc("/agent", h.getAgent).Methods(http.MethodGet)
-	r.HandleFunc("/ships", h.getShips).Methods(http.MethodGet)
-	r.HandleFunc("/ships/{shipSymbol}", h.getShip).Methods(http.MethodGet)
-	r.HandleFunc("/contracts", h.getContracts).Methods(http.MethodGet)
-	r.HandleFunc("/contracts/{contractId}", h.getContract).Methods(http.MethodGet)
-	r.HandleFunc("/contracts/{contractId}/accept", h.acceptContract).Methods(http.MethodPost)
-	r.HandleFunc("/contracts/{contractId}/fulfill", h.fulfillContract).Methods(http.MethodPost)
-	r.HandleFunc("/contracts/{contractId}/deliveries", h.recordDelivery).Methods(http.MethodPost)
-	r.HandleFunc("/contracts/{contractId}/deliveries", h.getDeliveries).Methods(http.MethodGet)
-	r.HandleFunc("/agent/{agentId}", h.getAgentById).Methods(http.MethodGet)
+	api := r.PathPrefix("/api/agent").Subrouter()
 
-	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+	api.HandleFunc("/current-agent", h.getCurrentAgent).Methods(http.MethodGet)
+	api.HandleFunc("/agent", h.getAgent).Methods(http.MethodGet)
+	api.HandleFunc("/ships", h.getShips).Methods(http.MethodGet)
+	api.HandleFunc("/ships/{shipSymbol}", h.getShip).Methods(http.MethodGet)
+	api.HandleFunc("/contracts", h.getContracts).Methods(http.MethodGet)
+	api.HandleFunc("/contracts/{contractId}", h.getContract).Methods(http.MethodGet)
+	api.HandleFunc("/contracts/{contractId}/accept", h.acceptContract).Methods(http.MethodPost)
+	api.HandleFunc("/contracts/{contractId}/fulfill", h.fulfillContract).Methods(http.MethodPost)
+	api.HandleFunc("/contracts/{contractId}/deliveries", h.recordDelivery).Methods(http.MethodPost)
+	api.HandleFunc("/contracts/{contractId}/deliveries", h.getDeliveries).Methods(http.MethodGet)
+	api.HandleFunc("/agent/{agentId}", h.getAgentById).Methods(http.MethodGet)
+
+	api.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	return r
 }
