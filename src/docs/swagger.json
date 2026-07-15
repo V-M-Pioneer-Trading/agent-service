@@ -1,0 +1,970 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/agent": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agent"
+                ],
+                "summary": "Get the current agent's profile",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/schema.Agent"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/contracts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contracts"
+                ],
+                "summary": "List the agent's contracts",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/schema.Contract"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/contracts/{contractId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contracts"
+                ],
+                "summary": "Get a single contract",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contract ID",
+                        "name": "contractId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/schema.Contract"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "contract not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/contracts/{contractId}/accept": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Calls SpaceTraders' accept-contract, then persists the resulting contract state.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contracts"
+                ],
+                "summary": "Accept a contract",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contract ID",
+                        "name": "contractId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/schema.ContractAndAgent"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/contracts/{contractId}/deliveries": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contracts"
+                ],
+                "summary": "List recorded deliveries for a contract",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contract ID",
+                        "name": "contractId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/db.Delivery"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "failed to load deliveries",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Called by fleet-service after a successful deliver-contract action on SpaceTraders.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contracts"
+                ],
+                "summary": "Record a contract delivery (internal)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contract ID",
+                        "name": "contractId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Delivery details",
+                        "name": "delivery",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.deliveryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/db.Delivery"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "failed to record delivery",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/contracts/{contractId}/fulfill": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Calls SpaceTraders' fulfill-contract, then persists the resulting contract state.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contracts"
+                ],
+                "summary": "Fulfill a contract",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contract ID",
+                        "name": "contractId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/schema.ContractAndAgent"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/current-agent": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Convenience bundle of GET /agent + GET /ships + GET /contracts.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "agent"
+                ],
+                "summary": "Get agent, ships and contracts in one call",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.CurrentAgentResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/ships": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ships"
+                ],
+                "summary": "List the agent's ships",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/schema.Ship"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/ships/{shipSymbol}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ships"
+                ],
+                "summary": "Get a single ship",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Ship symbol",
+                        "name": "shipSymbol",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/schema.Ship"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "ship not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "api.CurrentAgentResponse": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "$ref": "#/definitions/schema.Agent"
+                },
+                "contracts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/schema.Contract"
+                    }
+                },
+                "ships": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/schema.Ship"
+                    }
+                }
+            }
+        },
+        "api.deliveryRequest": {
+            "type": "object",
+            "properties": {
+                "shipSymbol": {
+                    "type": "string"
+                },
+                "tradeSymbol": {
+                    "type": "string"
+                },
+                "units": {
+                    "type": "integer"
+                }
+            }
+        },
+        "db.Delivery": {
+            "type": "object",
+            "properties": {
+                "contractId": {
+                    "type": "string"
+                },
+                "deliveredAt": {
+                    "type": "string"
+                },
+                "shipSymbol": {
+                    "type": "string"
+                },
+                "tradeSymbol": {
+                    "type": "string"
+                },
+                "units": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.Agent": {
+            "type": "object",
+            "properties": {
+                "accountId": {
+                    "type": "string"
+                },
+                "credits": {
+                    "type": "integer"
+                },
+                "headquarters": {
+                    "type": "string"
+                },
+                "shipCount": {
+                    "type": "integer"
+                },
+                "startingFaction": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.Cargo": {
+            "type": "object",
+            "properties": {
+                "capacity": {
+                    "type": "integer"
+                },
+                "inventory": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/schema.CargoItem"
+                    }
+                },
+                "units": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.CargoItem": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                },
+                "units": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.Contract": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "boolean"
+                },
+                "deadlineToAccept": {
+                    "type": "string"
+                },
+                "expiration": {
+                    "type": "string"
+                },
+                "factionSymbol": {
+                    "type": "string"
+                },
+                "fulfilled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "terms": {
+                    "$ref": "#/definitions/schema.ContractTerms"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.ContractAndAgent": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "$ref": "#/definitions/schema.Agent"
+                },
+                "contract": {
+                    "$ref": "#/definitions/schema.Contract"
+                }
+            }
+        },
+        "schema.ContractTerms": {
+            "type": "object",
+            "properties": {
+                "deadline": {
+                    "type": "string"
+                },
+                "deliver": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/schema.DeliveryInfo"
+                    }
+                },
+                "payment": {
+                    "$ref": "#/definitions/schema.Payment"
+                }
+            }
+        },
+        "schema.Cooldown": {
+            "type": "object",
+            "properties": {
+                "expiration": {
+                    "type": "string"
+                },
+                "remainingSeconds": {
+                    "type": "integer"
+                },
+                "shipSymbol": {
+                    "type": "string"
+                },
+                "totalSeconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.Crew": {
+            "type": "object",
+            "properties": {
+                "capacity": {
+                    "type": "integer"
+                },
+                "current": {
+                    "type": "integer"
+                },
+                "morale": {
+                    "type": "integer"
+                },
+                "required": {
+                    "type": "integer"
+                },
+                "rotation": {
+                    "type": "string"
+                },
+                "wages": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.DeliveryInfo": {
+            "type": "object",
+            "properties": {
+                "destinationSymbol": {
+                    "type": "string"
+                },
+                "tradeSymbol": {
+                    "type": "string"
+                },
+                "unitsFulfilled": {
+                    "type": "integer"
+                },
+                "unitsRequired": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.Engine": {
+            "type": "object",
+            "properties": {
+                "condition": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "integrity": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "$ref": "#/definitions/schema.Requirements"
+                },
+                "speed": {
+                    "type": "integer"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.Frame": {
+            "type": "object",
+            "properties": {
+                "condition": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "fuelCapacity": {
+                    "type": "integer"
+                },
+                "integrity": {
+                    "type": "integer"
+                },
+                "moduleSlots": {
+                    "type": "integer"
+                },
+                "mountingPoints": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "$ref": "#/definitions/schema.Requirements"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.Fuel": {
+            "type": "object",
+            "properties": {
+                "capacity": {
+                    "type": "integer"
+                },
+                "consumed": {
+                    "type": "object",
+                    "properties": {
+                        "amount": {
+                            "type": "integer"
+                        },
+                        "timestamp": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "current": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.Module": {
+            "type": "object",
+            "properties": {
+                "capacity": {
+                    "description": "Modules that provide capacity, such as cargo hold or crew quarters will show this value to denote how much of a bonus the module grants.",
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "range": {
+                    "description": "Modules that have a range will such as a sensor array show this value to denote how far can the module reach with its capabilities.",
+                    "type": "integer"
+                },
+                "requirements": {
+                    "$ref": "#/definitions/schema.Requirements"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.Mount": {
+            "type": "object",
+            "properties": {
+                "deposits": {
+                    "description": "Mounts that have this value denote what goods can be produced from using the mount.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "$ref": "#/definitions/schema.Requirements"
+                },
+                "strength": {
+                    "description": "Mounts that have this value, such as mining lasers, denote how powerful this mount's capabilities are.",
+                    "type": "integer"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.Nav": {
+            "type": "object",
+            "properties": {
+                "flightMode": {
+                    "type": "string"
+                },
+                "route": {
+                    "$ref": "#/definitions/schema.Route"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "systemSymbol": {
+                    "type": "string"
+                },
+                "waypointSymbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.Payment": {
+            "type": "object",
+            "properties": {
+                "onAccepted": {
+                    "type": "integer"
+                },
+                "onFulfilled": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.Reactor": {
+            "type": "object",
+            "properties": {
+                "condition": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "integrity": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "powerOutput": {
+                    "type": "integer"
+                },
+                "requirements": {
+                    "$ref": "#/definitions/schema.Requirements"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.Registration": {
+            "type": "object",
+            "properties": {
+                "factionSymbol": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.Requirements": {
+            "type": "object",
+            "properties": {
+                "crew": {
+                    "type": "integer"
+                },
+                "power": {
+                    "type": "integer"
+                },
+                "slots": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.Route": {
+            "type": "object",
+            "properties": {
+                "arrival": {
+                    "type": "string"
+                },
+                "departureTime": {
+                    "type": "string"
+                },
+                "destination": {
+                    "$ref": "#/definitions/schema.RouteWaypoint"
+                },
+                "origin": {
+                    "$ref": "#/definitions/schema.RouteWaypoint"
+                }
+            }
+        },
+        "schema.RouteWaypoint": {
+            "type": "object",
+            "properties": {
+                "symbol": {
+                    "type": "string"
+                },
+                "systemSymbol": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "x": {
+                    "type": "integer"
+                },
+                "y": {
+                    "type": "integer"
+                }
+            }
+        },
+        "schema.Ship": {
+            "type": "object",
+            "properties": {
+                "cargo": {
+                    "$ref": "#/definitions/schema.Cargo"
+                },
+                "cooldown": {
+                    "$ref": "#/definitions/schema.Cooldown"
+                },
+                "crew": {
+                    "$ref": "#/definitions/schema.Crew"
+                },
+                "engine": {
+                    "$ref": "#/definitions/schema.Engine"
+                },
+                "frame": {
+                    "$ref": "#/definitions/schema.Frame"
+                },
+                "fuel": {
+                    "$ref": "#/definitions/schema.Fuel"
+                },
+                "modules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/schema.Module"
+                    }
+                },
+                "mounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/schema.Mount"
+                    }
+                },
+                "nav": {
+                    "$ref": "#/definitions/schema.Nav"
+                },
+                "reactor": {
+                    "$ref": "#/definitions/schema.Reactor"
+                },
+                "registration": {
+                    "$ref": "#/definitions/schema.Registration"
+                },
+                "symbol": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

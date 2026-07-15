@@ -12,9 +12,14 @@ services:
       MYSQL_NATIVE_PASSWORD: ON
       MYSQL_DATABASE: vnm-agent-db
       MYSQL_USER: 'user'
-      MYSQL_PASS: 'pass'
+      MYSQL_PASSWORD: 'pass' # was MYSQL_PASS, which the mysql image doesn't recognize
     volumes:
       - mysql_datavolume:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pexample"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   app:
       container_name: vnm-agent-service-app
@@ -27,8 +32,10 @@ services:
         MYSQL_USER: user
         MYSQL_PASSWORD: pass
         MYSQL_DATABASE: vnm-agent-db
+        CORS_ALLOWED_ORIGIN: http://localhost:3000
       depends_on:
-        - mysql
+        mysql:
+          condition: service_healthy
 
 volumes:
   mysql_datavolume:

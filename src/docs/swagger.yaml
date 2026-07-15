@@ -1,0 +1,629 @@
+definitions:
+  api.CurrentAgentResponse:
+    properties:
+      agent:
+        $ref: '#/definitions/schema.Agent'
+      contracts:
+        items:
+          $ref: '#/definitions/schema.Contract'
+        type: array
+      ships:
+        items:
+          $ref: '#/definitions/schema.Ship'
+        type: array
+    type: object
+  api.deliveryRequest:
+    properties:
+      shipSymbol:
+        type: string
+      tradeSymbol:
+        type: string
+      units:
+        type: integer
+    type: object
+  db.Delivery:
+    properties:
+      contractId:
+        type: string
+      deliveredAt:
+        type: string
+      shipSymbol:
+        type: string
+      tradeSymbol:
+        type: string
+      units:
+        type: integer
+    type: object
+  schema.Agent:
+    properties:
+      accountId:
+        type: string
+      credits:
+        type: integer
+      headquarters:
+        type: string
+      shipCount:
+        type: integer
+      startingFaction:
+        type: string
+      symbol:
+        type: string
+    type: object
+  schema.Cargo:
+    properties:
+      capacity:
+        type: integer
+      inventory:
+        items:
+          $ref: '#/definitions/schema.CargoItem'
+        type: array
+      units:
+        type: integer
+    type: object
+  schema.CargoItem:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      symbol:
+        type: string
+      units:
+        type: integer
+    type: object
+  schema.Contract:
+    properties:
+      accepted:
+        type: boolean
+      deadlineToAccept:
+        type: string
+      expiration:
+        type: string
+      factionSymbol:
+        type: string
+      fulfilled:
+        type: boolean
+      id:
+        type: string
+      terms:
+        $ref: '#/definitions/schema.ContractTerms'
+      type:
+        type: string
+    type: object
+  schema.ContractAndAgent:
+    properties:
+      agent:
+        $ref: '#/definitions/schema.Agent'
+      contract:
+        $ref: '#/definitions/schema.Contract'
+    type: object
+  schema.ContractTerms:
+    properties:
+      deadline:
+        type: string
+      deliver:
+        items:
+          $ref: '#/definitions/schema.DeliveryInfo'
+        type: array
+      payment:
+        $ref: '#/definitions/schema.Payment'
+    type: object
+  schema.Cooldown:
+    properties:
+      expiration:
+        type: string
+      remainingSeconds:
+        type: integer
+      shipSymbol:
+        type: string
+      totalSeconds:
+        type: integer
+    type: object
+  schema.Crew:
+    properties:
+      capacity:
+        type: integer
+      current:
+        type: integer
+      morale:
+        type: integer
+      required:
+        type: integer
+      rotation:
+        type: string
+      wages:
+        type: integer
+    type: object
+  schema.DeliveryInfo:
+    properties:
+      destinationSymbol:
+        type: string
+      tradeSymbol:
+        type: string
+      unitsFulfilled:
+        type: integer
+      unitsRequired:
+        type: integer
+    type: object
+  schema.Engine:
+    properties:
+      condition:
+        type: integer
+      description:
+        type: string
+      integrity:
+        type: integer
+      name:
+        type: string
+      requirements:
+        $ref: '#/definitions/schema.Requirements'
+      speed:
+        type: integer
+      symbol:
+        type: string
+    type: object
+  schema.Frame:
+    properties:
+      condition:
+        type: integer
+      description:
+        type: string
+      fuelCapacity:
+        type: integer
+      integrity:
+        type: integer
+      moduleSlots:
+        type: integer
+      mountingPoints:
+        type: integer
+      name:
+        type: string
+      requirements:
+        $ref: '#/definitions/schema.Requirements'
+      symbol:
+        type: string
+    type: object
+  schema.Fuel:
+    properties:
+      capacity:
+        type: integer
+      consumed:
+        properties:
+          amount:
+            type: integer
+          timestamp:
+            type: string
+        type: object
+      current:
+        type: integer
+    type: object
+  schema.Module:
+    properties:
+      capacity:
+        description: Modules that provide capacity, such as cargo hold or crew quarters
+          will show this value to denote how much of a bonus the module grants.
+        type: integer
+      description:
+        type: string
+      name:
+        type: string
+      range:
+        description: Modules that have a range will such as a sensor array show this
+          value to denote how far can the module reach with its capabilities.
+        type: integer
+      requirements:
+        $ref: '#/definitions/schema.Requirements'
+      symbol:
+        type: string
+    type: object
+  schema.Mount:
+    properties:
+      deposits:
+        description: Mounts that have this value denote what goods can be produced
+          from using the mount.
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      name:
+        type: string
+      requirements:
+        $ref: '#/definitions/schema.Requirements'
+      strength:
+        description: Mounts that have this value, such as mining lasers, denote how
+          powerful this mount's capabilities are.
+        type: integer
+      symbol:
+        type: string
+    type: object
+  schema.Nav:
+    properties:
+      flightMode:
+        type: string
+      route:
+        $ref: '#/definitions/schema.Route'
+      status:
+        type: string
+      systemSymbol:
+        type: string
+      waypointSymbol:
+        type: string
+    type: object
+  schema.Payment:
+    properties:
+      onAccepted:
+        type: integer
+      onFulfilled:
+        type: integer
+    type: object
+  schema.Reactor:
+    properties:
+      condition:
+        type: integer
+      description:
+        type: string
+      integrity:
+        type: integer
+      name:
+        type: string
+      powerOutput:
+        type: integer
+      requirements:
+        $ref: '#/definitions/schema.Requirements'
+      symbol:
+        type: string
+    type: object
+  schema.Registration:
+    properties:
+      factionSymbol:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+    type: object
+  schema.Requirements:
+    properties:
+      crew:
+        type: integer
+      power:
+        type: integer
+      slots:
+        type: integer
+    type: object
+  schema.Route:
+    properties:
+      arrival:
+        type: string
+      departureTime:
+        type: string
+      destination:
+        $ref: '#/definitions/schema.RouteWaypoint'
+      origin:
+        $ref: '#/definitions/schema.RouteWaypoint'
+    type: object
+  schema.RouteWaypoint:
+    properties:
+      symbol:
+        type: string
+      systemSymbol:
+        type: string
+      type:
+        type: string
+      x:
+        type: integer
+      "y":
+        type: integer
+    type: object
+  schema.Ship:
+    properties:
+      cargo:
+        $ref: '#/definitions/schema.Cargo'
+      cooldown:
+        $ref: '#/definitions/schema.Cooldown'
+      crew:
+        $ref: '#/definitions/schema.Crew'
+      engine:
+        $ref: '#/definitions/schema.Engine'
+      frame:
+        $ref: '#/definitions/schema.Frame'
+      fuel:
+        $ref: '#/definitions/schema.Fuel'
+      modules:
+        items:
+          $ref: '#/definitions/schema.Module'
+        type: array
+      mounts:
+        items:
+          $ref: '#/definitions/schema.Mount'
+        type: array
+      nav:
+        $ref: '#/definitions/schema.Nav'
+      reactor:
+        $ref: '#/definitions/schema.Reactor'
+      registration:
+        $ref: '#/definitions/schema.Registration'
+      symbol:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /agent:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/schema.Agent'
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Get the current agent's profile
+      tags:
+      - agent
+  /contracts:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/schema.Contract'
+            type: array
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: List the agent's contracts
+      tags:
+      - contracts
+  /contracts/{contractId}:
+    get:
+      parameters:
+      - description: Contract ID
+        in: path
+        name: contractId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/schema.Contract'
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "404":
+          description: contract not found
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Get a single contract
+      tags:
+      - contracts
+  /contracts/{contractId}/accept:
+    post:
+      description: Calls SpaceTraders' accept-contract, then persists the resulting
+        contract state.
+      parameters:
+      - description: Contract ID
+        in: path
+        name: contractId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/schema.ContractAndAgent'
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Accept a contract
+      tags:
+      - contracts
+  /contracts/{contractId}/deliveries:
+    get:
+      parameters:
+      - description: Contract ID
+        in: path
+        name: contractId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/db.Delivery'
+            type: array
+        "500":
+          description: failed to load deliveries
+          schema:
+            type: string
+      summary: List recorded deliveries for a contract
+      tags:
+      - contracts
+    post:
+      consumes:
+      - application/json
+      description: Called by fleet-service after a successful deliver-contract action
+        on SpaceTraders.
+      parameters:
+      - description: Contract ID
+        in: path
+        name: contractId
+        required: true
+        type: string
+      - description: Delivery details
+        in: body
+        name: delivery
+        required: true
+        schema:
+          $ref: '#/definitions/api.deliveryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/db.Delivery'
+        "400":
+          description: invalid request body
+          schema:
+            type: string
+        "500":
+          description: failed to record delivery
+          schema:
+            type: string
+      summary: Record a contract delivery (internal)
+      tags:
+      - contracts
+  /contracts/{contractId}/fulfill:
+    post:
+      description: Calls SpaceTraders' fulfill-contract, then persists the resulting
+        contract state.
+      parameters:
+      - description: Contract ID
+        in: path
+        name: contractId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/schema.ContractAndAgent'
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Fulfill a contract
+      tags:
+      - contracts
+  /current-agent:
+    get:
+      description: Convenience bundle of GET /agent + GET /ships + GET /contracts.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.CurrentAgentResponse'
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Get agent, ships and contracts in one call
+      tags:
+      - agent
+  /ships:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/schema.Ship'
+            type: array
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: List the agent's ships
+      tags:
+      - ships
+  /ships/{shipSymbol}:
+    get:
+      parameters:
+      - description: Ship symbol
+        in: path
+        name: shipSymbol
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/schema.Ship'
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "404":
+          description: ship not found
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Get a single ship
+      tags:
+      - ships
+swagger: "2.0"
