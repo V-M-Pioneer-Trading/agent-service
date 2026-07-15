@@ -184,3 +184,7 @@ type GetMyShipsResponse struct {
 	Data []Ship         `json:"data"`
 	Meta PaginationMeta `json:"meta"`
 }
+
+type GetMyShipResponse struct {
+	Data Ship `json:"data"`
+}

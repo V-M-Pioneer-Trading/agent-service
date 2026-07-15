@@ -9,8 +9,8 @@ import (
 
 func main() {
 
-	db.SetUpDatabase()
-	r := api.SetUpRouter()
+	conn := db.SetUpDatabase()
+	r := api.SetUpRouter(conn)
 
 	http.ListenAndServe(":80", r)
 

@@ -2,93 +2,89 @@ package spacetraders
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
+	"io"
 	"net/http"
-	"reflect"
+
 	"vnm/agent-info-service/spacetraders/schema"
 )
 
 const BASE_URL = "https://api.spacetraders.io/v2"
 
-// FIXME this is test token untill we have a way to securely transmit a real one
-const BEARER_TOKEN = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZGVudGlmaWVyIjoiVEVTVC1WTk0tMTQtMDYiLCJ2ZXJzaW9uIjoidjIuMi4wIiwicmVzZXRfZGF0ZSI6IjIwMjQtMDYtMDkiLCJpYXQiOjE3MTgzNjk1OTQsInN1YiI6ImFnZW50LXRva2VuIn0.qYclJL6OrzfoMaM9jMxPqL_q2L-uD_bRNthcwITZANAP5Uod30PiAHj1oPlcy4sY61dIeBvNG-xShwVYaVnBTd1DaMM4hG4ugnBX6JeMLVuR8vybrP2eNLMBs9iiFRcGRumD-PpFH0b7ggHB17PiJEyrwOxkb_rr49-LwAE_nHHNKH8Z9VcqiJ0Rxyz_LMTtdIGlQxQ1qdM4y4J7_fWDpqaa3i-Z8pIJddtgp0ioGf6_frOefHu7Ddps3LEzl1cC5eQp68aQs06jnJIXc4DZp60TAjW08xEBrjxCR5a5No_iwKKezZ6-91DoC3A4dmjcc2zFYCXVrqfvaPCaIkBecQ"
-
-func GetMyAgent() schema.Agent {
-
-	var agent schema.GetMyAgentResponse
-
-	data, err := makeAuthenticatedGetRequest("/my/agent", agent)
-	if err != nil {
-		panic(err)
-	}
-	agentResponse := data.(schema.GetMyAgentResponse)
-	//fmt.Printf("Agent response:\n %+v\n", agentResponse)
-	return agentResponse.Data
+func GetMyAgent(authHeader string) (schema.Agent, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyAgentResponse](http.MethodGet, "/my/agent", authHeader, nil)
+	return resp.Data, err
 }
 
-func GetMyShips() []schema.Ship {
-	var ships schema.GetMyShipsResponse
-	data, err := makeAuthenticatedGetRequest("/my/ships", ships)
-	if err != nil {
-		panic(err)
-	}
-	requestResult := data.(schema.GetMyShipsResponse)
-	//fmt.Printf("Ships response: %v\n", requestResult)
-	return requestResult.Data
+func GetMyShips(authHeader string) ([]schema.Ship, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyShipsResponse](http.MethodGet, "/my/ships", authHeader, nil)
+	return resp.Data, err
 }
 
-func GetMyContracts() []schema.Contract {
-	var contracts schema.GetMyContractsResponse
-	data, err := makeAuthenticatedGetRequest("/my/contracts", contracts)
-	if err != nil {
-		panic(err)
-	}
-	requestResult := data.(schema.GetMyContractsResponse)
-	//fmt.Printf("Contracts response: %v\n", requestResult)
-	return requestResult.Data
+func GetMyShip(authHeader, shipSymbol string) (schema.Ship, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyShipResponse](http.MethodGet, "/my/ships/"+shipSymbol, authHeader, nil)
+	return resp.Data, err
 }
 
-func makeAuthenticatedGetRequest(endpoint string, resultType interface{}) (interface{}, error) {
-	req, err := http.NewRequest("GET", BASE_URL+endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
+func GetMyContracts(authHeader string) ([]schema.Contract, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyContractsResponse](http.MethodGet, "/my/contracts", authHeader, nil)
+	return resp.Data, err
+}
 
-	req.Header.Set("Authorization", "Bearer "+BEARER_TOKEN)
+func GetMyContract(authHeader, contractId string) (schema.Contract, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyContractResponse](http.MethodGet, "/my/contracts/"+contractId, authHeader, nil)
+	return resp.Data, err
+}
+
+func AcceptContract(authHeader, contractId string) (schema.ContractAndAgent, error) {
+	resp, err := makeAuthenticatedRequest[schema.AcceptContractResponse](http.MethodPost, "/my/contracts/"+contractId+"/accept", authHeader, nil)
+	return resp.Data, err
+}
+
+func FulfillContract(authHeader, contractId string) (schema.ContractAndAgent, error) {
+	resp, err := makeAuthenticatedRequest[schema.FulfillContractResponse](http.MethodPost, "/my/contracts/"+contractId+"/fulfill", authHeader, nil)
+	return resp.Data, err
+}
+
+// makeAuthenticatedRequest forwards authHeader as-is to SpaceTraders (never stored),
+// decodes a 2xx JSON body into T, and returns an *UpstreamError for non-2xx responses
+// instead of panicking so callers (HTTP handlers) can map it to a proper status code.
+func makeAuthenticatedRequest[T any](method, endpoint, authHeader string, body io.Reader) (T, error) {
+	var result T
+
+	req, err := http.NewRequest(method, BASE_URL+endpoint, body)
+	if err != nil {
+		return result, err
+	}
+	req.Header.Set("Authorization", authHeader)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 	defer resp.Body.Close()
 
-	// Check if the response status code is OK
-	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("failed to get a successful response from the server")
-	}
-
-	// Check if the response body has data
-	var hasData bool
-	decoder := json.NewDecoder(resp.Body)
-	decoder.UseNumber() // UseNumber to preserve JSON number type
-	if decoder.More() {
-		hasData = true
-	}
-
-	// Create a new instance of the resultType using reflection
-	resultValue := reflect.New(reflect.TypeOf(resultType)).Interface()
-
-	err = decoder.Decode(resultValue)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
 
-	// Set Content-Type header if response body has data
-	if hasData {
-		req.Header.Set("Content-Type", "application/json")
+	if resp.StatusCode >= 400 {
+		return result, &UpstreamError{
+			StatusCode: resp.StatusCode,
+			Message:    fmt.Sprintf("%s %s: %s", method, endpoint, string(respBody)),
+		}
 	}
 
-	// Return the dereferenced value
-	return reflect.ValueOf(resultValue).Elem().Interface(), nil
+	if len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return result, err
+		}
+	}
+
+	return result, nil
 }

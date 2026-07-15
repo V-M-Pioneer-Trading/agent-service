@@ -42,3 +42,21 @@ type GetMyContractsResponse struct {
 	Data []Contract     `json:"data"`
 	Meta PaginationMeta `json:"meta"`
 }
+
+type GetMyContractResponse struct {
+	Data Contract `json:"data"`
+}
+
+// ContractAndAgent is the shared response shape of accept-contract and fulfill-contract.
+type ContractAndAgent struct {
+	Agent    Agent    `json:"agent"`
+	Contract Contract `json:"contract"`
+}
+
+type AcceptContractResponse struct {
+	Data ContractAndAgent `json:"data"`
+}
+
+type FulfillContractResponse struct {
+	Data ContractAndAgent `json:"data"`
+}
