@@ -10,26 +10,28 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-const schema = `
-CREATE TABLE IF NOT EXISTS contracts (
-    id             VARCHAR(64) PRIMARY KEY,
-    faction_symbol VARCHAR(64) NOT NULL,
-    type           VARCHAR(32) NOT NULL,
-    accepted       BOOLEAN NOT NULL DEFAULT FALSE,
-    fulfilled      BOOLEAN NOT NULL DEFAULT FALSE,
-    raw_json       JSON NOT NULL,
-    updated_at     TIMESTAMP NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS contract_deliveries (
-    id            INT AUTO_INCREMENT PRIMARY KEY,
-    contract_id   VARCHAR(64) NOT NULL,
-    ship_symbol   VARCHAR(64) NOT NULL,
-    trade_symbol  VARCHAR(64) NOT NULL,
-    units         INT NOT NULL,
-    delivered_at  TIMESTAMP NOT NULL
-);
-`
+// go-sql-driver/mysql doesn't run multiple statements in one Exec() (that needs
+// multiStatements=true on the DSN, which we'd rather not enable globally just for
+// startup migrations), so each table is its own statement, executed separately below.
+var schema = []string{
+	`CREATE TABLE IF NOT EXISTS contracts (
+		id             VARCHAR(64) PRIMARY KEY,
+		faction_symbol VARCHAR(64) NOT NULL,
+		type           VARCHAR(32) NOT NULL,
+		accepted       BOOLEAN NOT NULL DEFAULT FALSE,
+		fulfilled      BOOLEAN NOT NULL DEFAULT FALSE,
+		raw_json       JSON NOT NULL,
+		updated_at     TIMESTAMP NOT NULL
+	)`,
+	`CREATE TABLE IF NOT EXISTS contract_deliveries (
+		id            INT AUTO_INCREMENT PRIMARY KEY,
+		contract_id   VARCHAR(64) NOT NULL,
+		ship_symbol   VARCHAR(64) NOT NULL,
+		trade_symbol  VARCHAR(64) NOT NULL,
+		units         INT NOT NULL,
+		delivered_at  TIMESTAMP NOT NULL
+	)`,
+}
 
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
@@ -59,8 +61,10 @@ func SetUpDatabase() *sql.DB {
 	waitForDatabase(conn)
 	log.Default().Printf("Connection to DB is established.")
 
-	if _, err := conn.Exec(schema); err != nil {
-		log.Fatal(err)
+	for _, stmt := range schema {
+		if _, err := conn.Exec(stmt); err != nil {
+			log.Fatal(err)
+		}
 	}
 	log.Default().Printf("Schema migrations applied.")
 
