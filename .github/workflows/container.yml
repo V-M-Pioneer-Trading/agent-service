@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 jobs:
   docker:
@@ -53,3 +54,18 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Configure AWS credentials
+        if: github.event_name == 'push'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::543292785457:role/github-actions-ssm-deploy
+          aws-region: eu-central-1
+
+      - name: Trigger redeploy on shared host
+        if: github.event_name == 'push'
+        run: |
+          aws ssm send-command \
+            --document-name "agent-service-bootstrap-i-011b6b82a9072a385" \
+            --targets "Key=InstanceIds,Values=i-011b6b82a9072a385" \
+            --region eu-central-1
