@@ -1,8 +1,12 @@
 {
     "swagger": "2.0",
     "info": {
-        "contact": {}
+        "description": "Service for accessing information about the agent - profile, fleet, contracts.",
+        "title": "Agent Info Service API",
+        "contact": {},
+        "version": "1.0"
     },
+    "basePath": "/api/agent",
     "paths": {
         "/agent": {
             "get": {

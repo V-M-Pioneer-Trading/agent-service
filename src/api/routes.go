@@ -19,11 +19,6 @@ import (
 	"vnm/agent-info-service/spacetraders/schema"
 )
 
-// @title Agent Info Service API
-// @version 1.0
-// @description Service for accessing information about the agent - profile, fleet, contracts.
-// @BasePath /api/agent
-
 type CurrentAgentResponse struct {
 	Agent     schema.Agent      `json:"agent"`
 	Ships     []schema.Ship     `json:"ships"`
@@ -63,7 +58,7 @@ func SetUpRouter(conn *sql.DB) *mux.Router {
 	api.HandleFunc("/contracts/{contractId}/deliveries", h.getDeliveries).Methods(http.MethodGet)
 	api.HandleFunc("/agent/{agentId}", h.getAgentById).Methods(http.MethodGet)
 
-	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+	api.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
 	return r
 }
