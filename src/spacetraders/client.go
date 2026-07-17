@@ -5,11 +5,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"vnm/agent-info-service/spacetraders/schema"
 )
 
-const BASE_URL = "https://api.spacetraders.io/v2"
+// All SpaceTraders calls route through st-gateway's shared rate budget
+// (meta#1/meta#7) instead of hitting SpaceTraders directly.
+func gatewayBaseURL() string {
+	if v := os.Getenv("ST_GATEWAY_URL"); v != "" {
+		return v + "/proxy"
+	}
+	return "http://localhost:3002/proxy"
+}
 
 func GetMyAgent(authHeader string) (schema.Agent, error) {
 	resp, err := makeAuthenticatedRequest[schema.GetMyAgentResponse](http.MethodGet, "/my/agent", authHeader, nil)
@@ -46,17 +54,25 @@ func FulfillContract(authHeader, contractId string) (schema.ContractAndAgent, er
 	return resp.Data, err
 }
 
-// makeAuthenticatedRequest forwards authHeader as-is to SpaceTraders (never stored),
-// decodes a 2xx JSON body into T, and returns an *UpstreamError for non-2xx responses
-// instead of panicking so callers (HTTP handlers) can map it to a proper status code.
+// makeAuthenticatedRequest forwards authHeader as-is through st-gateway (never
+// stored), decodes a 2xx JSON body into T, and returns an *UpstreamError for
+// non-2xx responses instead of panicking so callers (HTTP handlers) can map it
+// to a proper status code.
+//
+// Every call here is triggered by a browser request to agent-service today —
+// there is no background caller yet (that lands with automation-service's ship
+// FSMs) — so all traffic is tagged interactive. Once automation-service calls
+// agent-service directly, this needs to forward whatever priority the caller
+// declared instead of hardcoding it.
 func makeAuthenticatedRequest[T any](method, endpoint, authHeader string, body io.Reader) (T, error) {
 	var result T
 
-	req, err := http.NewRequest(method, BASE_URL+endpoint, body)
+	req, err := http.NewRequest(method, gatewayBaseURL()+endpoint, body)
 	if err != nil {
 		return result, err
 	}
 	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("X-Priority", "interactive")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
