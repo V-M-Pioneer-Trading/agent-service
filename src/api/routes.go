@@ -46,17 +46,21 @@ func SetUpRouter(conn *sql.DB) *mux.Router {
 
 	api := r.PathPrefix("/api/agent").Subrouter()
 
-	api.HandleFunc("/current-agent", h.getCurrentAgent).Methods(http.MethodGet)
-	api.HandleFunc("/agent", h.getAgent).Methods(http.MethodGet)
-	api.HandleFunc("/ships", h.getShips).Methods(http.MethodGet)
-	api.HandleFunc("/ships/{shipSymbol}", h.getShip).Methods(http.MethodGet)
-	api.HandleFunc("/contracts", h.getContracts).Methods(http.MethodGet)
-	api.HandleFunc("/contracts/{contractId}", h.getContract).Methods(http.MethodGet)
-	api.HandleFunc("/contracts/{contractId}/accept", h.acceptContract).Methods(http.MethodPost)
-	api.HandleFunc("/contracts/{contractId}/fulfill", h.fulfillContract).Methods(http.MethodPost)
-	api.HandleFunc("/contracts/{contractId}/deliveries", h.recordDelivery).Methods(http.MethodPost)
-	api.HandleFunc("/contracts/{contractId}/deliveries", h.getDeliveries).Methods(http.MethodGet)
-	api.HandleFunc("/agent/{agentId}", h.getAgentById).Methods(http.MethodGet)
+	// Resource routes are versioned; swagger below is operational tooling and
+	// stays directly under /api/agent, not nested under /v1.
+	v1 := api.PathPrefix("/v1").Subrouter()
+
+	v1.HandleFunc("/current-agent", h.getCurrentAgent).Methods(http.MethodGet)
+	v1.HandleFunc("/agent", h.getAgent).Methods(http.MethodGet)
+	v1.HandleFunc("/ships", h.getShips).Methods(http.MethodGet)
+	v1.HandleFunc("/ships/{shipSymbol}", h.getShip).Methods(http.MethodGet)
+	v1.HandleFunc("/contracts", h.getContracts).Methods(http.MethodGet)
+	v1.HandleFunc("/contracts/{contractId}", h.getContract).Methods(http.MethodGet)
+	v1.HandleFunc("/contracts/{contractId}/accept", h.acceptContract).Methods(http.MethodPost)
+	v1.HandleFunc("/contracts/{contractId}/fulfill", h.fulfillContract).Methods(http.MethodPost)
+	v1.HandleFunc("/contracts/{contractId}/deliveries", h.recordDelivery).Methods(http.MethodPost)
+	v1.HandleFunc("/contracts/{contractId}/deliveries", h.getDeliveries).Methods(http.MethodGet)
+	v1.HandleFunc("/agent/{agentId}", h.getAgentById).Methods(http.MethodGet)
 
 	api.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 

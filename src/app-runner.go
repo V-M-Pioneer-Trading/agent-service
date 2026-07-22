@@ -10,7 +10,7 @@ import (
 // @title Agent Info Service API
 // @version 1.0
 // @description Service for accessing information about the agent - profile, fleet, contracts.
-// @BasePath /api/agent
+// @BasePath /api/agent/v1
 func main() {
 
 	conn := db.SetUpDatabase()

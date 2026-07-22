@@ -984,7 +984,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "",
-	BasePath:         "/api/agent",
+	BasePath:         "/api/agent/v1",
 	Schemes:          []string{},
 	Title:            "Agent Info Service API",
 	Description:      "Service for accessing information about the agent - profile, fleet, contracts.",
