@@ -1,4 +1,4 @@
-basePath: /api/agent
+basePath: /api/agent/v1
 definitions:
   api.CurrentAgentResponse:
     properties:
