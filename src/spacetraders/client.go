@@ -19,38 +19,38 @@ func gatewayBaseURL() string {
 	return "http://localhost:3002/proxy"
 }
 
-func GetMyAgent(authHeader string) (schema.Agent, error) {
-	resp, err := makeAuthenticatedRequest[schema.GetMyAgentResponse](http.MethodGet, "/my/agent", authHeader, nil)
+func GetMyAgent(authHeader, priority string) (schema.Agent, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyAgentResponse](http.MethodGet, "/my/agent", authHeader, priority, nil)
 	return resp.Data, err
 }
 
-func GetMyShips(authHeader string) ([]schema.Ship, error) {
-	resp, err := makeAuthenticatedRequest[schema.GetMyShipsResponse](http.MethodGet, "/my/ships", authHeader, nil)
+func GetMyShips(authHeader, priority string) ([]schema.Ship, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyShipsResponse](http.MethodGet, "/my/ships", authHeader, priority, nil)
 	return resp.Data, err
 }
 
-func GetMyShip(authHeader, shipSymbol string) (schema.Ship, error) {
-	resp, err := makeAuthenticatedRequest[schema.GetMyShipResponse](http.MethodGet, "/my/ships/"+shipSymbol, authHeader, nil)
+func GetMyShip(authHeader, priority, shipSymbol string) (schema.Ship, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyShipResponse](http.MethodGet, "/my/ships/"+shipSymbol, authHeader, priority, nil)
 	return resp.Data, err
 }
 
-func GetMyContracts(authHeader string) ([]schema.Contract, error) {
-	resp, err := makeAuthenticatedRequest[schema.GetMyContractsResponse](http.MethodGet, "/my/contracts", authHeader, nil)
+func GetMyContracts(authHeader, priority string) ([]schema.Contract, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyContractsResponse](http.MethodGet, "/my/contracts", authHeader, priority, nil)
 	return resp.Data, err
 }
 
-func GetMyContract(authHeader, contractId string) (schema.Contract, error) {
-	resp, err := makeAuthenticatedRequest[schema.GetMyContractResponse](http.MethodGet, "/my/contracts/"+contractId, authHeader, nil)
+func GetMyContract(authHeader, priority, contractId string) (schema.Contract, error) {
+	resp, err := makeAuthenticatedRequest[schema.GetMyContractResponse](http.MethodGet, "/my/contracts/"+contractId, authHeader, priority, nil)
 	return resp.Data, err
 }
 
-func AcceptContract(authHeader, contractId string) (schema.ContractAndAgent, error) {
-	resp, err := makeAuthenticatedRequest[schema.AcceptContractResponse](http.MethodPost, "/my/contracts/"+contractId+"/accept", authHeader, nil)
+func AcceptContract(authHeader, priority, contractId string) (schema.ContractAndAgent, error) {
+	resp, err := makeAuthenticatedRequest[schema.AcceptContractResponse](http.MethodPost, "/my/contracts/"+contractId+"/accept", authHeader, priority, nil)
 	return resp.Data, err
 }
 
-func FulfillContract(authHeader, contractId string) (schema.ContractAndAgent, error) {
-	resp, err := makeAuthenticatedRequest[schema.FulfillContractResponse](http.MethodPost, "/my/contracts/"+contractId+"/fulfill", authHeader, nil)
+func FulfillContract(authHeader, priority, contractId string) (schema.ContractAndAgent, error) {
+	resp, err := makeAuthenticatedRequest[schema.FulfillContractResponse](http.MethodPost, "/my/contracts/"+contractId+"/fulfill", authHeader, priority, nil)
 	return resp.Data, err
 }
 
@@ -59,12 +59,12 @@ func FulfillContract(authHeader, contractId string) (schema.ContractAndAgent, er
 // non-2xx responses instead of panicking so callers (HTTP handlers) can map it
 // to a proper status code.
 //
-// Every call here is triggered by a browser request to agent-service today —
-// there is no background caller yet (that lands with automation-service's ship
-// FSMs) — so all traffic is tagged interactive. Once automation-service calls
-// agent-service directly, this needs to forward whatever priority the caller
-// declared instead of hardcoding it.
-func makeAuthenticatedRequest[T any](method, endpoint, authHeader string, body io.Reader) (T, error) {
+// priority forwards the caller's own X-Priority declaration through to
+// st-gateway's priority queue (meta#37) — command-interface (browser) sends
+// "interactive", automation-service (autopilot) sends nothing, and anything
+// that isn't exactly "interactive" degrades to "background" so a missing or
+// malformed header never accidentally jumps the queue.
+func makeAuthenticatedRequest[T any](method, endpoint, authHeader, priority string, body io.Reader) (T, error) {
 	var result T
 
 	req, err := http.NewRequest(method, gatewayBaseURL()+endpoint, body)
@@ -72,7 +72,11 @@ func makeAuthenticatedRequest[T any](method, endpoint, authHeader string, body i
 		return result, err
 	}
 	req.Header.Set("Authorization", authHeader)
-	req.Header.Set("X-Priority", "interactive")
+	if priority == "interactive" {
+		req.Header.Set("X-Priority", "interactive")
+	} else {
+		req.Header.Set("X-Priority", "background")
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

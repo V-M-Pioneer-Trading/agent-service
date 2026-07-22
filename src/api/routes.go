@@ -79,21 +79,22 @@ func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	priority := priorityHeader(r)
 	var response CurrentAgentResponse
 
-	agent, err := spacetraders.GetMyAgent(authHeader)
+	agent, err := spacetraders.GetMyAgent(authHeader, priority)
 	if !writeIfError(w, err) {
 		return
 	}
 	response.Agent = agent
 
-	ships, err := spacetraders.GetMyShips(authHeader)
+	ships, err := spacetraders.GetMyShips(authHeader, priority)
 	if !writeIfError(w, err) {
 		return
 	}
 	response.Ships = ships
 
-	contracts, err := spacetraders.GetMyContracts(authHeader)
+	contracts, err := spacetraders.GetMyContracts(authHeader, priority)
 	if !writeIfError(w, err) {
 		return
 	}
@@ -116,7 +117,7 @@ func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	agent, err := spacetraders.GetMyAgent(authHeader)
+	agent, err := spacetraders.GetMyAgent(authHeader, priorityHeader(r))
 	if !writeIfError(w, err) {
 		return
 	}
@@ -137,7 +138,7 @@ func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ships, err := spacetraders.GetMyShips(authHeader)
+	ships, err := spacetraders.GetMyShips(authHeader, priorityHeader(r))
 	if !writeIfError(w, err) {
 		return
 	}
@@ -161,7 +162,7 @@ func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shipSymbol := mux.Vars(r)["shipSymbol"]
-	ship, err := spacetraders.GetMyShip(authHeader, shipSymbol)
+	ship, err := spacetraders.GetMyShip(authHeader, priorityHeader(r), shipSymbol)
 	if !writeIfError(w, err) {
 		return
 	}
@@ -182,7 +183,7 @@ func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	contracts, err := spacetraders.GetMyContracts(authHeader)
+	contracts, err := spacetraders.GetMyContracts(authHeader, priorityHeader(r))
 	if !writeIfError(w, err) {
 		return
 	}
@@ -206,7 +207,7 @@ func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contractId := mux.Vars(r)["contractId"]
-	contract, err := spacetraders.GetMyContract(authHeader, contractId)
+	contract, err := spacetraders.GetMyContract(authHeader, priorityHeader(r), contractId)
 	if !writeIfError(w, err) {
 		return
 	}
@@ -231,7 +232,7 @@ func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 	}
 	contractId := mux.Vars(r)["contractId"]
 
-	result, err := spacetraders.AcceptContract(authHeader, contractId)
+	result, err := spacetraders.AcceptContract(authHeader, priorityHeader(r), contractId)
 	if !writeIfError(w, err) {
 		return
 	}
@@ -257,7 +258,7 @@ func (h *handlers) fulfillContract(w http.ResponseWriter, r *http.Request) {
 	}
 	contractId := mux.Vars(r)["contractId"]
 
-	result, err := spacetraders.FulfillContract(authHeader, contractId)
+	result, err := spacetraders.FulfillContract(authHeader, priorityHeader(r), contractId)
 	if !writeIfError(w, err) {
 		return
 	}
@@ -346,6 +347,16 @@ func requireAuthHeader(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	return authHeader, true
+}
+
+// priorityHeader forwards the caller's own X-Priority declaration through to
+// st-gateway's priority queue (meta#37) — command-interface (browser) sends
+// "interactive", automation-service (autopilot) sends nothing. Callers below
+// this only ever check for the literal "interactive" string, so a missing or
+// malformed header degrades to "background" rather than accidentally jumping
+// the queue.
+func priorityHeader(r *http.Request) string {
+	return r.Header.Get("X-Priority")
 }
 
 // writeIfError maps an *UpstreamError to its SpaceTraders-reported status code (or 502 for
