@@ -44,6 +44,8 @@ func SetUpRouter(conn *sql.DB) *mux.Router {
 	// never calls this handler, but a route has to exist here for OPTIONS to match at all.
 	r.Methods(http.MethodOptions).HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
+	r.HandleFunc("/health", handleHealth).Methods(http.MethodGet)
+
 	api := r.PathPrefix("/api/agent").Subrouter()
 
 	// Resource routes are versioned; swagger below is operational tooling and
@@ -342,6 +344,10 @@ func persistContract(conn *sql.DB, contract schema.Contract) {
 		contract.Accepted, contract.Fulfilled, rawJSON); err != nil {
 		log.Default().Printf("failed to persist contract %s: %v", contract.ID, err)
 	}
+}
+
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]string{"status": "ok"})
 }
 
 func requireAuthHeader(w http.ResponseWriter, r *http.Request) (string, bool) {
