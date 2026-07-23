@@ -397,6 +397,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/ships/purchase": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Calls SpaceTraders' purchase-ship, then records the transaction in agent-service's transaction history.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ships"
+                ],
+                "summary": "Purchase a new ship",
+                "parameters": [
+                    {
+                        "description": "Ship type and shipyard waypoint",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.purchaseShipRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/schema.PurchaseShipResult"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/ships/{shipSymbol}": {
             "get": {
                 "security": [
@@ -447,6 +504,183 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/ships/{shipSymbol}/purchase": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Calls SpaceTraders' purchase-cargo, then records the transaction in agent-service's transaction history.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ships"
+                ],
+                "summary": "Purchase cargo into a ship's hold",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Ship symbol",
+                        "name": "shipSymbol",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Trade good symbol and units",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.cargoTransactionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/schema.MarketTransactionResult"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/ships/{shipSymbol}/sell": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Calls SpaceTraders' sell-cargo, then records the transaction in agent-service's transaction history.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ships"
+                ],
+                "summary": "Sell cargo from a ship's hold",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Ship symbol",
+                        "name": "shipSymbol",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Trade good symbol and units",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.cargoTransactionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/schema.MarketTransactionResult"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "missing Authorization header",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "502": {
+                        "description": "SpaceTraders upstream error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/transactions": {
+            "get": {
+                "description": "Ship/cargo purchases and cargo sells, newest first. Optionally filtered by shipSymbol and/or type.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ships"
+                ],
+                "summary": "List recorded transactions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by ship symbol",
+                        "name": "shipSymbol",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by transaction type (SHIP_PURCHASE, PURCHASE, SELL)",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max results (default 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/db.Transaction"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "failed to load transactions",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -470,6 +704,17 @@ const docTemplate = `{
                 }
             }
         },
+        "api.cargoTransactionRequest": {
+            "type": "object",
+            "properties": {
+                "symbol": {
+                    "type": "string"
+                },
+                "units": {
+                    "type": "integer"
+                }
+            }
+        },
         "api.deliveryRequest": {
             "type": "object",
             "properties": {
@@ -481,6 +726,17 @@ const docTemplate = `{
                 },
                 "units": {
                     "type": "integer"
+                }
+            }
+        },
+        "api.purchaseShipRequest": {
+            "type": "object",
+            "properties": {
+                "shipType": {
+                    "type": "string"
+                },
+                "waypointSymbol": {
+                    "type": "string"
                 }
             }
         },
@@ -501,6 +757,41 @@ const docTemplate = `{
                 },
                 "units": {
                     "type": "integer"
+                }
+            }
+        },
+        "db.Transaction": {
+            "type": "object",
+            "properties": {
+                "agentCredits": {
+                    "type": "integer"
+                },
+                "occurredAt": {
+                    "type": "string"
+                },
+                "pricePerUnit": {
+                    "type": "integer"
+                },
+                "shipSymbol": {
+                    "type": "string"
+                },
+                "shipType": {
+                    "type": "string"
+                },
+                "totalPrice": {
+                    "type": "integer"
+                },
+                "tradeSymbol": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "units": {
+                    "type": "integer"
+                },
+                "waypointSymbol": {
+                    "type": "string"
                 }
             }
         },
@@ -755,6 +1046,49 @@ const docTemplate = `{
                 }
             }
         },
+        "schema.MarketTransaction": {
+            "type": "object",
+            "properties": {
+                "pricePerUnit": {
+                    "type": "integer"
+                },
+                "shipSymbol": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "totalPrice": {
+                    "type": "integer"
+                },
+                "tradeSymbol": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "units": {
+                    "type": "integer"
+                },
+                "waypointSymbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.MarketTransactionResult": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "$ref": "#/definitions/schema.Agent"
+                },
+                "cargo": {
+                    "$ref": "#/definitions/schema.Cargo"
+                },
+                "transaction": {
+                    "$ref": "#/definitions/schema.MarketTransaction"
+                }
+            }
+        },
         "schema.Module": {
             "type": "object",
             "properties": {
@@ -836,6 +1170,20 @@ const docTemplate = `{
                 },
                 "onFulfilled": {
                     "type": "integer"
+                }
+            }
+        },
+        "schema.PurchaseShipResult": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "$ref": "#/definitions/schema.Agent"
+                },
+                "ship": {
+                    "$ref": "#/definitions/schema.Ship"
+                },
+                "transaction": {
+                    "$ref": "#/definitions/schema.ShipyardTransaction"
                 }
             }
         },
@@ -973,6 +1321,26 @@ const docTemplate = `{
                     "$ref": "#/definitions/schema.Registration"
                 },
                 "symbol": {
+                    "type": "string"
+                }
+            }
+        },
+        "schema.ShipyardTransaction": {
+            "type": "object",
+            "properties": {
+                "agentSymbol": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "integer"
+                },
+                "shipType": {
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "waypointSymbol": {
                     "type": "string"
                 }
             }

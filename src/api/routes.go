@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -63,6 +64,10 @@ func SetUpRouter(conn *sql.DB) *mux.Router {
 	v1.HandleFunc("/contracts/{contractId}/deliveries", h.recordDelivery).Methods(http.MethodPost)
 	v1.HandleFunc("/contracts/{contractId}/deliveries", h.getDeliveries).Methods(http.MethodGet)
 	v1.HandleFunc("/agent/{agentId}", h.getAgentById).Methods(http.MethodGet)
+	v1.HandleFunc("/ships/purchase", h.purchaseShip).Methods(http.MethodPost)
+	v1.HandleFunc("/ships/{shipSymbol}/purchase", h.purchaseCargo).Methods(http.MethodPost)
+	v1.HandleFunc("/ships/{shipSymbol}/sell", h.sellCargo).Methods(http.MethodPost)
+	v1.HandleFunc("/transactions", h.getTransactions).Methods(http.MethodGet)
 
 	api.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
@@ -327,6 +332,178 @@ func (h *handlers) getDeliveries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, deliveries)
+}
+
+type purchaseShipRequest struct {
+	ShipType       string `json:"shipType"`
+	WaypointSymbol string `json:"waypointSymbol"`
+}
+
+type cargoTransactionRequest struct {
+	Symbol string `json:"symbol"`
+	Units  int    `json:"units"`
+}
+
+// purchaseShip godoc
+// @Summary      Purchase a new ship
+// @Description  Calls SpaceTraders' purchase-ship, then records the transaction in agent-service's transaction history.
+// @Tags         ships
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        body  body      purchaseShipRequest  true  "Ship type and shipyard waypoint"
+// @Success      200   {object}  schema.PurchaseShipResult
+// @Failure      400   {string}  string  "invalid request body"
+// @Failure      401   {string}  string  "missing Authorization header"
+// @Failure      502   {string}  string  "SpaceTraders upstream error"
+// @Router       /ships/purchase [post]
+func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
+	authHeader, ok := requireAuthHeader(w, r)
+	if !ok {
+		return
+	}
+	var body purchaseShipRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ShipType == "" || body.WaypointSymbol == "" {
+		http.Error(w, "shipType and waypointSymbol are required", http.StatusBadRequest)
+		return
+	}
+
+	result, err := spacetraders.PurchaseShip(authHeader, priorityHeader(r), body.ShipType, body.WaypointSymbol)
+	if !writeIfError(w, err) {
+		return
+	}
+	shipType := result.Transaction.ShipType
+	persistTransaction(h.conn, db.Transaction{
+		Type:           "SHIP_PURCHASE",
+		ShipSymbol:     result.Ship.Symbol,
+		WaypointSymbol: result.Transaction.WaypointSymbol,
+		ShipType:       &shipType,
+		TotalPrice:     result.Transaction.Price,
+		AgentCredits:   result.Agent.Credits,
+		OccurredAt:     result.Transaction.Timestamp,
+	})
+	writeJSON(w, result)
+}
+
+// purchaseCargo godoc
+// @Summary      Purchase cargo into a ship's hold
+// @Description  Calls SpaceTraders' purchase-cargo, then records the transaction in agent-service's transaction history.
+// @Tags         ships
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        shipSymbol  path      string                   true  "Ship symbol"
+// @Param        body        body      cargoTransactionRequest  true  "Trade good symbol and units"
+// @Success      200         {object}  schema.MarketTransactionResult
+// @Failure      400         {string}  string  "invalid request body"
+// @Failure      401         {string}  string  "missing Authorization header"
+// @Failure      502         {string}  string  "SpaceTraders upstream error"
+// @Router       /ships/{shipSymbol}/purchase [post]
+func (h *handlers) purchaseCargo(w http.ResponseWriter, r *http.Request) {
+	shipSymbol := mux.Vars(r)["shipSymbol"]
+	h.tradeCargo(w, r, shipSymbol, "PURCHASE", spacetraders.PurchaseCargo)
+}
+
+// sellCargo godoc
+// @Summary      Sell cargo from a ship's hold
+// @Description  Calls SpaceTraders' sell-cargo, then records the transaction in agent-service's transaction history.
+// @Tags         ships
+// @Security     BearerAuth
+// @Accept       json
+// @Produce      json
+// @Param        shipSymbol  path      string                   true  "Ship symbol"
+// @Param        body        body      cargoTransactionRequest  true  "Trade good symbol and units"
+// @Success      200         {object}  schema.MarketTransactionResult
+// @Failure      400         {string}  string  "invalid request body"
+// @Failure      401         {string}  string  "missing Authorization header"
+// @Failure      502         {string}  string  "SpaceTraders upstream error"
+// @Router       /ships/{shipSymbol}/sell [post]
+func (h *handlers) sellCargo(w http.ResponseWriter, r *http.Request) {
+	shipSymbol := mux.Vars(r)["shipSymbol"]
+	h.tradeCargo(w, r, shipSymbol, "SELL", spacetraders.SellCargo)
+}
+
+func (h *handlers) tradeCargo(
+	w http.ResponseWriter,
+	r *http.Request,
+	shipSymbol string,
+	txType string,
+	call func(authHeader, priority, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error),
+) {
+	authHeader, ok := requireAuthHeader(w, r)
+	if !ok {
+		return
+	}
+	var body cargoTransactionRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.Symbol == "" || body.Units <= 0 {
+		http.Error(w, "symbol and units (>0) are required", http.StatusBadRequest)
+		return
+	}
+
+	result, err := call(authHeader, priorityHeader(r), shipSymbol, body.Symbol, body.Units)
+	if !writeIfError(w, err) {
+		return
+	}
+	tradeSymbol := result.Transaction.TradeSymbol
+	units := result.Transaction.Units
+	pricePerUnit := result.Transaction.PricePerUnit
+	persistTransaction(h.conn, db.Transaction{
+		Type:           txType,
+		ShipSymbol:     shipSymbol,
+		WaypointSymbol: result.Transaction.WaypointSymbol,
+		TradeSymbol:    &tradeSymbol,
+		Units:          &units,
+		PricePerUnit:   &pricePerUnit,
+		TotalPrice:     result.Transaction.TotalPrice,
+		AgentCredits:   result.Agent.Credits,
+		OccurredAt:     result.Transaction.Timestamp,
+	})
+	writeJSON(w, result)
+}
+
+// getTransactions godoc
+// @Summary      List recorded transactions
+// @Description  Ship/cargo purchases and cargo sells, newest first. Optionally filtered by shipSymbol and/or type.
+// @Tags         ships
+// @Produce      json
+// @Param        shipSymbol  query     string  false  "Filter by ship symbol"
+// @Param        type        query     string  false  "Filter by transaction type (SHIP_PURCHASE, PURCHASE, SELL)"
+// @Param        limit       query     int     false  "Max results (default 100)"
+// @Success      200         {array}   db.Transaction
+// @Failure      500         {string}  string  "failed to load transactions"
+// @Router       /transactions [get]
+func (h *handlers) getTransactions(w http.ResponseWriter, r *http.Request) {
+	shipSymbol := r.URL.Query().Get("shipSymbol")
+	txType := r.URL.Query().Get("type")
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	transactions, err := db.ListTransactions(h.conn, shipSymbol, txType, limit)
+	if err != nil {
+		http.Error(w, "failed to load transactions: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, transactions)
+}
+
+func persistTransaction(conn *sql.DB, t db.Transaction) {
+	if t.OccurredAt.IsZero() {
+		t.OccurredAt = time.Now()
+	}
+	if err := db.InsertTransaction(conn, t); err != nil {
+		log.Default().Printf("failed to persist %s transaction for %s: %v", t.Type, t.ShipSymbol, err)
+	}
 }
 
 func (h *handlers) getAgentById(w http.ResponseWriter, r *http.Request) {
