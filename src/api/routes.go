@@ -49,8 +49,12 @@ func SetUpRouter(conn *sql.DB) *mux.Router {
 
 	api := r.PathPrefix("/api/agent").Subrouter()
 
-	// Resource routes are versioned; swagger below is operational tooling and
-	// stays directly under /api/agent, not nested under /v1.
+	// Resource routes are versioned; swagger and health below are operational
+	// tooling and stay directly under /api/agent, not nested under /v1. Health
+	// is mounted both bare above (local dev/compose) and here (production
+	// CloudFront only routes requests matching a configured path pattern).
+	api.HandleFunc("/health", handleHealth).Methods(http.MethodGet)
+
 	v1 := api.PathPrefix("/v1").Subrouter()
 
 	v1.HandleFunc("/current-agent", h.getCurrentAgent).Methods(http.MethodGet)
