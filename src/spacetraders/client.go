@@ -1,6 +1,7 @@
 package spacetraders
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,6 +53,41 @@ func AcceptContract(authHeader, priority, contractId string) (schema.ContractAnd
 func FulfillContract(authHeader, priority, contractId string) (schema.ContractAndAgent, error) {
 	resp, err := makeAuthenticatedRequest[schema.FulfillContractResponse](http.MethodPost, "/my/contracts/"+contractId+"/fulfill", authHeader, priority, nil)
 	return resp.Data, err
+}
+
+func PurchaseShip(authHeader, priority, shipType, waypointSymbol string) (schema.PurchaseShipResult, error) {
+	body, err := jsonBody(map[string]string{"shipType": shipType, "waypointSymbol": waypointSymbol})
+	if err != nil {
+		return schema.PurchaseShipResult{}, err
+	}
+	resp, err := makeAuthenticatedRequest[schema.PurchaseShipResponse](http.MethodPost, "/my/ships", authHeader, priority, body)
+	return resp.Data, err
+}
+
+func PurchaseCargo(authHeader, priority, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error) {
+	body, err := jsonBody(map[string]any{"symbol": tradeSymbol, "units": units})
+	if err != nil {
+		return schema.MarketTransactionResult{}, err
+	}
+	resp, err := makeAuthenticatedRequest[schema.MarketTransactionResponse](http.MethodPost, "/my/ships/"+shipSymbol+"/purchase", authHeader, priority, body)
+	return resp.Data, err
+}
+
+func SellCargo(authHeader, priority, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error) {
+	body, err := jsonBody(map[string]any{"symbol": tradeSymbol, "units": units})
+	if err != nil {
+		return schema.MarketTransactionResult{}, err
+	}
+	resp, err := makeAuthenticatedRequest[schema.MarketTransactionResponse](http.MethodPost, "/my/ships/"+shipSymbol+"/sell", authHeader, priority, body)
+	return resp.Data, err
+}
+
+func jsonBody(v any) (io.Reader, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(raw), nil
 }
 
 // makeAuthenticatedRequest forwards authHeader as-is through st-gateway (never

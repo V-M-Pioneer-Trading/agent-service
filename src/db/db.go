@@ -31,6 +31,19 @@ var schema = []string{
 		units         INT NOT NULL,
 		delivered_at  TIMESTAMP NOT NULL
 	)`,
+	`CREATE TABLE IF NOT EXISTS transactions (
+		id              INT AUTO_INCREMENT PRIMARY KEY,
+		type            VARCHAR(32) NOT NULL,
+		ship_symbol     VARCHAR(64) NOT NULL,
+		waypoint_symbol VARCHAR(64) NOT NULL,
+		ship_type       VARCHAR(64) NULL,
+		trade_symbol    VARCHAR(64) NULL,
+		units           INT NULL,
+		price_per_unit  INT NULL,
+		total_price     INT NOT NULL,
+		agent_credits   INT NOT NULL,
+		occurred_at     TIMESTAMP NOT NULL
+	)`,
 }
 
 func getEnv(key, fallback string) string {

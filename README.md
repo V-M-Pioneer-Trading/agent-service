@@ -1,5 +1,8 @@
 # Agent Info Service
-Service for accessing information about the agent - profile, fleet, contracts, etc.
+Service for accessing information about the agent - profile, fleet, contracts, etc. Also
+owns ship/cargo purchases and cargo sells — since these are the actions that spend or earn
+credits — and persists them into a transaction history, calling SpaceTraders directly
+(via st-gateway) the same way it already does for accept/fulfill-contract.
 
 ## Setup and local development
 
@@ -38,6 +41,11 @@ Regenerate docs after changing handler annotations in `src/api/routes.go`:
 - `POST /contracts/{contractId}/fulfill`
 - `GET  /contracts/{contractId}/deliveries`, `POST /contracts/{contractId}/deliveries` (internal —
   called by fleet-service after a successful deliver-contract action)
+- `POST /ships/purchase` — purchase a new ship; body `{ shipType, waypointSymbol }`
+- `POST /ships/{shipSymbol}/purchase` — purchase cargo into a ship's hold; body `{ symbol, units }`
+- `POST /ships/{shipSymbol}/sell` — sell cargo from a ship's hold; body `{ symbol, units }`
+- `GET  /transactions` — recorded ship/cargo purchases and cargo sells, newest first; optional
+  `shipSymbol`, `type` (`SHIP_PURCHASE`/`PURCHASE`/`SELL`), and `limit` query params
 
 ### Environment variables
 

@@ -13,6 +13,13 @@ definitions:
           $ref: '#/definitions/schema.Ship'
         type: array
     type: object
+  api.cargoTransactionRequest:
+    properties:
+      symbol:
+        type: string
+      units:
+        type: integer
+    type: object
   api.deliveryRequest:
     properties:
       shipSymbol:
@@ -21,6 +28,13 @@ definitions:
         type: string
       units:
         type: integer
+    type: object
+  api.purchaseShipRequest:
+    properties:
+      shipType:
+        type: string
+      waypointSymbol:
+        type: string
     type: object
   db.Delivery:
     properties:
@@ -34,6 +48,29 @@ definitions:
         type: string
       units:
         type: integer
+    type: object
+  db.Transaction:
+    properties:
+      agentCredits:
+        type: integer
+      occurredAt:
+        type: string
+      pricePerUnit:
+        type: integer
+      shipSymbol:
+        type: string
+      shipType:
+        type: string
+      totalPrice:
+        type: integer
+      tradeSymbol:
+        type: string
+      type:
+        type: string
+      units:
+        type: integer
+      waypointSymbol:
+        type: string
     type: object
   schema.Agent:
     properties:
@@ -198,6 +235,34 @@ definitions:
       current:
         type: integer
     type: object
+  schema.MarketTransaction:
+    properties:
+      pricePerUnit:
+        type: integer
+      shipSymbol:
+        type: string
+      timestamp:
+        type: string
+      totalPrice:
+        type: integer
+      tradeSymbol:
+        type: string
+      type:
+        type: string
+      units:
+        type: integer
+      waypointSymbol:
+        type: string
+    type: object
+  schema.MarketTransactionResult:
+    properties:
+      agent:
+        $ref: '#/definitions/schema.Agent'
+      cargo:
+        $ref: '#/definitions/schema.Cargo'
+      transaction:
+        $ref: '#/definitions/schema.MarketTransaction'
+    type: object
   schema.Module:
     properties:
       capacity:
@@ -257,6 +322,15 @@ definitions:
         type: integer
       onFulfilled:
         type: integer
+    type: object
+  schema.PurchaseShipResult:
+    properties:
+      agent:
+        $ref: '#/definitions/schema.Agent'
+      ship:
+        $ref: '#/definitions/schema.Ship'
+      transaction:
+        $ref: '#/definitions/schema.ShipyardTransaction'
     type: object
   schema.Reactor:
     properties:
@@ -346,6 +420,19 @@ definitions:
       registration:
         $ref: '#/definitions/schema.Registration'
       symbol:
+        type: string
+    type: object
+  schema.ShipyardTransaction:
+    properties:
+      agentSymbol:
+        type: string
+      price:
+        type: integer
+      shipType:
+        type: string
+      timestamp:
+        type: string
+      waypointSymbol:
         type: string
     type: object
 info:
@@ -629,6 +716,160 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a single ship
+      tags:
+      - ships
+  /ships/{shipSymbol}/purchase:
+    post:
+      consumes:
+      - application/json
+      description: Calls SpaceTraders' purchase-cargo, then records the transaction
+        in agent-service's transaction history.
+      parameters:
+      - description: Ship symbol
+        in: path
+        name: shipSymbol
+        required: true
+        type: string
+      - description: Trade good symbol and units
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.cargoTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/schema.MarketTransactionResult'
+        "400":
+          description: invalid request body
+          schema:
+            type: string
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Purchase cargo into a ship's hold
+      tags:
+      - ships
+  /ships/{shipSymbol}/sell:
+    post:
+      consumes:
+      - application/json
+      description: Calls SpaceTraders' sell-cargo, then records the transaction in
+        agent-service's transaction history.
+      parameters:
+      - description: Ship symbol
+        in: path
+        name: shipSymbol
+        required: true
+        type: string
+      - description: Trade good symbol and units
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.cargoTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/schema.MarketTransactionResult'
+        "400":
+          description: invalid request body
+          schema:
+            type: string
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Sell cargo from a ship's hold
+      tags:
+      - ships
+  /ships/purchase:
+    post:
+      consumes:
+      - application/json
+      description: Calls SpaceTraders' purchase-ship, then records the transaction
+        in agent-service's transaction history.
+      parameters:
+      - description: Ship type and shipyard waypoint
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.purchaseShipRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/schema.PurchaseShipResult'
+        "400":
+          description: invalid request body
+          schema:
+            type: string
+        "401":
+          description: missing Authorization header
+          schema:
+            type: string
+        "502":
+          description: SpaceTraders upstream error
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Purchase a new ship
+      tags:
+      - ships
+  /transactions:
+    get:
+      description: Ship/cargo purchases and cargo sells, newest first. Optionally
+        filtered by shipSymbol and/or type.
+      parameters:
+      - description: Filter by ship symbol
+        in: query
+        name: shipSymbol
+        type: string
+      - description: Filter by transaction type (SHIP_PURCHASE, PURCHASE, SELL)
+        in: query
+        name: type
+        type: string
+      - description: Max results (default 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/db.Transaction'
+            type: array
+        "500":
+          description: failed to load transactions
+          schema:
+            type: string
+      summary: List recorded transactions
       tags:
       - ships
 swagger: "2.0"

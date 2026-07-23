@@ -1,6 +1,7 @@
 package spacetraders
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -76,5 +77,48 @@ func TestGatewayBaseURLDefaultsWhenUnset(t *testing.T) {
 	os.Unsetenv("ST_GATEWAY_URL")
 	if got := gatewayBaseURL(); got != "http://localhost:3002/proxy" {
 		t.Errorf("expected default gateway URL, got %q", got)
+	}
+}
+
+// meta: purchase/sell moved from fleet-service into agent-service so it can own
+// a transaction history — these calls now go straight to st-gateway themselves,
+// the same as AcceptContract/FulfillContract, instead of fleet-service proxying
+// them and phoning agent-service afterward.
+func TestPurchaseCargoRoutesThroughGatewayWithBody(t *testing.T) {
+	var gotPath, gotMethod, gotAuth, gotBody string
+	fakeGateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		gotAuth = r.Header.Get("Authorization")
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"agent":{"credits":5000},"cargo":{"capacity":40,"units":10},"transaction":{"waypointSymbol":"X1-TEST","shipSymbol":"TEST-1","tradeSymbol":"FUEL","type":"PURCHASE","units":10,"pricePerUnit":5,"totalPrice":50,"timestamp":"2026-01-01T00:00:00Z"}}}`))
+	}))
+	defer fakeGateway.Close()
+
+	t.Setenv("ST_GATEWAY_URL", fakeGateway.URL)
+
+	result, err := PurchaseCargo("Bearer test-token", "interactive", "TEST-1", "FUEL", 10)
+	if err != nil {
+		t.Fatalf("PurchaseCargo returned error: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("expected POST, got %s", gotMethod)
+	}
+	if gotPath != "/proxy/my/ships/TEST-1/purchase" {
+		t.Errorf("expected request to hit gateway's purchase path, got %q", gotPath)
+	}
+	if gotAuth != "Bearer test-token" {
+		t.Errorf("expected Authorization forwarded verbatim, got %q", gotAuth)
+	}
+	if gotBody != `{"symbol":"FUEL","units":10}` {
+		t.Errorf("expected symbol/units request body, got %q", gotBody)
+	}
+	if result.Transaction.TotalPrice != 50 {
+		t.Errorf("expected totalPrice 50, got %d", result.Transaction.TotalPrice)
+	}
+	if result.Agent.Credits != 5000 {
+		t.Errorf("expected agent credits 5000, got %d", result.Agent.Credits)
 	}
 }
