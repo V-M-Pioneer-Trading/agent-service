@@ -1,7 +1,9 @@
 package main
 
 import (
+	"log"
 	"net/http"
+	"os"
 
 	"vnm/agent-info-service/api"
 	"vnm/agent-info-service/db"
@@ -14,7 +16,18 @@ import (
 func main() {
 
 	conn := db.SetUpDatabase()
-	r := api.SetUpRouter(conn)
+
+	clerkJWTKey, err := api.RequireClerkJWTKey()
+	if err != nil {
+		log.Fatal(err)
+	}
+	r, err := api.SetUpRouter(conn, api.AuthConfig{
+		ClerkJWTKeyPEM: clerkJWTKey,
+		ClerkIssuer:    os.Getenv("CLERK_ISSUER"),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	http.ListenAndServe(":80", r)
 

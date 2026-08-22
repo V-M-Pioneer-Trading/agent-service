@@ -36,8 +36,12 @@ type handlers struct {
 	conn *sql.DB
 }
 
-func SetUpRouter(conn *sql.DB) *mux.Router {
+func SetUpRouter(conn *sql.DB, auth AuthConfig) (*mux.Router, error) {
 	h := &handlers{conn: conn}
+	v, err := newVerifier(auth)
+	if err != nil {
+		return nil, err
+	}
 
 	r := mux.NewRouter()
 	r.Use(loggingMiddleware, corsMiddleware)
@@ -57,25 +61,35 @@ func SetUpRouter(conn *sql.DB) *mux.Router {
 
 	v1 := api.PathPrefix("/v1").Subrouter()
 
-	v1.HandleFunc("/current-agent", h.getCurrentAgent).Methods(http.MethodGet)
-	v1.HandleFunc("/agent", h.getAgent).Methods(http.MethodGet)
-	v1.HandleFunc("/ships", h.getShips).Methods(http.MethodGet)
-	v1.HandleFunc("/ships/{shipSymbol}", h.getShip).Methods(http.MethodGet)
-	v1.HandleFunc("/contracts", h.getContracts).Methods(http.MethodGet)
-	v1.HandleFunc("/contracts/{contractId}", h.getContract).Methods(http.MethodGet)
-	v1.HandleFunc("/contracts/{contractId}/accept", h.acceptContract).Methods(http.MethodPost)
-	v1.HandleFunc("/contracts/{contractId}/fulfill", h.fulfillContract).Methods(http.MethodPost)
+	// Reads that forward live to SpaceTraders: signed-in session, no
+	// particular scope (auth-design.md decision 18 — this service holds no
+	// SpaceTraders credential of its own, so an anonymous caller has nothing
+	// to read regardless of scope, until auth-service exists).
+	v1.HandleFunc("/current-agent", v.requireSession(h.getCurrentAgent)).Methods(http.MethodGet)
+	v1.HandleFunc("/agent", v.requireSession(h.getAgent)).Methods(http.MethodGet)
+	v1.HandleFunc("/ships", v.requireSession(h.getShips)).Methods(http.MethodGet)
+	v1.HandleFunc("/ships/{shipSymbol}", v.requireSession(h.getShip)).Methods(http.MethodGet)
+	v1.HandleFunc("/contracts", v.requireSession(h.getContracts)).Methods(http.MethodGet)
+	v1.HandleFunc("/contracts/{contractId}", v.requireSession(h.getContract)).Methods(http.MethodGet)
+	// Mutations: fleet:control, same as fleet-service.
+	v1.HandleFunc("/contracts/{contractId}/accept", v.requireScope(SCOPEFleetControl, h.acceptContract)).Methods(http.MethodPost)
+	v1.HandleFunc("/contracts/{contractId}/fulfill", v.requireScope(SCOPEFleetControl, h.fulfillContract)).Methods(http.MethodPost)
+	v1.HandleFunc("/ships/purchase", v.requireScope(SCOPEFleetControl, h.purchaseShip)).Methods(http.MethodPost)
+	v1.HandleFunc("/ships/{shipSymbol}/purchase", v.requireScope(SCOPEFleetControl, h.purchaseCargo)).Methods(http.MethodPost)
+	v1.HandleFunc("/ships/{shipSymbol}/sell", v.requireScope(SCOPEFleetControl, h.sellCargo)).Methods(http.MethodPost)
+	// Unchanged: recordDelivery is an internal call from fleet-service, not a
+	// browser route; getDeliveries/getTransactions read only this service's
+	// own MySQL history, never SpaceTraders, so there's no credential problem
+	// to gate against — public, matching decision 2 and automation-service's
+	// own Postgres-backed reads. getAgentById is an unimplemented stub.
 	v1.HandleFunc("/contracts/{contractId}/deliveries", h.recordDelivery).Methods(http.MethodPost)
 	v1.HandleFunc("/contracts/{contractId}/deliveries", h.getDeliveries).Methods(http.MethodGet)
 	v1.HandleFunc("/agent/{agentId}", h.getAgentById).Methods(http.MethodGet)
-	v1.HandleFunc("/ships/purchase", h.purchaseShip).Methods(http.MethodPost)
-	v1.HandleFunc("/ships/{shipSymbol}/purchase", h.purchaseCargo).Methods(http.MethodPost)
-	v1.HandleFunc("/ships/{shipSymbol}/sell", h.sellCargo).Methods(http.MethodPost)
 	v1.HandleFunc("/transactions", h.getTransactions).Methods(http.MethodGet)
 
 	api.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 
-	return r
+	return r, nil
 }
 
 // getCurrentAgent godoc
@@ -89,7 +103,7 @@ func SetUpRouter(conn *sql.DB) *mux.Router {
 // @Failure      502  {string}  string  "SpaceTraders upstream error"
 // @Router       /current-agent [get]
 func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -128,7 +142,7 @@ func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 // @Failure      502  {string}  string  "SpaceTraders upstream error"
 // @Router       /agent [get]
 func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -149,7 +163,7 @@ func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 // @Failure      502  {string}  string  "SpaceTraders upstream error"
 // @Router       /ships [get]
 func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -172,7 +186,7 @@ func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 // @Failure      502         {string}  string  "SpaceTraders upstream error"
 // @Router       /ships/{shipSymbol} [get]
 func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -194,7 +208,7 @@ func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 // @Failure      502  {string}  string  "SpaceTraders upstream error"
 // @Router       /contracts [get]
 func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -217,7 +231,7 @@ func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 // @Failure      502         {string}  string  "SpaceTraders upstream error"
 // @Router       /contracts/{contractId} [get]
 func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -241,7 +255,7 @@ func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 // @Failure      502         {string}  string  "SpaceTraders upstream error"
 // @Router       /contracts/{contractId}/accept [post]
 func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -267,7 +281,7 @@ func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 // @Failure      502         {string}  string  "SpaceTraders upstream error"
 // @Router       /contracts/{contractId}/fulfill [post]
 func (h *handlers) fulfillContract(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -362,7 +376,7 @@ type cargoTransactionRequest struct {
 // @Failure      502   {string}  string  "SpaceTraders upstream error"
 // @Router       /ships/purchase [post]
 func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -438,7 +452,7 @@ func (h *handlers) tradeCargo(
 	txType string,
 	call func(authHeader, priority, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error),
 ) {
-	authHeader, ok := requireAuthHeader(w, r)
+	authHeader, ok := requireSpaceTradersToken(w, r)
 	if !ok {
 		return
 	}
@@ -531,15 +545,6 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok"})
 }
 
-func requireAuthHeader(w http.ResponseWriter, r *http.Request) (string, bool) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		http.Error(w, "missing Authorization header", http.StatusUnauthorized)
-		return "", false
-	}
-	return authHeader, true
-}
-
 // priorityHeader forwards the caller's own X-Priority declaration through to
 // st-gateway's priority queue (meta#37) — command-interface (browser) sends
 // "interactive", automation-service (autopilot) sends nothing. Callers below
@@ -592,7 +597,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Priority")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Priority, X-SpaceTraders-Token")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

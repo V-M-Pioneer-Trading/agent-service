@@ -7,7 +7,10 @@ import (
 )
 
 func TestHealthEndpoint(t *testing.T) {
-	router := SetUpRouter(nil)
+	router, err := SetUpRouter(nil, testAuthConfig())
+	if err != nil {
+		t.Fatalf("SetUpRouter: %v", err)
+	}
 
 	for _, path := range []string{"/health", "/api/agent/health"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
