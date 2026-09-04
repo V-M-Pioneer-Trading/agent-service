@@ -11,10 +11,20 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"database/sql"
+	"encoding/json"
 	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/golang-jwt/jwt/v5"
+
+	"vnm/agent-info-service/spacetraders"
 )
 
 var (
@@ -53,13 +63,7 @@ func signTestToken(key *rsa.PrivateKey, opts testTokenOptions) string {
 	if opts.expiresInSeconds == 0 {
 		opts.expiresInSeconds = 300
 	}
-	scope := ""
-	for i, s := range opts.scopes {
-		if i > 0 {
-			scope += " "
-		}
-		scope += s
-	}
+	scope := strings.Join(opts.scopes, " ")
 
 	claims := jwt.MapClaims{
 		"sub":   opts.sub,
@@ -104,4 +108,59 @@ func foreignBearer() string {
 
 func testAuthConfig() AuthConfig {
 	return AuthConfig{ClerkJWTKeyPEM: testClerkPublicKeyPEM}
+}
+
+// Column lists mirroring the SELECTs in package db, so a stubbed row set
+// matches what Scan expects.
+var (
+	transactionColumns = []string{"type", "ship_symbol", "waypoint_symbol", "ship_type", "trade_symbol",
+		"units", "price_per_unit", "total_price", "agent_credits", "occurred_at"}
+	deliveryColumns = []string{"contract_id", "ship_symbol", "trade_symbol", "units", "delivered_at"}
+)
+
+// newTestRouter builds the real router. Both dependencies are injected rather
+// than discovered from process environment, so tests never mutate global state
+// and can run in any order.
+func newTestRouter(t *testing.T, conn *sql.DB, st *spacetraders.Client) http.Handler {
+	t.Helper()
+	router, err := SetUpRouter(conn, st, testAuthConfig())
+	if err != nil {
+		t.Fatalf("SetUpRouter: %v", err)
+	}
+	return router
+}
+
+// stubGateway stands in for st-gateway and returns a client pointed at it.
+func stubGateway(t *testing.T, handler http.HandlerFunc) *spacetraders.Client {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		handler(w, r)
+	}))
+	t.Cleanup(server.Close)
+	return spacetraders.NewClientWithBaseURL(server.URL)
+}
+
+func newMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
+	t.Helper()
+	conn, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	return conn, mock
+}
+
+// decodeAuthError pulls error.message out of a JSON auth rejection.
+func decodeAuthError(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+	var body authError
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decoding auth error %q: %v", rec.Body.String(), err)
+	}
+	return body.Error.Message
+}
+
+func writeFile(path, contents string) error {
+	return os.WriteFile(path, []byte(contents), 0o600)
 }

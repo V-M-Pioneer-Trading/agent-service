@@ -20,6 +20,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -37,9 +40,9 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -56,6 +59,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -76,9 +82,9 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -95,6 +101,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -121,9 +130,9 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "404": {
@@ -146,6 +155,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' accept-contract, then persists the resulting contract state.",
@@ -173,9 +185,15 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
+                    "403": {
+                        "description": "session lacks fleet:control",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -280,6 +298,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' fulfill-contract, then persists the resulting contract state.",
@@ -307,9 +328,15 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
+                    "403": {
+                        "description": "session lacks fleet:control",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -326,6 +353,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "description": "Convenience bundle of GET /agent + GET /ships + GET /contracts.",
@@ -344,9 +374,9 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -363,6 +393,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -383,9 +416,9 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -402,6 +435,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' purchase-ship, then records the transaction in agent-service's transaction history.",
@@ -440,9 +476,15 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
+                    "403": {
+                        "description": "session lacks fleet:control",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -459,6 +501,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -485,9 +530,9 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "404": {
@@ -510,6 +555,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' purchase-cargo, then records the transaction in agent-service's transaction history.",
@@ -555,9 +603,15 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
+                    "403": {
+                        "description": "session lacks fleet:control",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -574,6 +628,9 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
+                    },
+                    {
+                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' sell-cargo, then records the transaction in agent-service's transaction history.",
@@ -619,9 +676,15 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "missing Authorization header",
+                        "description": "no Clerk session, or no game token",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
+                    "403": {
+                        "description": "session lacks fleet:control",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "502": {
@@ -651,14 +714,20 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "enum": [
+                            "SHIP_PURCHASE",
+                            "PURCHASE",
+                            "SELL"
+                        ],
                         "type": "string",
-                        "description": "Filter by transaction type (SHIP_PURCHASE, PURCHASE, SELL)",
+                        "description": "Filter by transaction type",
                         "name": "type",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "Max results (default 100)",
+                        "default": 100,
+                        "description": "Max results, 1-1000",
                         "name": "limit",
                         "in": "query"
                     }
@@ -671,6 +740,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/db.Transaction"
                             }
+                        }
+                    },
+                    "400": {
+                        "description": "invalid query parameter",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "500": {
@@ -700,6 +775,19 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/schema.Ship"
+                    }
+                }
+            }
+        },
+        "api.authError": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "object",
+                    "properties": {
+                        "message": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -785,7 +873,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "type": {
-                    "type": "string"
+                    "$ref": "#/definitions/db.TransactionType"
                 },
                 "units": {
                     "type": "integer"
@@ -794,6 +882,19 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "db.TransactionType": {
+            "type": "string",
+            "enum": [
+                "SHIP_PURCHASE",
+                "PURCHASE",
+                "SELL"
+            ],
+            "x-enum-varnames": [
+                "ShipPurchase",
+                "CargoPurchase",
+                "CargoSell"
+            ]
         },
         "schema.Agent": {
             "type": "object",
@@ -1344,6 +1445,20 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Clerk session token, as \"Bearer \u003cjwt\u003e\".",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        },
+        "GameToken": {
+            "description": "The caller's own SpaceTraders agent token, forwarded upstream verbatim and never stored.",
+            "type": "apiKey",
+            "name": "X-SpaceTraders-Token",
+            "in": "header"
         }
     }
 }`

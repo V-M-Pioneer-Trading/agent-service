@@ -13,6 +13,14 @@ definitions:
           $ref: '#/definitions/schema.Ship'
         type: array
     type: object
+  api.authError:
+    properties:
+      error:
+        properties:
+          message:
+            type: string
+        type: object
+    type: object
   api.cargoTransactionRequest:
     properties:
       symbol:
@@ -66,12 +74,22 @@ definitions:
       tradeSymbol:
         type: string
       type:
-        type: string
+        $ref: '#/definitions/db.TransactionType'
       units:
         type: integer
       waypointSymbol:
         type: string
     type: object
+  db.TransactionType:
+    enum:
+    - SHIP_PURCHASE
+    - PURCHASE
+    - SELL
+    type: string
+    x-enum-varnames:
+    - ShipPurchase
+    - CargoPurchase
+    - CargoSell
   schema.Agent:
     properties:
       accountId:
@@ -452,15 +470,16 @@ paths:
           schema:
             $ref: '#/definitions/schema.Agent'
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Get the current agent's profile
       tags:
       - agent
@@ -476,15 +495,16 @@ paths:
               $ref: '#/definitions/schema.Contract'
             type: array
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: List the agent's contracts
       tags:
       - contracts
@@ -504,9 +524,9 @@ paths:
           schema:
             $ref: '#/definitions/schema.Contract'
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
         "404":
           description: contract not found
           schema:
@@ -517,6 +537,7 @@ paths:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Get a single contract
       tags:
       - contracts
@@ -538,15 +559,20 @@ paths:
           schema:
             $ref: '#/definitions/schema.ContractAndAgent'
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
+        "403":
+          description: session lacks fleet:control
+          schema:
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Accept a contract
       tags:
       - contracts
@@ -627,15 +653,20 @@ paths:
           schema:
             $ref: '#/definitions/schema.ContractAndAgent'
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
+        "403":
+          description: session lacks fleet:control
+          schema:
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Fulfill a contract
       tags:
       - contracts
@@ -650,15 +681,16 @@ paths:
           schema:
             $ref: '#/definitions/api.CurrentAgentResponse'
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Get agent, ships and contracts in one call
       tags:
       - agent
@@ -674,15 +706,16 @@ paths:
               $ref: '#/definitions/schema.Ship'
             type: array
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: List the agent's ships
       tags:
       - ships
@@ -702,9 +735,9 @@ paths:
           schema:
             $ref: '#/definitions/schema.Ship'
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
         "404":
           description: ship not found
           schema:
@@ -715,6 +748,7 @@ paths:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Get a single ship
       tags:
       - ships
@@ -748,15 +782,20 @@ paths:
           schema:
             type: string
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
+        "403":
+          description: session lacks fleet:control
+          schema:
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Purchase cargo into a ship's hold
       tags:
       - ships
@@ -790,15 +829,20 @@ paths:
           schema:
             type: string
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
+        "403":
+          description: session lacks fleet:control
+          schema:
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Sell cargo from a ship's hold
       tags:
       - ships
@@ -827,15 +871,20 @@ paths:
           schema:
             type: string
         "401":
-          description: missing Authorization header
+          description: no Clerk session, or no game token
           schema:
-            type: string
+            $ref: '#/definitions/api.authError'
+        "403":
+          description: session lacks fleet:control
+          schema:
+            $ref: '#/definitions/api.authError'
         "502":
           description: SpaceTraders upstream error
           schema:
             type: string
       security:
       - BearerAuth: []
+      - GameToken: []
       summary: Purchase a new ship
       tags:
       - ships
@@ -848,11 +897,16 @@ paths:
         in: query
         name: shipSymbol
         type: string
-      - description: Filter by transaction type (SHIP_PURCHASE, PURCHASE, SELL)
+      - description: Filter by transaction type
+        enum:
+        - SHIP_PURCHASE
+        - PURCHASE
+        - SELL
         in: query
         name: type
         type: string
-      - description: Max results (default 100)
+      - default: 100
+        description: Max results, 1-1000
         in: query
         name: limit
         type: integer
@@ -865,6 +919,10 @@ paths:
             items:
               $ref: '#/definitions/db.Transaction'
             type: array
+        "400":
+          description: invalid query parameter
+          schema:
+            type: string
         "500":
           description: failed to load transactions
           schema:
@@ -872,4 +930,16 @@ paths:
       summary: List recorded transactions
       tags:
       - ships
+securityDefinitions:
+  BearerAuth:
+    description: Clerk session token, as "Bearer <jwt>".
+    in: header
+    name: Authorization
+    type: apiKey
+  GameToken:
+    description: The caller's own SpaceTraders agent token, forwarded upstream verbatim
+      and never stored.
+    in: header
+    name: X-SpaceTraders-Token
+    type: apiKey
 swagger: "2.0"

@@ -3,20 +3,10 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
-
-func newTestRouter(t *testing.T) http.Handler {
-	t.Helper()
-	router, err := SetUpRouter(nil, testAuthConfig())
-	if err != nil {
-		t.Fatalf("SetUpRouter: %v", err)
-	}
-	return router
-}
 
 func doRequest(t *testing.T, router http.Handler, method, path, authorization string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -31,7 +21,7 @@ func doRequest(t *testing.T, router http.Handler, method, path, authorization st
 }
 
 func TestScopeGatedMutationsRejectWithoutAValidSession(t *testing.T) {
-	router := newTestRouter(t)
+	router := newTestRouter(t, nil, nil)
 
 	cases := []struct {
 		name          string
@@ -58,7 +48,7 @@ func TestScopeGatedMutationsRejectWithoutAValidSession(t *testing.T) {
 }
 
 func TestSessionGatedReadsRejectWithoutAnySession(t *testing.T) {
-	router := newTestRouter(t)
+	router := newTestRouter(t, nil, nil)
 
 	for _, path := range []string{
 		"/api/agent/v1/current-agent",
@@ -80,18 +70,39 @@ func TestSessionGatedReadsRejectWithoutAnySession(t *testing.T) {
 // read (auth-design.md decision 18 — no scope requirement there), which is
 // exactly the case a mutation route must forbid.
 func TestSessionWithNoScopeReachesTheUpstreamCallOnARead(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+	gateway := stubGateway(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT","credits":100}}`))
-	}))
-	defer upstream.Close()
-	t.Setenv("ST_GATEWAY_URL", upstream.URL)
+	})
 
-	router := newTestRouter(t)
+	router := newTestRouter(t, nil, gateway)
 	rec := doRequest(t, router, http.MethodGet, "/api/agent/v1/agent", bearerWithoutScope())
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("got status %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+// Regression: the game token is a second, independent credential. Before it
+// became middleware, each handler checked it itself and answered with a bare
+// text/plain 401 — a different body shape from every other auth rejection, on
+// routes where the router gave no hint the header was required at all.
+func TestValidSessionWithoutAGameTokenIsRejected(t *testing.T) {
+	router := newTestRouter(t, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/v1/agent", nil)
+	req.Header.Set("Authorization", bearer())
+	// deliberately no X-SpaceTraders-Token
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("got status %d, want 401 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/json" {
+		t.Errorf("got Content-Type %q, want application/json", got)
+	}
+	if msg := decodeAuthError(t, rec); msg == "" {
+		t.Errorf("expected an error.message in the body, got %q", rec.Body.String())
 	}
 }
 
@@ -101,29 +112,15 @@ func TestPublicRoutesNeedNoSessionAtAll(t *testing.T) {
 	// gate against (auth-design.md decision 18). A mocked DB (rather than
 	// nil) lets the request reach a real 200, proving it got past the auth
 	// layer rather than merely failing to panic.
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("sqlmock.New: %v", err)
-	}
-	defer db.Close()
-
-	router, err := SetUpRouter(db, testAuthConfig())
-	if err != nil {
-		t.Fatalf("SetUpRouter: %v", err)
-	}
+	conn, mock := newMockDB(t)
+	router := newTestRouter(t, conn, nil)
 
 	cases := []struct {
 		path    string
 		columns []string
 	}{
-		{
-			"/api/agent/v1/transactions",
-			[]string{"type", "ship_symbol", "waypoint_symbol", "ship_type", "trade_symbol", "units", "price_per_unit", "total_price", "agent_credits", "occurred_at"},
-		},
-		{
-			"/api/agent/v1/contracts/abc/deliveries",
-			[]string{"contract_id", "ship_symbol", "trade_symbol", "units", "delivered_at"},
-		},
+		{"/api/agent/v1/transactions", transactionColumns},
+		{"/api/agent/v1/contracts/abc/deliveries", deliveryColumns},
 	}
 
 	for _, c := range cases {
@@ -139,10 +136,26 @@ func TestPublicRoutesNeedNoSessionAtAll(t *testing.T) {
 }
 
 func TestRequireClerkJWTKeyFailsClosed(t *testing.T) {
-	os.Unsetenv("CLERK_JWT_KEY")
-	os.Unsetenv("CLERK_JWT_KEY_FILE")
+	// t.Setenv, not os.Unsetenv: the old version cleared both variables for
+	// the rest of the test binary, so whether a later test saw them depended
+	// on the order Go happened to run them in.
+	t.Setenv("CLERK_JWT_KEY", "")
+	t.Setenv("CLERK_JWT_KEY_FILE", "")
 
 	if _, err := RequireClerkJWTKey(); err == nil {
 		t.Fatal("expected an error with neither CLERK_JWT_KEY nor CLERK_JWT_KEY_FILE set")
+	}
+}
+
+func TestRequireClerkJWTKeyRejectsAnEmptyKeyFile(t *testing.T) {
+	path := t.TempDir() + "/empty.pem"
+	if err := writeFile(path, "   \n"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLERK_JWT_KEY", "")
+	t.Setenv("CLERK_JWT_KEY_FILE", path)
+
+	if _, err := RequireClerkJWTKey(); err == nil {
+		t.Fatal("expected an error for an empty CLERK_JWT_KEY_FILE")
 	}
 }
