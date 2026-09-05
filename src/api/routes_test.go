@@ -224,3 +224,30 @@ func TestCurrentAgentFailsLoudlyWhenAnUpstreamCallFails(t *testing.T) {
 		t.Error("a partially-filled bundle was returned instead of an error")
 	}
 }
+
+// Regression guard for a deployment-ordering trap: this service no longer reads
+// X-SpaceTraders-Token or X-Priority, but command-interface still *sends* both.
+// A header a browser sends that is missing from Access-Control-Allow-Headers
+// fails preflight, and a failed preflight blocks the request entirely — so
+// dropping them from the allow-list before the frontend stops sending them
+// would turn "ignores a useless header" into "the dashboard is down". They come
+// off the list only after command-interface does (increment 3 Stage 5, meta#72).
+func TestPreflightStillAllowsTheHeadersTheFrontendStillSends(t *testing.T) {
+	router := newTestRouter(t, nil, nil)
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/agent/v1/agent", nil)
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	req.Header.Set("Access-Control-Request-Headers", "authorization,x-spacetraders-token,x-priority")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("got status %d, want 204", rec.Code)
+	}
+	allowed := strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers"))
+	for _, header := range []string{"authorization", "x-spacetraders-token", "x-priority"} {
+		if !strings.Contains(allowed, header) {
+			t.Errorf("%q missing from Access-Control-Allow-Headers (%q) — preflight would fail for a caller that still sends it", header, allowed)
+		}
+	}
+}

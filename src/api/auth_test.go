@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -14,7 +15,6 @@ func doRequest(t *testing.T, router http.Handler, method, path, authorization st
 	if authorization != "" {
 		req.Header.Set("Authorization", authorization)
 	}
-	req.Header.Set("X-SpaceTraders-Token", "irrelevant-for-these-cases")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec
@@ -82,12 +82,16 @@ func TestSessionWithNoScopeReachesTheUpstreamCallOnARead(t *testing.T) {
 	}
 }
 
-// Regression: the game token is a second, independent credential. Before it
-// became middleware, each handler checked it itself and answered with a bare
-// text/plain 401 — a different body shape from every other auth rejection, on
-// routes where the router gave no hint the header was required at all.
-func TestValidSessionWithoutAGameTokenIsRejected(t *testing.T) {
-	router := newTestRouter(t, nil, nil)
+// Regression: this service used to demand X-SpaceTraders-Token on every
+// SpaceTraders-backed route and answer 401 without it. st-gateway now injects
+// that credential itself from auth-service (auth-design.md decision 5), so no
+// caller has one to give — decision 18 said the header "disappears entirely"
+// at that point. A signed-in session alone must now be enough.
+func TestNoGameTokenIsRequiredAnyMore(t *testing.T) {
+	gateway := stubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
+	})
+	router := newTestRouter(t, nil, gateway)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/agent/v1/agent", nil)
 	req.Header.Set("Authorization", bearer())
@@ -95,14 +99,59 @@ func TestValidSessionWithoutAGameTokenIsRejected(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("got status %d, want 401 (body: %s)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 (body: %s)", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("Content-Type"); got != "application/json" {
-		t.Errorf("got Content-Type %q, want application/json", got)
+}
+
+// The credential that reaches st-gateway must be the Clerk session this service
+// just verified — that is what earns a browser request the interactive lane
+// (decision 2). Previously the game token went out here instead, which
+// st-gateway could not verify, so every request degraded to background.
+func TestTheVerifiedSessionIsForwardedUpstream(t *testing.T) {
+	var gotAuth string
+	gateway := stubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
+	})
+	router := newTestRouter(t, nil, gateway)
+
+	sessionHeader := bearer()
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/v1/agent", nil)
+	req.Header.Set("Authorization", sessionHeader)
+	// A game token, if one is still sent by an un-updated caller, must be ignored.
+	req.Header.Set("X-SpaceTraders-Token", "stale-game-token")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 (body: %s)", rec.Code, rec.Body.String())
 	}
-	if msg := decodeAuthError(t, rec); msg == "" {
-		t.Errorf("expected an error.message in the body, got %q", rec.Body.String())
+	if gotAuth != sessionHeader {
+		t.Errorf("got Authorization %q upstream, want the verified session %q", gotAuth, sessionHeader)
+	}
+	if strings.Contains(gotAuth, "stale-game-token") {
+		t.Error("the game token leaked upstream")
+	}
+}
+
+// An un-updated caller still sending X-SpaceTraders-Token must keep working
+// rather than being rejected for sending a header this service now ignores.
+func TestAnUnUpdatedCallerStillSendingAGameTokenIsAccepted(t *testing.T) {
+	gateway := stubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
+	})
+	router := newTestRouter(t, nil, gateway)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/agent/v1/agent", nil)
+	req.Header.Set("Authorization", bearer())
+	req.Header.Set("X-SpaceTraders-Token", "still-being-sent")
+	req.Header.Set("X-Priority", "interactive")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 (body: %s)", rec.Code, rec.Body.String())
 	}
 }
 

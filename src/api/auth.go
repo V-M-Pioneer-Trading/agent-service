@@ -18,6 +18,11 @@ package api
 //     that never calls SpaceTraders at all, so these stay public, matching
 //     decision 2's "every GET is public" and automation-service's own
 //     Postgres-backed reads.
+//
+// Decision 18's second header, X-SpaceTraders-Token, is gone: st-gateway now
+// injects the SpaceTraders credential itself from auth-service (decision 5),
+// so no caller has to hand one over. What this service forwards upstream
+// instead is the caller's own verified Clerk token — see callerAuthorization.
 
 import (
 	"context"
@@ -103,11 +108,11 @@ func writeAuthError(w http.ResponseWriter, status int, message string) {
 // verify runs the real check both requireScope and requireSession share: a
 // well-formed, correctly-signed, unexpired Clerk session. hasScope decides
 // what additionally has to be true of its claims.
-func (v *verifier) verify(w http.ResponseWriter, r *http.Request, hasScope func([]string) bool) bool {
+func (v *verifier) verify(w http.ResponseWriter, r *http.Request, hasScope func([]string) bool) (*http.Request, bool) {
 	token := bearerFrom(r)
 	if token == "" {
 		writeAuthError(w, http.StatusUnauthorized, "a bearer token is required")
-		return false
+		return r, false
 	}
 
 	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
@@ -117,15 +122,19 @@ func (v *verifier) verify(w http.ResponseWriter, r *http.Request, hasScope func(
 		// Not surfacing the specific reason — "expired" vs "bad signature" vs
 		// "wrong issuer" is a probing oracle, and the remedy is the same.
 		writeAuthError(w, http.StatusUnauthorized, "invalid or expired session")
-		return false
+		return r, false
 	}
 
 	claims, ok := parsed.Claims.(jwt.MapClaims)
 	if !ok || !hasScope(scopesFrom(claims)) {
 		writeAuthError(w, http.StatusForbidden, "this action requires a scope this session does not carry")
-		return false
+		return r, false
 	}
-	return true
+
+	// Carry the verified header forward for st-gateway's priority derivation.
+	// Re-normalised rather than copied verbatim so what leaves this service is
+	// the token that was actually checked, not whatever spacing the caller used.
+	return r.WithContext(context.WithValue(r.Context(), callerAuthKey, "Bearer "+token)), true
 }
 
 func issuerOption(issuer string) jwt.ParserOption {
@@ -139,14 +148,15 @@ func issuerOption(issuer string) jwt.ParserOption {
 // Clerk session carrying the given scope.
 func (v *verifier) requireScope(scope string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !v.verify(w, r, func(scopes []string) bool {
+		r, ok := v.verify(w, r, func(scopes []string) bool {
 			for _, s := range scopes {
 				if s == scope {
 					return true
 				}
 			}
 			return false
-		}) {
+		})
+		if !ok {
 			return
 		}
 		next(w, r)
@@ -157,7 +167,8 @@ func (v *verifier) requireScope(scope string, next http.HandlerFunc) http.Handle
 // valid Clerk session — any scope, or none at all.
 func (v *verifier) requireSession(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !v.verify(w, r, func([]string) bool { return true }) {
+		r, ok := v.verify(w, r, func([]string) bool { return true })
+		if !ok {
 			return
 		}
 		next(w, r)
@@ -187,37 +198,26 @@ func RequireClerkJWTKey() (string, error) {
 	return "", errors.New("CLERK_JWT_KEY or CLERK_JWT_KEY_FILE must be set")
 }
 
-// gameTokenKey carries the SpaceTraders credential from requireGameToken to
-// the handler. Its own unexported type keeps it from colliding with any other
-// package's context keys.
+// callerAuthKey carries the caller's verified Clerk Authorization header from
+// verify to the handler. Its own unexported type keeps it from colliding with
+// any other package's context keys.
 type contextKey int
 
-const gameTokenKey contextKey = iota
+const callerAuthKey contextKey = iota
 
-// requireGameToken rejects callers that did not present the game credential
-// these handlers forward upstream, and puts it on the request context ready to
-// use. It travels separately from Authorization (which always carries the
-// Clerk session) because the two headers do two different jobs —
-// auth-design.md decision 18.
+// callerAuthorization returns the caller's Clerk Authorization header, to be
+// forwarded to st-gateway. It is only ever called from a handler behind
+// requireSession or requireScope, so the value is always present and has
+// already been verified.
 //
-// Applying it as a wrapper rather than an in-handler guard means the router
-// declaration says which routes need a game token; previously that was
-// invisible outside each handler's first four lines.
-func requireGameToken(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("X-SpaceTraders-Token")
-		if token == "" {
-			writeAuthError(w, http.StatusUnauthorized, "an X-SpaceTraders-Token header is required")
-			return
-		}
-		next(w, r.WithContext(context.WithValue(r.Context(), gameTokenKey, "Bearer "+token)))
-	}
-}
-
-// gameToken returns the Authorization header value to forward upstream. It is
-// only ever called from a handler behind requireGameToken, so the value is
-// always present.
-func gameToken(r *http.Request) string {
-	token, _ := r.Context().Value(gameTokenKey).(string)
-	return token
+// st-gateway does not use it as a credential — it injects the SpaceTraders
+// token itself, from auth-service (auth-design.md decision 5). It uses it to
+// derive the request's priority class from a verified identity rather than a
+// self-declared header (decision 2): a human Clerk session (sub prefixed
+// "user_") earns the interactive lane, a machine token ("mch_") and anything
+// unverifiable get background. Forwarding it is what lets a browser request
+// keep its interactive priority across this hop.
+func callerAuthorization(r *http.Request) string {
+	header, _ := r.Context().Value(callerAuthKey).(string)
+	return header
 }

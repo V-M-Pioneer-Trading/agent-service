@@ -67,9 +67,9 @@ func SetUpRouter(conn *sql.DB, st *spacetraders.Client, auth AuthConfig) (*mux.R
 
 	// The three access tiers, named once (auth-design.md decision 18):
 	//
-	//   read   — forwards live to SpaceTraders: a signed-in Clerk session (no
+	//   read   — forwards live to SpaceTraders: a signed-in Clerk session, no
 	//            particular scope, since this service holds no SpaceTraders
-	//            credential of its own) plus the caller's own game token.
+	//            credential of its own and st-gateway supplies one.
 	//   write  — mutations, which additionally need fleet:control, same as
 	//            fleet-service.
 	//   public — reads served entirely from this service's own MySQL history.
@@ -77,10 +77,10 @@ func SetUpRouter(conn *sql.DB, st *spacetraders.Client, auth AuthConfig) (*mux.R
 	//            problem to gate against; matches decision 2 and
 	//            automation-service's Postgres-backed reads.
 	read := func(next http.HandlerFunc) http.HandlerFunc {
-		return v.requireSession(requireGameToken(next))
+		return v.requireSession(next)
 	}
 	write := func(next http.HandlerFunc) http.HandlerFunc {
-		return v.requireScope(SCOPEFleetControl, requireGameToken(next))
+		return v.requireScope(SCOPEFleetControl, next)
 	}
 
 	r := mux.NewRouter()
@@ -131,27 +131,26 @@ func SetUpRouter(conn *sql.DB, st *spacetraders.Client, auth AuthConfig) (*mux.R
 // @Description  Convenience bundle of GET /agent + GET /ships + GET /contracts.
 // @Tags         agent
 // @Security     BearerAuth
-// @Security     GameToken
 // @Produce      json
 // @Success      200  {object}  CurrentAgentResponse
-// @Failure      401  {object}  authError  "no Clerk session, or no game token"
+// @Failure      401  {object}  authError  "no Clerk session"
 // @Failure      502  {string}  string     "SpaceTraders upstream error"
 // @Router       /current-agent [get]
 func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
-	token, priority := gameToken(r), priorityOf(r)
+	callerAuth := callerAuthorization(r)
 	var response CurrentAgentResponse
 
-	agent, err := h.st.GetMyAgent(token, priority)
+	agent, err := h.st.GetMyAgent(callerAuth)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
 	}
-	ships, err := h.st.GetMyShips(token, priority)
+	ships, err := h.st.GetMyShips(callerAuth)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
 	}
-	contracts, err := h.st.GetMyContracts(token, priority)
+	contracts, err := h.st.GetMyContracts(callerAuth)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
@@ -165,14 +164,13 @@ func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 // @Summary      Get the current agent's profile
 // @Tags         agent
 // @Security     BearerAuth
-// @Security     GameToken
 // @Produce      json
 // @Success      200  {object}  schema.Agent
-// @Failure      401  {object}  authError  "no Clerk session, or no game token"
+// @Failure      401  {object}  authError  "no Clerk session"
 // @Failure      502  {string}  string     "SpaceTraders upstream error"
 // @Router       /agent [get]
 func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
-	agent, err := h.st.GetMyAgent(gameToken(r), priorityOf(r))
+	agent, err := h.st.GetMyAgent(callerAuthorization(r))
 	respond(w, agent, err)
 }
 
@@ -180,14 +178,13 @@ func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 // @Summary      List the agent's ships
 // @Tags         ships
 // @Security     BearerAuth
-// @Security     GameToken
 // @Produce      json
 // @Success      200  {array}   schema.Ship
-// @Failure      401  {object}  authError  "no Clerk session, or no game token"
+// @Failure      401  {object}  authError  "no Clerk session"
 // @Failure      502  {string}  string     "SpaceTraders upstream error"
 // @Router       /ships [get]
 func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
-	ships, err := h.st.GetMyShips(gameToken(r), priorityOf(r))
+	ships, err := h.st.GetMyShips(callerAuthorization(r))
 	respond(w, ships, err)
 }
 
@@ -195,16 +192,15 @@ func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 // @Summary      Get a single ship
 // @Tags         ships
 // @Security     BearerAuth
-// @Security     GameToken
 // @Produce      json
 // @Param        shipSymbol  path      string  true  "Ship symbol"
 // @Success      200         {object}  schema.Ship
-// @Failure      401         {object}  authError  "no Clerk session, or no game token"
+// @Failure      401         {object}  authError  "no Clerk session"
 // @Failure      404         {string}  string     "ship not found"
 // @Failure      502         {string}  string     "SpaceTraders upstream error"
 // @Router       /ships/{shipSymbol} [get]
 func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
-	ship, err := h.st.GetMyShip(gameToken(r), priorityOf(r), mux.Vars(r)["shipSymbol"])
+	ship, err := h.st.GetMyShip(callerAuthorization(r), mux.Vars(r)["shipSymbol"])
 	respond(w, ship, err)
 }
 
@@ -212,14 +208,13 @@ func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 // @Summary      List the agent's contracts
 // @Tags         contracts
 // @Security     BearerAuth
-// @Security     GameToken
 // @Produce      json
 // @Success      200  {array}   schema.Contract
-// @Failure      401  {object}  authError  "no Clerk session, or no game token"
+// @Failure      401  {object}  authError  "no Clerk session"
 // @Failure      502  {string}  string     "SpaceTraders upstream error"
 // @Router       /contracts [get]
 func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
-	contracts, err := h.st.GetMyContracts(gameToken(r), priorityOf(r))
+	contracts, err := h.st.GetMyContracts(callerAuthorization(r))
 	respond(w, contracts, err)
 }
 
@@ -227,16 +222,15 @@ func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 // @Summary      Get a single contract
 // @Tags         contracts
 // @Security     BearerAuth
-// @Security     GameToken
 // @Produce      json
 // @Param        contractId  path      string  true  "Contract ID"
 // @Success      200         {object}  schema.Contract
-// @Failure      401         {object}  authError  "no Clerk session, or no game token"
+// @Failure      401         {object}  authError  "no Clerk session"
 // @Failure      404         {string}  string     "contract not found"
 // @Failure      502         {string}  string     "SpaceTraders upstream error"
 // @Router       /contracts/{contractId} [get]
 func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
-	contract, err := h.st.GetMyContract(gameToken(r), priorityOf(r), mux.Vars(r)["contractId"])
+	contract, err := h.st.GetMyContract(callerAuthorization(r), mux.Vars(r)["contractId"])
 	respond(w, contract, err)
 }
 
@@ -245,11 +239,10 @@ func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 // @Description  Calls SpaceTraders' accept-contract, then persists the resulting contract state.
 // @Tags         contracts
 // @Security     BearerAuth
-// @Security     GameToken
 // @Produce      json
 // @Param        contractId  path      string  true  "Contract ID"
 // @Success      200         {object}  schema.ContractAndAgent
-// @Failure      401         {object}  authError  "no Clerk session, or no game token"
+// @Failure      401         {object}  authError  "no Clerk session"
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "SpaceTraders upstream error"
 // @Router       /contracts/{contractId}/accept [post]
@@ -262,11 +255,10 @@ func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 // @Description  Calls SpaceTraders' fulfill-contract, then persists the resulting contract state.
 // @Tags         contracts
 // @Security     BearerAuth
-// @Security     GameToken
 // @Produce      json
 // @Param        contractId  path      string  true  "Contract ID"
 // @Success      200         {object}  schema.ContractAndAgent
-// @Failure      401         {object}  authError  "no Clerk session, or no game token"
+// @Failure      401         {object}  authError  "no Clerk session"
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "SpaceTraders upstream error"
 // @Router       /contracts/{contractId}/fulfill [post]
@@ -279,9 +271,9 @@ func (h *handlers) fulfillContract(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) contractStateChange(
 	w http.ResponseWriter,
 	r *http.Request,
-	call func(authHeader, priority, contractId string) (schema.ContractAndAgent, error),
+	call func(callerAuth, contractId string) (schema.ContractAndAgent, error),
 ) {
-	result, err := call(gameToken(r), priorityOf(r), mux.Vars(r)["contractId"])
+	result, err := call(callerAuthorization(r), mux.Vars(r)["contractId"])
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
@@ -348,13 +340,12 @@ func (h *handlers) getDeliveries(w http.ResponseWriter, r *http.Request) {
 // @Description  Calls SpaceTraders' purchase-ship, then records the transaction in agent-service's transaction history.
 // @Tags         ships
 // @Security     BearerAuth
-// @Security     GameToken
 // @Accept       json
 // @Produce      json
 // @Param        body  body      purchaseShipRequest  true  "Ship type and shipyard waypoint"
 // @Success      200   {object}  schema.PurchaseShipResult
 // @Failure      400   {string}  string     "invalid request body"
-// @Failure      401   {object}  authError  "no Clerk session, or no game token"
+// @Failure      401   {object}  authError  "no Clerk session"
 // @Failure      403   {object}  authError  "session lacks fleet:control"
 // @Failure      502   {string}  string     "SpaceTraders upstream error"
 // @Router       /ships/purchase [post]
@@ -368,7 +359,7 @@ func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.st.PurchaseShip(gameToken(r), priorityOf(r), body.ShipType, body.WaypointSymbol)
+	result, err := h.st.PurchaseShip(callerAuthorization(r), body.ShipType, body.WaypointSymbol)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
@@ -391,14 +382,13 @@ func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
 // @Description  Calls SpaceTraders' purchase-cargo, then records the transaction in agent-service's transaction history.
 // @Tags         ships
 // @Security     BearerAuth
-// @Security     GameToken
 // @Accept       json
 // @Produce      json
 // @Param        shipSymbol  path      string                   true  "Ship symbol"
 // @Param        body        body      cargoTransactionRequest  true  "Trade good symbol and units"
 // @Success      200         {object}  schema.MarketTransactionResult
 // @Failure      400         {string}  string     "invalid request body"
-// @Failure      401         {object}  authError  "no Clerk session, or no game token"
+// @Failure      401         {object}  authError  "no Clerk session"
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "SpaceTraders upstream error"
 // @Router       /ships/{shipSymbol}/purchase [post]
@@ -411,14 +401,13 @@ func (h *handlers) purchaseCargo(w http.ResponseWriter, r *http.Request) {
 // @Description  Calls SpaceTraders' sell-cargo, then records the transaction in agent-service's transaction history.
 // @Tags         ships
 // @Security     BearerAuth
-// @Security     GameToken
 // @Accept       json
 // @Produce      json
 // @Param        shipSymbol  path      string                   true  "Ship symbol"
 // @Param        body        body      cargoTransactionRequest  true  "Trade good symbol and units"
 // @Success      200         {object}  schema.MarketTransactionResult
 // @Failure      400         {string}  string     "invalid request body"
-// @Failure      401         {object}  authError  "no Clerk session, or no game token"
+// @Failure      401         {object}  authError  "no Clerk session"
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "SpaceTraders upstream error"
 // @Router       /ships/{shipSymbol}/sell [post]
@@ -432,7 +421,7 @@ func (h *handlers) tradeCargo(
 	w http.ResponseWriter,
 	r *http.Request,
 	txType db.TransactionType,
-	call func(authHeader, priority, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error),
+	call func(callerAuth, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error),
 ) {
 	var body cargoTransactionRequest
 	if !decodeBody(w, r, &body) {
@@ -444,7 +433,7 @@ func (h *handlers) tradeCargo(
 	}
 
 	shipSymbol := mux.Vars(r)["shipSymbol"]
-	result, err := call(gameToken(r), priorityOf(r), shipSymbol, body.Symbol, body.Units)
+	result, err := call(callerAuthorization(r), shipSymbol, body.Symbol, body.Units)
 	if err != nil {
 		writeUpstreamError(w, err)
 		return
@@ -542,13 +531,6 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok"})
 }
 
-// priorityOf reads the caller's own X-Priority declaration for forwarding to
-// st-gateway's priority queue (meta#37). The spacetraders client owns what the
-// value means; this only carries it.
-func priorityOf(r *http.Request) string {
-	return r.Header.Get("X-Priority")
-}
-
 // decodeBody reads a size-capped JSON body, answering 400 and reporting false
 // when it cannot.
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
@@ -609,6 +591,12 @@ func corsMiddleware() mux.MiddlewareFunc {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			// X-Priority and X-SpaceTraders-Token are no longer read by anything,
+			// but command-interface still sends them. They stay on the allow-list
+			// until it stops: a header a browser sends that is not listed here
+			// fails preflight, which blocks the request entirely — strictly worse
+			// than ignoring a header nobody reads. Remove once the frontend has
+			// dropped them (increment 3 Stage 5, meta#72).
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Priority, X-SpaceTraders-Token")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
