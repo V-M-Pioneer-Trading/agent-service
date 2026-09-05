@@ -29,11 +29,7 @@ const (
 // @securityDefinitions.apikey  BearerAuth
 // @in                          header
 // @name                        Authorization
-// @description                 Clerk session token, as "Bearer <jwt>".
-// @securityDefinitions.apikey  GameToken
-// @in                          header
-// @name                        X-SpaceTraders-Token
-// @description                 The caller's own SpaceTraders agent token, forwarded upstream verbatim and never stored.
+// @description                 Clerk session token, as "Bearer <jwt>". Forwarded to st-gateway, which derives request priority from it.
 func main() {
 	conn, err := db.SetUpDatabase()
 	if err != nil {

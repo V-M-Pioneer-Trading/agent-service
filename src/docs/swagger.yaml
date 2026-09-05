@@ -470,7 +470,7 @@ paths:
           schema:
             $ref: '#/definitions/schema.Agent'
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "502":
@@ -479,7 +479,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Get the current agent's profile
       tags:
       - agent
@@ -495,7 +494,7 @@ paths:
               $ref: '#/definitions/schema.Contract'
             type: array
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "502":
@@ -504,7 +503,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: List the agent's contracts
       tags:
       - contracts
@@ -524,7 +522,7 @@ paths:
           schema:
             $ref: '#/definitions/schema.Contract'
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "404":
@@ -537,7 +535,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Get a single contract
       tags:
       - contracts
@@ -559,7 +556,7 @@ paths:
           schema:
             $ref: '#/definitions/schema.ContractAndAgent'
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "403":
@@ -572,7 +569,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Accept a contract
       tags:
       - contracts
@@ -653,7 +649,7 @@ paths:
           schema:
             $ref: '#/definitions/schema.ContractAndAgent'
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "403":
@@ -666,7 +662,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Fulfill a contract
       tags:
       - contracts
@@ -681,7 +676,7 @@ paths:
           schema:
             $ref: '#/definitions/api.CurrentAgentResponse'
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "502":
@@ -690,7 +685,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Get agent, ships and contracts in one call
       tags:
       - agent
@@ -706,7 +700,7 @@ paths:
               $ref: '#/definitions/schema.Ship'
             type: array
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "502":
@@ -715,7 +709,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: List the agent's ships
       tags:
       - ships
@@ -735,7 +728,7 @@ paths:
           schema:
             $ref: '#/definitions/schema.Ship'
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "404":
@@ -748,7 +741,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Get a single ship
       tags:
       - ships
@@ -782,7 +774,7 @@ paths:
           schema:
             type: string
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "403":
@@ -795,7 +787,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Purchase cargo into a ship's hold
       tags:
       - ships
@@ -829,7 +820,7 @@ paths:
           schema:
             type: string
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "403":
@@ -842,7 +833,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Sell cargo from a ship's hold
       tags:
       - ships
@@ -871,7 +861,7 @@ paths:
           schema:
             type: string
         "401":
-          description: no Clerk session, or no game token
+          description: no Clerk session
           schema:
             $ref: '#/definitions/api.authError'
         "403":
@@ -884,7 +874,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Purchase a new ship
       tags:
       - ships
@@ -932,14 +921,9 @@ paths:
       - ships
 securityDefinitions:
   BearerAuth:
-    description: Clerk session token, as "Bearer <jwt>".
+    description: Clerk session token, as "Bearer <jwt>". Forwarded to st-gateway,
+      which derives request priority from it.
     in: header
     name: Authorization
-    type: apiKey
-  GameToken:
-    description: The caller's own SpaceTraders agent token, forwarded upstream verbatim
-      and never stored.
-    in: header
-    name: X-SpaceTraders-Token
     type: apiKey
 swagger: "2.0"

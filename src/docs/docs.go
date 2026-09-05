@@ -20,9 +20,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -40,7 +37,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -59,9 +56,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -82,7 +76,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -101,9 +95,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -130,7 +121,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -155,9 +146,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' accept-contract, then persists the resulting contract state.",
@@ -185,7 +173,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -298,9 +286,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' fulfill-contract, then persists the resulting contract state.",
@@ -328,7 +313,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -353,9 +338,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Convenience bundle of GET /agent + GET /ships + GET /contracts.",
@@ -374,7 +356,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -393,9 +375,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -416,7 +395,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -435,9 +414,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' purchase-ship, then records the transaction in agent-service's transaction history.",
@@ -476,7 +452,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -501,9 +477,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -530,7 +503,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -555,9 +528,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' purchase-cargo, then records the transaction in agent-service's transaction history.",
@@ -603,7 +573,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -628,9 +598,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' sell-cargo, then records the transaction in agent-service's transaction history.",
@@ -676,7 +643,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "no Clerk session, or no game token",
+                        "description": "no Clerk session",
                         "schema": {
                             "$ref": "#/definitions/api.authError"
                         }
@@ -1449,15 +1416,9 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "Clerk session token, as \"Bearer \u003cjwt\u003e\".",
+            "description": "Clerk session token, as \"Bearer \u003cjwt\u003e\". Forwarded to st-gateway, which derives request priority from it.",
             "type": "apiKey",
             "name": "Authorization",
-            "in": "header"
-        },
-        "GameToken": {
-            "description": "The caller's own SpaceTraders agent token, forwarded upstream verbatim and never stored.",
-            "type": "apiKey",
-            "name": "X-SpaceTraders-Token",
             "in": "header"
         }
     }

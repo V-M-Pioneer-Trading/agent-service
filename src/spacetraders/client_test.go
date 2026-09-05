@@ -29,7 +29,7 @@ func TestGetMyAgentRoutesThroughGateway(t *testing.T) {
 		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
 	})
 
-	agent, err := client.GetMyAgent("Bearer test-token", PriorityInteractive)
+	agent, err := client.GetMyAgent("Bearer test-token")
 	if err != nil {
 		t.Fatalf("GetMyAgent returned error: %v", err)
 	}
@@ -44,39 +44,67 @@ func TestGetMyAgentRoutesThroughGateway(t *testing.T) {
 	}
 }
 
-// meta#37: agent-service used to hardcode X-Priority: interactive on every
-// outbound call, so automation-service's background autopilot traffic jumped
-// st-gateway's queue meant to keep the browser UI responsive. It now forwards
-// whatever the caller (command-interface vs automation-service) itself
-// declared, and anything but exactly "interactive" degrades to "background".
-func TestGetMyAgentForwardsPriority(t *testing.T) {
-	cases := []struct {
-		name     string
-		priority string
-		want     string
-	}{
-		{"interactive passes through", PriorityInteractive, PriorityInteractive},
-		{"empty degrades to background", "", PriorityBackground},
-		{"anything else degrades to background", "bogus", PriorityBackground},
-		{"case variants do not count as interactive", "Interactive", PriorityBackground},
+// Regression: this service used to send an X-Priority header and normalise it
+// to "interactive"/"background" itself. st-gateway stopped reading that header
+// when priority became a property of a verified Clerk identity rather than
+// something a caller could declare (auth-design.md decision 2) — so sending it
+// is at best noise, and at worst a claim this service is no longer entitled to
+// make. Nothing should go out on that header now.
+func TestNoPriorityHeaderIsSent(t *testing.T) {
+	var seen bool
+	client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		_, seen = r.Header["X-Priority"]
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
+	})
+
+	if _, err := client.GetMyAgent("Bearer clerk-session"); err != nil {
+		t.Fatalf("GetMyAgent returned error: %v", err)
 	}
+	if seen {
+		t.Error("an X-Priority header was sent; st-gateway no longer reads it")
+	}
+}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var gotPriority string
-			client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
-				gotPriority = r.Header.Get("X-Priority")
-				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
-			})
+// Regression: this service used to forward the caller's *SpaceTraders* token
+// upstream. st-gateway now injects that credential itself from auth-service
+// (decision 5) and overwrites whatever arrives, so the game token bought
+// nothing — and because it is opaque rather than a Clerk JWT, st-gateway's
+// priority check failed on it and every request, browser traffic included,
+// degraded to background. Forwarding the caller's verified Clerk header is
+// what lets a human session keep the interactive lane across this hop.
+func TestTheCallersClerkHeaderIsForwardedVerbatim(t *testing.T) {
+	var gotAuth string
+	client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
+	})
 
-			if _, err := client.GetMyAgent("Bearer test-token", tc.priority); err != nil {
-				t.Fatalf("GetMyAgent returned error: %v", err)
-			}
-			if gotPriority != tc.want {
-				t.Errorf("expected X-Priority: %q, got %q", tc.want, gotPriority)
-			}
-		})
+	if _, err := client.GetMyAgent("Bearer clerk-session-jwt"); err != nil {
+		t.Fatalf("GetMyAgent returned error: %v", err)
+	}
+	if gotAuth != "Bearer clerk-session-jwt" {
+		t.Errorf("got Authorization %q, want the caller's Clerk header forwarded verbatim", gotAuth)
+	}
+}
+
+// An empty caller header is legitimate — st-gateway reads it only to classify
+// priority, and no token simply means background. Sending an empty
+// Authorization would look like a malformed credential instead.
+func TestAnAbsentCallerHeaderSendsNoAuthorizationAtAll(t *testing.T) {
+	var present bool
+	client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		_, present = r.Header["Authorization"]
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{}}`))
+	})
+
+	if _, err := client.GetMyAgent(""); err != nil {
+		t.Fatalf("GetMyAgent returned error: %v", err)
+	}
+	if present {
+		t.Error("an empty Authorization header was sent; it should be omitted")
 	}
 }
 
@@ -113,7 +141,7 @@ func TestPurchaseCargoRoutesThroughGatewayWithBody(t *testing.T) {
 		w.Write([]byte(`{"data":{"agent":{"credits":5000},"cargo":{"capacity":40,"units":10},"transaction":{"waypointSymbol":"X1-TEST","shipSymbol":"TEST-1","tradeSymbol":"FUEL","type":"PURCHASE","units":10,"pricePerUnit":5,"totalPrice":50,"timestamp":"2026-01-01T00:00:00Z"}}}`))
 	})
 
-	result, err := client.PurchaseCargo("Bearer test-token", PriorityInteractive, "TEST-1", "FUEL", 10)
+	result, err := client.PurchaseCargo("Bearer test-token", "TEST-1", "FUEL", 10)
 	if err != nil {
 		t.Fatalf("PurchaseCargo returned error: %v", err)
 	}
@@ -145,7 +173,7 @@ func TestSellCargoUsesTheSellPath(t *testing.T) {
 		w.Write([]byte(`{"data":{}}`))
 	})
 
-	if _, err := client.SellCargo("Bearer t", PriorityBackground, "TEST-1", "FUEL", 3); err != nil {
+	if _, err := client.SellCargo("Bearer t", "TEST-1", "FUEL", 3); err != nil {
 		t.Fatalf("SellCargo returned error: %v", err)
 	}
 	if gotPath != "/proxy/my/ships/TEST-1/sell" {
@@ -169,7 +197,7 @@ func TestARequestThatNeverAnswersEventuallyFails(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := client.GetMyAgent("Bearer t", PriorityBackground)
+		_, err := client.GetMyAgent("Bearer t")
 		done <- err
 	}()
 
@@ -197,7 +225,7 @@ func TestUpstreamErrorCarriesStatusAndBody(t *testing.T) {
 		w.Write([]byte(`{"error":{"message":"rate limited"}}`))
 	})
 
-	_, err := client.GetMyAgent("Bearer t", PriorityBackground)
+	_, err := client.GetMyAgent("Bearer t")
 	var upstream *UpstreamError
 	if !errors.As(err, &upstream) {
 		t.Fatalf("expected an *UpstreamError, got %v", err)
@@ -218,7 +246,7 @@ func TestUpstreamErrorMessageIsBounded(t *testing.T) {
 		w.Write([]byte(strings.Repeat("x", maxErrorBody*2)))
 	})
 
-	_, err := client.GetMyAgent("Bearer t", PriorityBackground)
+	_, err := client.GetMyAgent("Bearer t")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
