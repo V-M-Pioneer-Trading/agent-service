@@ -30,10 +30,6 @@ const (
 // @in                          header
 // @name                        Authorization
 // @description                 Clerk session token, as "Bearer <jwt>".
-// @securityDefinitions.apikey  GameToken
-// @in                          header
-// @name                        X-SpaceTraders-Token
-// @description                 The caller's own SpaceTraders agent token, forwarded upstream verbatim and never stored.
 func main() {
 	conn, err := db.SetUpDatabase()
 	if err != nil {

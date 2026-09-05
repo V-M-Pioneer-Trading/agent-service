@@ -1,6 +1,7 @@
 package spacetraders
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -20,6 +21,9 @@ func newStubGateway(t *testing.T, handler http.HandlerFunc) *Client {
 	return NewClientWithBaseURL(server.URL)
 }
 
+// The client sends no credential and no priority hint: st-gateway injects the
+// agent token (auth-design.md decision 5) and derives priority itself (decision
+// 2). A header reappearing here would be a regression, not a feature.
 func TestGetMyAgentRoutesThroughGateway(t *testing.T) {
 	var gotPath, gotAuth string
 	client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +33,7 @@ func TestGetMyAgentRoutesThroughGateway(t *testing.T) {
 		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
 	})
 
-	agent, err := client.GetMyAgent("Bearer test-token", PriorityInteractive)
+	agent, err := client.GetMyAgent(context.Background())
 	if err != nil {
 		t.Fatalf("GetMyAgent returned error: %v", err)
 	}
@@ -39,44 +43,8 @@ func TestGetMyAgentRoutesThroughGateway(t *testing.T) {
 	if gotPath != "/proxy/my/agent" {
 		t.Errorf("expected request to hit gateway's /proxy path, got %q", gotPath)
 	}
-	if gotAuth != "Bearer test-token" {
-		t.Errorf("expected Authorization forwarded verbatim, got %q", gotAuth)
-	}
-}
-
-// meta#37: agent-service used to hardcode X-Priority: interactive on every
-// outbound call, so automation-service's background autopilot traffic jumped
-// st-gateway's queue meant to keep the browser UI responsive. It now forwards
-// whatever the caller (command-interface vs automation-service) itself
-// declared, and anything but exactly "interactive" degrades to "background".
-func TestGetMyAgentForwardsPriority(t *testing.T) {
-	cases := []struct {
-		name     string
-		priority string
-		want     string
-	}{
-		{"interactive passes through", PriorityInteractive, PriorityInteractive},
-		{"empty degrades to background", "", PriorityBackground},
-		{"anything else degrades to background", "bogus", PriorityBackground},
-		{"case variants do not count as interactive", "Interactive", PriorityBackground},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			var gotPriority string
-			client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
-				gotPriority = r.Header.Get("X-Priority")
-				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
-			})
-
-			if _, err := client.GetMyAgent("Bearer test-token", tc.priority); err != nil {
-				t.Fatalf("GetMyAgent returned error: %v", err)
-			}
-			if gotPriority != tc.want {
-				t.Errorf("expected X-Priority: %q, got %q", tc.want, gotPriority)
-			}
-		})
+	if gotAuth != "" {
+		t.Errorf("expected no Authorization header (st-gateway injects the agent token, decision 5), got %q", gotAuth)
 	}
 }
 
@@ -113,7 +81,7 @@ func TestPurchaseCargoRoutesThroughGatewayWithBody(t *testing.T) {
 		w.Write([]byte(`{"data":{"agent":{"credits":5000},"cargo":{"capacity":40,"units":10},"transaction":{"waypointSymbol":"X1-TEST","shipSymbol":"TEST-1","tradeSymbol":"FUEL","type":"PURCHASE","units":10,"pricePerUnit":5,"totalPrice":50,"timestamp":"2026-01-01T00:00:00Z"}}}`))
 	})
 
-	result, err := client.PurchaseCargo("Bearer test-token", PriorityInteractive, "TEST-1", "FUEL", 10)
+	result, err := client.PurchaseCargo(context.Background(), "TEST-1", "FUEL", 10)
 	if err != nil {
 		t.Fatalf("PurchaseCargo returned error: %v", err)
 	}
@@ -123,8 +91,8 @@ func TestPurchaseCargoRoutesThroughGatewayWithBody(t *testing.T) {
 	if gotPath != "/proxy/my/ships/TEST-1/purchase" {
 		t.Errorf("expected request to hit gateway's purchase path, got %q", gotPath)
 	}
-	if gotAuth != "Bearer test-token" {
-		t.Errorf("expected Authorization forwarded verbatim, got %q", gotAuth)
+	if gotAuth != "" {
+		t.Errorf("expected no Authorization header (st-gateway injects the agent token, decision 5), got %q", gotAuth)
 	}
 	if gotBody != `{"symbol":"FUEL","units":10}` {
 		t.Errorf("expected symbol/units request body, got %q", gotBody)
@@ -145,7 +113,7 @@ func TestSellCargoUsesTheSellPath(t *testing.T) {
 		w.Write([]byte(`{"data":{}}`))
 	})
 
-	if _, err := client.SellCargo("Bearer t", PriorityBackground, "TEST-1", "FUEL", 3); err != nil {
+	if _, err := client.SellCargo(context.Background(), "TEST-1", "FUEL", 3); err != nil {
 		t.Fatalf("SellCargo returned error: %v", err)
 	}
 	if gotPath != "/proxy/my/ships/TEST-1/sell" {
@@ -169,7 +137,7 @@ func TestARequestThatNeverAnswersEventuallyFails(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := client.GetMyAgent("Bearer t", PriorityBackground)
+		_, err := client.GetMyAgent(context.Background())
 		done <- err
 	}()
 
@@ -197,7 +165,7 @@ func TestUpstreamErrorCarriesStatusAndBody(t *testing.T) {
 		w.Write([]byte(`{"error":{"message":"rate limited"}}`))
 	})
 
-	_, err := client.GetMyAgent("Bearer t", PriorityBackground)
+	_, err := client.GetMyAgent(context.Background())
 	var upstream *UpstreamError
 	if !errors.As(err, &upstream) {
 		t.Fatalf("expected an *UpstreamError, got %v", err)
@@ -218,7 +186,7 @@ func TestUpstreamErrorMessageIsBounded(t *testing.T) {
 		w.Write([]byte(strings.Repeat("x", maxErrorBody*2)))
 	})
 
-	_, err := client.GetMyAgent("Bearer t", PriorityBackground)
+	_, err := client.GetMyAgent(context.Background())
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -253,5 +221,22 @@ func TestATrailingSlashOnSTGatewayURLIsTolerated(t *testing.T) {
 	t.Setenv("ST_GATEWAY_URL", "http://gateway:3002/")
 	if got := NewClient().BaseURL(); got != "http://gateway:3002/proxy" {
 		t.Errorf("got %q, want a single /proxy suffix", got)
+	}
+}
+
+// Symbols come straight from the caller's URL. Without escaping, a ship symbol
+// like "../agent" would steer the gateway at a different proxy path entirely.
+func TestPathSegmentsAreEscaped(t *testing.T) {
+	var gotPath string
+	client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		w.Write([]byte(`{"data":{}}`))
+	})
+
+	if _, err := client.GetMyShip(context.Background(), "a/b c"); err != nil {
+		t.Fatalf("GetMyShip returned error: %v", err)
+	}
+	if gotPath != "/proxy/my/ships/a%2Fb%20c" {
+		t.Errorf("expected the symbol escaped as one segment, got %q", gotPath)
 	}
 }

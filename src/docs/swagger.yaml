@@ -479,7 +479,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Get the current agent's profile
       tags:
       - agent
@@ -504,7 +503,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: List the agent's contracts
       tags:
       - contracts
@@ -537,7 +535,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Get a single contract
       tags:
       - contracts
@@ -572,7 +569,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Accept a contract
       tags:
       - contracts
@@ -666,7 +662,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Fulfill a contract
       tags:
       - contracts
@@ -690,7 +685,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Get agent, ships and contracts in one call
       tags:
       - agent
@@ -715,7 +709,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: List the agent's ships
       tags:
       - ships
@@ -748,7 +741,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Get a single ship
       tags:
       - ships
@@ -795,7 +787,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Purchase cargo into a ship's hold
       tags:
       - ships
@@ -842,7 +833,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Sell cargo from a ship's hold
       tags:
       - ships
@@ -884,7 +874,6 @@ paths:
             type: string
       security:
       - BearerAuth: []
-      - GameToken: []
       summary: Purchase a new ship
       tags:
       - ships
@@ -935,11 +924,5 @@ securityDefinitions:
     description: Clerk session token, as "Bearer <jwt>".
     in: header
     name: Authorization
-    type: apiKey
-  GameToken:
-    description: The caller's own SpaceTraders agent token, forwarded upstream verbatim
-      and never stored.
-    in: header
-    name: X-SpaceTraders-Token
     type: apiKey
 swagger: "2.0"

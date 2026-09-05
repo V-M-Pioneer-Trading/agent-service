@@ -14,7 +14,6 @@ func doRequest(t *testing.T, router http.Handler, method, path, authorization st
 	if authorization != "" {
 		req.Header.Set("Authorization", authorization)
 	}
-	req.Header.Set("X-SpaceTraders-Token", "irrelevant-for-these-cases")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec
@@ -82,27 +81,27 @@ func TestSessionWithNoScopeReachesTheUpstreamCallOnARead(t *testing.T) {
 	}
 }
 
-// Regression: the game token is a second, independent credential. Before it
-// became middleware, each handler checked it itself and answered with a bare
-// text/plain 401 — a different body shape from every other auth rejection, on
-// routes where the router gave no hint the header was required at all.
-func TestValidSessionWithoutAGameTokenIsRejected(t *testing.T) {
-	router := newTestRouter(t, nil, nil)
+// Stage 5 of increment 3: the game token is gone from this service. A caller
+// still sending the old header (a stale dashboard build, a script) is served
+// normally, never rejected — st-gateway overwrites the credential anyway, so
+// rejecting would only create a deploy-ordering trap for zero security gain.
+func TestAStrayGameTokenHeaderIsIgnored(t *testing.T) {
+	gateway := stubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-SpaceTraders-Token"); got != "" {
+			t.Errorf("stray header must not be forwarded upstream, got %q", got)
+		}
+		w.Write([]byte(`{"data":{"symbol":"TEST-AGENT"}}`))
+	})
+	router := newTestRouter(t, nil, gateway)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/agent/v1/agent", nil)
 	req.Header.Set("Authorization", bearer())
-	// deliberately no X-SpaceTraders-Token
+	req.Header.Set("X-SpaceTraders-Token", "stale-client-still-sends-this")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("got status %d, want 401 (body: %s)", rec.Code, rec.Body.String())
-	}
-	if got := rec.Header().Get("Content-Type"); got != "application/json" {
-		t.Errorf("got Content-Type %q, want application/json", got)
-	}
-	if msg := decodeAuthError(t, rec); msg == "" {
-		t.Errorf("expected an error.message in the body, got %q", rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200 (body: %s)", rec.Code, rec.Body.String())
 	}
 }
 

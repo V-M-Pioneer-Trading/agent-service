@@ -159,7 +159,6 @@ func TestPurchaseCargoRecordsATypedTransaction(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/agent/v1/ships/TEST-1/purchase",
 		strings.NewReader(`{"symbol":"FUEL","units":10}`))
 	req.Header.Set("Authorization", bearer())
-	req.Header.Set("X-SpaceTraders-Token", "game-token")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
