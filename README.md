@@ -9,6 +9,11 @@ including why the read routes need a signed-in session but no particular permiss
 anonymous caller has nothing to read regardless), and why the two history endpoints need no
 session at all (they never touch SpaceTraders).
 
+> **This is one increment out of date.** st-gateway now injects the SpaceTraders credential
+> itself, from auth-service, and overwrites whatever a caller sends. The `X-SpaceTraders-Token`
+> header this service still demands is on its way out, and until it goes the browser path is
+> broken. See [Pending: increment 3 Stage 5](#pending-increment-3-stage-5).
+
 What the service *does* keep is history. Ship purchases, cargo purchases and cargo sells are
 the actions that spend or earn credits, so they are owned here rather than in fleet-service,
 and each one is written to a local MySQL transaction log after the game confirms it. Contract
@@ -266,6 +271,27 @@ Both ends of the connection are pinned to UTC. MySQL converts `TIMESTAMP` column
 session time zone on the way in and back out, so without that pinning every recorded time
 round-trips to a different instant.
 
+## Pending: increment 3 Stage 5
+
+auth-service and st-gateway token injection shipped after this service was last touched
+(auth-design.md decision 5). st-gateway now fetches the game credential from auth-service and
+replaces the caller's `Authorization` on every proxied call, so nothing downstream needs to be
+handed a game token any more — decision 18 says the `X-SpaceTraders-Token` header "disappears
+entirely" at that point.
+
+agent-service has not caught up, with three consequences:
+
+| | Now | After Stage 5 |
+|---|---|---|
+| `X-SpaceTraders-Token` | Required on every SpaceTraders-backed route | Deleted |
+| Credential sent to st-gateway | The game token — discarded upstream | agent-service's own Clerk M2M token |
+| Effective priority | Always background, because the game token fails st-gateway's Clerk check | Derived from the verified identity |
+
+The first of those is user-visible: CloudFront does not forward `X-SpaceTraders-Token` — correctly,
+since the design has removed it — so requests arriving through the public edge are rejected by this
+service with `401 an X-SpaceTraders-Token header is required`. Calls made host-locally (automation-service
+on the same box) are unaffected.
+
 ## Known limitations
 
 Things this implementation deliberately does not do, and honest gaps.
@@ -286,7 +312,7 @@ Things this implementation deliberately does not do, and honest gaps.
   are plain text. Unifying them would change the wire format for existing consumers.
 * **A rejected game token surfaces as an upstream 401**, indistinguishable at the status-code
   level from an invalid Clerk session. Callers must read the body to tell which credential
-  failed.
+  failed. (Moot once Stage 5 removes the game token from this service entirely.)
 * **`contracts` is written but never read.** It is populated on accept and fulfil against a
   reporting need that does not exist yet.
 * **Migrations run at startup with no locking.** Two instances booting simultaneously against a
