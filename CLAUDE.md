@@ -50,28 +50,27 @@ CI runs format check, vet and the race/shuffle test suite on both pull requests 
 
 Stated so a violation is recognisable in review:
 
-1. **The service never persists a SpaceTraders token.** It arrives on `X-SpaceTraders-Token`,
-   is turned into an `Authorization: Bearer …` value for one upstream call, and is dropped.
-   Anything that writes it to a table, a log line, or a struct field outliving a request is a
-   bug.
-2. **The two credentials never mix.** `Authorization` is always Clerk. `X-SpaceTraders-Token`
-   is always the game. A handler that reads `Authorization` directly is wrong.
-   *Interim — see "Pending: increment 3 Stage 5" below. The game token is on its
-   way out entirely; this invariant describes today's code, not the target.*
+1. **No SpaceTraders credential exists in this service.** Not as a header, a context value,
+   a parameter or a field. st-gateway injects it (auth-design.md decision 5). Anything that
+   reintroduces one is a regression, not a feature.
+2. **`Authorization` is always the Clerk session, and it is forwarded verbatim.** It is read
+   in exactly two places: the verifier, and `forwardCallerSession`, which puts it on the
+   request context for the spacetraders client to relay to st-gateway (decision 2). A handler
+   that reads `Authorization` directly is wrong.
 3. **The access tier is declared at the router, never inside a handler.** Every route in
    `SetUpRouter` goes through `read(…)`, `write(…)`, or is deliberately bare (public). A
    handler that checks credentials itself has moved policy out of the one place it is readable.
-4. **A handler behind `requireGameToken` can assume `gameToken(r)` is non-empty.** Wiring one
-   without the wrapper silently produces upstream calls with an empty `Authorization`.
+4. **Every SpaceTraders-backed route sits behind `read(…)` or `write(…)`**, both of which
+   wrap `forwardCallerSession`. A route wired without them silently sends st-gateway no
+   session, and every call from it lands in the background lane.
 5. **History writes never fail a request.** The upstream call has already changed game state
    that cannot be rolled back. `persistTransaction` / `persistContract` log and return.
 6. **List endpoints return `[]`, never `null`.** `ListTransactions` and
    `GetDeliveriesForContract` initialise their slices. A `var xs []T` in either is a regression.
 7. **`Migrate` is idempotent and runs on every boot.** Any statement added there must either be
    `IF NOT EXISTS` or guarded by an `information_schema` check.
-8. **Anything that isn't exactly `"interactive"` is background priority.** Normalisation happens
-   once, in `spacetraders.normalizePriority`. Never compare priority strings elsewhere.
-   *Interim — st-gateway no longer reads `X-Priority` at all. See "Pending" below.*
+8. **Every path segment sent upstream is `url.PathEscape`d.** Symbols come straight from
+   `mux.Vars`; an unescaped `../` steers the gateway at a different proxy path.
 9. **`SetUpRouter` returns an error rather than exiting.** Only `main` calls `log.Fatal`.
 
 ## Critical sequences
@@ -90,8 +89,8 @@ server.ListenAndServe()  → binds PORT (default 80)
 **Migration order within `Migrate`:** create tables → widen columns → create indexes. Widening
 must precede indexing so an index is never built on a column about to be rebuilt.
 
-**A write request:** verify Clerk session → check scope → require game token → decode and
-validate body → upstream call → persist → respond. The upstream call is the point of no
+**A write request:** verify Clerk session → check scope → put the session on the context →
+decode and validate body → upstream call (session forwarded) → persist → respond. The upstream call is the point of no
 return; nothing after it may return an error status.
 
 ## Public surface
@@ -102,8 +101,7 @@ Changing any of these breaks a known consumer.
 |---|---|---|
 | `/api/agent/v1/*` route paths | command-interface, automation-service, fleet-service | The `/v1` prefix is the versioning story; new shapes go to `/v2` |
 | `/health`, `/api/agent/health` | compose healthcheck, CloudFront | Both must stay; CloudFront only routes configured path patterns |
-| `X-SpaceTraders-Token` header name | every caller | Also listed in `Access-Control-Allow-Headers`. **Scheduled for deletion** — see "Pending" below; do not build on it |
-| `X-Priority` header name and the value `interactive` | command-interface | **No longer read by st-gateway.** Effectively dead; see "Pending" below |
+| `Authorization` forwarded verbatim to st-gateway | st-gateway's priority derivation | A human session lands in the interactive lane; a machine token in background |
 | `fleet:control` scope string | Clerk session config, fleet-service | `SCOPEFleetControl` |
 | `SHIP_PURCHASE`, `PURCHASE`, `SELL` | anything reading `GET /transactions` | Defined once in `db.TransactionTypes`; also the `?type=` filter's accepted values |
 | JSON field names on `db.Transaction`, `db.Delivery`, `CurrentAgentResponse` | command-interface | |
@@ -115,11 +113,10 @@ Changing any of these breaks a known consumer.
 * **st-gateway, not SpaceTraders.** Every outbound call goes to `ST_GATEWAY_URL + /proxy + <the
   SpaceTraders path>`. The gateway owns the shared rate budget (meta#1/meta#7). Calling
   SpaceTraders directly would bypass it and get the whole org rate-limited.
-* **Priority queue (meta#37, superseded by decision 2).** The gateway *used to* read `X-Priority`;
-  this service used to hardcode `interactive`, which let autopilot traffic jump the queue meant
-  for the browser. st-gateway now derives priority from a verified Clerk identity and ignores the
-  header — `st-gateway/src/__tests__/priority.test.ts` has a case named *"ignores a self-declared
-  X-Priority: interactive header entirely"*. What this service sends is currently inert.
+* **Priority is the gateway's call (decision 2).** st-gateway derives it from the Clerk session
+  this service forwards: `sub` starting `user_` is interactive, anything else (automation-service's
+  `mch_` machine token, no session) is background. This service never declares a priority; the
+  old `X-Priority` header is ignored by the gateway and no longer sent.
 * **SpaceTraders wraps everything in `data`.** Hence the `…Response` structs whose only field is
   `Data`.
 * **Accept and fulfil return the same shape** (`ContractAndAgent`), as do purchase-cargo and
@@ -181,27 +178,6 @@ Run `-shuffle=on` locally before pushing; it is what catches order dependence.
 * **A new tunable:** a named constant with a comment saying what it bounds, plus a row in the
   README's tunables table. Reach for an environment variable only when an environment actually
   needs a different value.
-
-## Pending: increment 3 Stage 5
-
-**This service is behind the platform, and parts of this file describe that lag rather than
-the design.** `auth-service` and st-gateway token injection have shipped (auth-design.md
-decision 5): st-gateway fetches the SpaceTraders credential from auth-service and *overwrites*
-the caller's `Authorization` on every proxied call. Decision 18 is explicit that
-`X-SpaceTraders-Token` "disappears entirely once decision 5's injection lands".
-
-agent-service has not caught up. Three things here are therefore interim, not intended:
-
-| What | Today | After Stage 5 |
-|---|---|---|
-| `X-SpaceTraders-Token` | Required by `requireGameToken`; 401 without it | Gone — the guard, the context value, and the header |
-| `Authorization` sent to st-gateway | The game token; discarded upstream, and it fails Clerk verification there, so every call degrades to background priority | agent-service's own Clerk M2M token (decision 19) |
-| `X-Priority` | Forwarded, normalised in `spacetraders.normalizePriority` | Gone — priority is derived from the verified identity |
-
-`st-gateway/src/auth.ts` documents the same gap from the other side, calling it "an accepted
-interim UX regression, not a bug".
-
-**Do not build on the game-token path**, and do not treat invariants 2, 4 and 8 as durable.
 
 ---
 

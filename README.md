@@ -9,11 +9,6 @@ including why the read routes need a signed-in session but no particular permiss
 anonymous caller has nothing to read regardless), and why the two history endpoints need no
 session at all (they never touch SpaceTraders).
 
-> **This is one increment out of date.** st-gateway now injects the SpaceTraders credential
-> itself, from auth-service, and overwrites whatever a caller sends. The `X-SpaceTraders-Token`
-> header this service still demands is on its way out, and until it goes the browser path is
-> broken. See [Pending: increment 3 Stage 5](#pending-increment-3-stage-5).
-
 What the service *does* keep is history. Ship purchases, cargo purchases and cargo sells are
 the actions that spend or earn credits, so they are owned here rather than in fleet-service,
 and each one is written to a local MySQL transaction log after the game confirms it. Contract
@@ -38,14 +33,14 @@ flowchart LR
     mysql[("MySQL<br/>contracts, deliveries,<br/>transactions")]
     clerk["Clerk<br/>(public key only,<br/>no network calls)"]
 
-    browser -->|"Clerk session +<br/>game token"| router
-    autopilot -->|"Clerk session +<br/>game token"| router
+    browser -->|"Clerk session<br/>(human)"| router
+    autopilot -->|"Clerk M2M token<br/>(machine)"| router
     fleet -->|"records deliveries"| router
 
     router -.->|"verifies signature<br/>offline"| clerk
     router --> client
     router --> store
-    client -->|"X-Priority"| gateway
+    client -->|"session forwarded →<br/>interactive / background lane"| gateway
     gateway --> st
     store --> mysql
 ```
@@ -67,15 +62,12 @@ flowchart TD
 
     tier -->|"read<br/>(forwards to SpaceTraders)"| sess{"valid Clerk<br/>session?"}
     sess -->|no| e401["401<br/>invalid or expired session"]
-    sess -->|yes| game
+    sess -->|yes| handler
 
     tier -->|"write<br/>(mutates game state)"| scope{"session carries<br/>fleet:control?"}
     scope -->|no session| e401
     scope -->|"session, wrong scope"| e403["403<br/>missing scope"]
-    scope -->|yes| game
-
-    game{"X-SpaceTraders-Token<br/>present?"} -->|no| e401game["401<br/>game token required"]
-    game -->|yes| handler
+    scope -->|yes| handler
 
     handler --> up{"calls<br/>SpaceTraders?"}
     up -->|no| db[("read/write MySQL")] --> ok["200"]
@@ -84,9 +76,11 @@ flowchart TD
     gw -->|"4xx / 5xx"| passthru["upstream status<br/>passed through"]
 ```
 
-The two credentials do different jobs and travel separately. `Authorization` always carries the
-Clerk session; `X-SpaceTraders-Token` carries the game credential. Conflating them is what the
-split exists to prevent.
+`Authorization` is the only credential, and it is always the Clerk session. It is verified
+here, then forwarded verbatim to st-gateway, which derives queue priority from it: a human
+session earns the interactive lane, automation-service's machine token queues as background
+(auth-design.md decision 2). A stale caller still sending the old `X-SpaceTraders-Token`
+header is served normally; the header is simply ignored.
 
 ## A credit-moving action, end to end
 
@@ -103,8 +97,8 @@ sequenceDiagram
 
     C->>A: POST /ships/{sym}/purchase
     A->>A: verify session + fleet:control
-    A->>A: read game token, validate body
-    A->>G: POST /my/ships/{sym}/purchase (X-Priority)
+    A->>A: validate body
+    A->>G: POST /my/ships/{sym}/purchase (caller's session forwarded)
     G->>S: forward within rate budget
     S-->>G: transaction + new agent credits
     G-->>A: 200
@@ -143,8 +137,7 @@ Check it is alive, then call a real route:
 ```bash
 curl localhost:8080/health
 curl localhost:8080/api/agent/v1/agent \
-  -H "Authorization: Bearer <clerk-session-jwt>" \
-  -H "X-SpaceTraders-Token: <spacetraders-agent-token>"
+  -H "Authorization: Bearer <clerk-session-jwt>"
 ```
 
 Swagger UI: `http://localhost:8080/api/agent/swagger/index.html`. Regenerate it after changing
@@ -189,8 +182,8 @@ they are not part of the resource API's compatibility surface.
 | GET | `/contracts/{contractId}/deliveries` | public | Oldest first |
 | GET | `/transactions` | public | Newest first; `shipSymbol`, `type`, `limit` filters |
 
-**Tiers:** `public` needs nothing. `read` needs a valid Clerk session (any scope, or none) plus
-`X-SpaceTraders-Token`. `write` additionally needs the `fleet:control` scope.
+**Tiers:** `public` needs nothing. `read` needs a valid Clerk session (any scope, or none).
+`write` additionally needs the `fleet:control` scope.
 
 ### `GET /transactions` parameters
 
@@ -205,7 +198,7 @@ they are not part of the resource API's compatibility surface.
 | Status | Body shape | Raised by |
 |---|---|---|
 | 400 | `text/plain` | Malformed body, missing required field, bad query parameter |
-| 401 | `{"error":{"message":…}}` | No/invalid/expired Clerk session, or no `X-SpaceTraders-Token` |
+| 401 | `{"error":{"message":…}}` | No/invalid/expired Clerk session |
 | 403 | `{"error":{"message":…}}` | Valid session without `fleet:control` |
 | 4xx/5xx | `text/plain` | Passed through from SpaceTraders with its own status |
 | 500 | `text/plain` | A history read failed |
@@ -271,27 +264,6 @@ Both ends of the connection are pinned to UTC. MySQL converts `TIMESTAMP` column
 session time zone on the way in and back out, so without that pinning every recorded time
 round-trips to a different instant.
 
-## Pending: increment 3 Stage 5
-
-auth-service and st-gateway token injection shipped after this service was last touched
-(auth-design.md decision 5). st-gateway now fetches the game credential from auth-service and
-replaces the caller's `Authorization` on every proxied call, so nothing downstream needs to be
-handed a game token any more — decision 18 says the `X-SpaceTraders-Token` header "disappears
-entirely" at that point.
-
-agent-service has not caught up, with three consequences:
-
-| | Now | After Stage 5 |
-|---|---|---|
-| `X-SpaceTraders-Token` | Required on every SpaceTraders-backed route | Deleted |
-| Credential sent to st-gateway | The game token — discarded upstream | agent-service's own Clerk M2M token |
-| Effective priority | Always background, because the game token fails st-gateway's Clerk check | Derived from the verified identity |
-
-The first of those is user-visible: CloudFront does not forward `X-SpaceTraders-Token` — correctly,
-since the design has removed it — so requests arriving through the public edge are rejected by this
-service with `401 an X-SpaceTraders-Token header is required`. Calls made host-locally (automation-service
-on the same box) are unaffected.
-
 ## Known limitations
 
 Things this implementation deliberately does not do, and honest gaps.
@@ -310,9 +282,9 @@ Things this implementation deliberately does not do, and honest gaps.
   predictable. Worst-case latency is three times the single-call timeout.
 * **Error bodies are not one shape.** Auth rejections are JSON; validation and upstream errors
   are plain text. Unifying them would change the wire format for existing consumers.
-* **A rejected game token surfaces as an upstream 401**, indistinguishable at the status-code
-  level from an invalid Clerk session. Callers must read the body to tell which credential
-  failed. (Moot once Stage 5 removes the game token from this service entirely.)
+* **An upstream 401 is indistinguishable at the status-code level from an invalid Clerk
+  session.** It means st-gateway's injected credential was rejected (auth-service has no
+  token, or a universe reset), not that the caller did anything wrong; read the body.
 * **`contracts` is written but never read.** It is populated on accept and fulfil against a
   reporting need that does not exist yet.
 * **Migrations run at startup with no locking.** Two instances booting simultaneously against a

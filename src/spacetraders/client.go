@@ -2,24 +2,17 @@ package spacetraders
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"vnm/agent-info-service/spacetraders/schema"
-)
-
-// Priority values st-gateway's queue understands. Anything a caller declares
-// that isn't exactly PriorityInteractive degrades to PriorityBackground, so a
-// missing or malformed X-Priority never jumps the queue meant to keep the
-// browser UI responsive (meta#37).
-const (
-	PriorityInteractive = "interactive"
-	PriorityBackground  = "background"
 )
 
 const (
@@ -36,9 +29,12 @@ const (
 )
 
 // Client talks to SpaceTraders through st-gateway's shared rate budget
-// (meta#1/meta#7) rather than hitting SpaceTraders directly. It holds no
-// credential of its own: callers pass the game token per request and it is
-// forwarded verbatim, never stored.
+// (meta#1/meta#7) rather than hitting SpaceTraders directly. It holds no game
+// credential: st-gateway injects the agent token itself (auth-design.md
+// decision 5). The only header it forwards is the caller's own Clerk session,
+// verbatim, so st-gateway can derive queue priority from a verified identity
+// (decision 2): a human session earns the interactive lane, a machine token or
+// nothing at all queues as background. Nothing here is a caller's to spoof.
 //
 // One Client is meant to be built once and shared. Its http.Client pools
 // connections to the gateway; building one per request would discard the pool
@@ -75,66 +71,84 @@ func NewClientWithBaseURL(gatewayURL string) *Client {
 // BaseURL is the fully-qualified proxy prefix every call is built on.
 func (c *Client) BaseURL() string { return c.baseURL }
 
-func (c *Client) GetMyAgent(authHeader, priority string) (schema.Agent, error) {
-	resp, err := request[schema.GetMyAgentResponse](c, http.MethodGet, "/my/agent", authHeader, priority, nil)
+// ctxKey keeps this package's context values from colliding with anyone else's.
+type ctxKey int
+
+const callerAuthorizationKey ctxKey = iota
+
+// WithCallerAuthorization records the inbound Authorization header (the
+// caller's verified Clerk session) for forwarding on every upstream call made
+// with the returned context. The api package sets it once, in middleware; no
+// handler needs to know it exists.
+func WithCallerAuthorization(ctx context.Context, authorizationHeader string) context.Context {
+	return context.WithValue(ctx, callerAuthorizationKey, authorizationHeader)
+}
+
+func callerAuthorization(ctx context.Context) string {
+	v, _ := ctx.Value(callerAuthorizationKey).(string)
+	return v
+}
+
+func (c *Client) GetMyAgent(ctx context.Context) (schema.Agent, error) {
+	resp, err := request[schema.GetMyAgentResponse](ctx, c, http.MethodGet, "/my/agent", nil)
 	return resp.Data, err
 }
 
-func (c *Client) GetMyShips(authHeader, priority string) ([]schema.Ship, error) {
-	resp, err := request[schema.GetMyShipsResponse](c, http.MethodGet, "/my/ships", authHeader, priority, nil)
+func (c *Client) GetMyShips(ctx context.Context) ([]schema.Ship, error) {
+	resp, err := request[schema.GetMyShipsResponse](ctx, c, http.MethodGet, "/my/ships", nil)
 	return resp.Data, err
 }
 
-func (c *Client) GetMyShip(authHeader, priority, shipSymbol string) (schema.Ship, error) {
-	resp, err := request[schema.GetMyShipResponse](c, http.MethodGet, "/my/ships/"+shipSymbol, authHeader, priority, nil)
+func (c *Client) GetMyShip(ctx context.Context, shipSymbol string) (schema.Ship, error) {
+	resp, err := request[schema.GetMyShipResponse](ctx, c, http.MethodGet, "/my/ships/"+url.PathEscape(shipSymbol), nil)
 	return resp.Data, err
 }
 
-func (c *Client) GetMyContracts(authHeader, priority string) ([]schema.Contract, error) {
-	resp, err := request[schema.GetMyContractsResponse](c, http.MethodGet, "/my/contracts", authHeader, priority, nil)
+func (c *Client) GetMyContracts(ctx context.Context) ([]schema.Contract, error) {
+	resp, err := request[schema.GetMyContractsResponse](ctx, c, http.MethodGet, "/my/contracts", nil)
 	return resp.Data, err
 }
 
-func (c *Client) GetMyContract(authHeader, priority, contractId string) (schema.Contract, error) {
-	resp, err := request[schema.GetMyContractResponse](c, http.MethodGet, "/my/contracts/"+contractId, authHeader, priority, nil)
+func (c *Client) GetMyContract(ctx context.Context, contractId string) (schema.Contract, error) {
+	resp, err := request[schema.GetMyContractResponse](ctx, c, http.MethodGet, "/my/contracts/"+url.PathEscape(contractId), nil)
 	return resp.Data, err
 }
 
-func (c *Client) AcceptContract(authHeader, priority, contractId string) (schema.ContractAndAgent, error) {
-	resp, err := request[schema.AcceptContractResponse](c, http.MethodPost, "/my/contracts/"+contractId+"/accept", authHeader, priority, nil)
+func (c *Client) AcceptContract(ctx context.Context, contractId string) (schema.ContractAndAgent, error) {
+	resp, err := request[schema.AcceptContractResponse](ctx, c, http.MethodPost, "/my/contracts/"+url.PathEscape(contractId)+"/accept", nil)
 	return resp.Data, err
 }
 
-func (c *Client) FulfillContract(authHeader, priority, contractId string) (schema.ContractAndAgent, error) {
-	resp, err := request[schema.FulfillContractResponse](c, http.MethodPost, "/my/contracts/"+contractId+"/fulfill", authHeader, priority, nil)
+func (c *Client) FulfillContract(ctx context.Context, contractId string) (schema.ContractAndAgent, error) {
+	resp, err := request[schema.FulfillContractResponse](ctx, c, http.MethodPost, "/my/contracts/"+url.PathEscape(contractId)+"/fulfill", nil)
 	return resp.Data, err
 }
 
-func (c *Client) PurchaseShip(authHeader, priority, shipType, waypointSymbol string) (schema.PurchaseShipResult, error) {
+func (c *Client) PurchaseShip(ctx context.Context, shipType, waypointSymbol string) (schema.PurchaseShipResult, error) {
 	body, err := jsonBody(map[string]string{"shipType": shipType, "waypointSymbol": waypointSymbol})
 	if err != nil {
 		return schema.PurchaseShipResult{}, err
 	}
-	resp, err := request[schema.PurchaseShipResponse](c, http.MethodPost, "/my/ships", authHeader, priority, body)
+	resp, err := request[schema.PurchaseShipResponse](ctx, c, http.MethodPost, "/my/ships", body)
 	return resp.Data, err
 }
 
-func (c *Client) PurchaseCargo(authHeader, priority, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error) {
-	return c.tradeCargo(authHeader, priority, shipSymbol, "purchase", tradeSymbol, units)
+func (c *Client) PurchaseCargo(ctx context.Context, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error) {
+	return c.tradeCargo(ctx, shipSymbol, "purchase", tradeSymbol, units)
 }
 
-func (c *Client) SellCargo(authHeader, priority, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error) {
-	return c.tradeCargo(authHeader, priority, shipSymbol, "sell", tradeSymbol, units)
+func (c *Client) SellCargo(ctx context.Context, shipSymbol, tradeSymbol string, units int) (schema.MarketTransactionResult, error) {
+	return c.tradeCargo(ctx, shipSymbol, "sell", tradeSymbol, units)
 }
 
 // tradeCargo is purchase-cargo and sell-cargo: identical request and response
 // shapes, different trailing path segment.
-func (c *Client) tradeCargo(authHeader, priority, shipSymbol, action, tradeSymbol string, units int) (schema.MarketTransactionResult, error) {
+func (c *Client) tradeCargo(ctx context.Context, shipSymbol, action, tradeSymbol string, units int) (schema.MarketTransactionResult, error) {
 	body, err := jsonBody(map[string]any{"symbol": tradeSymbol, "units": units})
 	if err != nil {
 		return schema.MarketTransactionResult{}, err
 	}
-	resp, err := request[schema.MarketTransactionResponse](c, http.MethodPost, "/my/ships/"+shipSymbol+"/"+action, authHeader, priority, body)
+	resp, err := request[schema.MarketTransactionResponse](ctx, c, http.MethodPost, "/my/ships/"+url.PathEscape(shipSymbol)+"/"+action, body)
 	return resp.Data, err
 }
 
@@ -146,27 +160,18 @@ func jsonBody(v any) (io.Reader, error) {
 	return bytes.NewReader(raw), nil
 }
 
-// normalizePriority collapses a caller-declared priority to the only two values
-// st-gateway acts on. See the Priority constants above.
-func normalizePriority(priority string) string {
-	if priority == PriorityInteractive {
-		return PriorityInteractive
-	}
-	return PriorityBackground
-}
-
-// request forwards authHeader as-is through st-gateway (never stored), decodes
-// a 2xx JSON body into T, and returns an *UpstreamError for non-2xx responses
+// request sends one call through st-gateway, decodes a 2xx JSON body into T, and returns an *UpstreamError for non-2xx responses
 // instead of panicking so handlers can map it to a proper status code.
-func request[T any](c *Client, method, endpoint, authHeader, priority string, body io.Reader) (T, error) {
+func request[T any](ctx context.Context, c *Client, method, endpoint string, body io.Reader) (T, error) {
 	var result T
 
-	req, err := http.NewRequest(method, c.baseURL+endpoint, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+endpoint, body)
 	if err != nil {
 		return result, err
 	}
-	req.Header.Set("Authorization", authHeader)
-	req.Header.Set("X-Priority", normalizePriority(priority))
+	if auth := callerAuthorization(ctx); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

@@ -20,9 +20,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -59,9 +56,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -101,9 +95,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -155,9 +146,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' accept-contract, then persists the resulting contract state.",
@@ -298,9 +286,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' fulfill-contract, then persists the resulting contract state.",
@@ -353,9 +338,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Convenience bundle of GET /agent + GET /ships + GET /contracts.",
@@ -393,9 +375,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -435,9 +414,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' purchase-ship, then records the transaction in agent-service's transaction history.",
@@ -501,9 +477,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "produces": [
@@ -555,9 +528,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' purchase-cargo, then records the transaction in agent-service's transaction history.",
@@ -628,9 +598,6 @@ const docTemplate = `{
                 "security": [
                     {
                         "BearerAuth": []
-                    },
-                    {
-                        "GameToken": []
                     }
                 ],
                 "description": "Calls SpaceTraders' sell-cargo, then records the transaction in agent-service's transaction history.",
@@ -1452,12 +1419,6 @@ const docTemplate = `{
             "description": "Clerk session token, as \"Bearer \u003cjwt\u003e\".",
             "type": "apiKey",
             "name": "Authorization",
-            "in": "header"
-        },
-        "GameToken": {
-            "description": "The caller's own SpaceTraders agent token, forwarded upstream verbatim and never stored.",
-            "type": "apiKey",
-            "name": "X-SpaceTraders-Token",
             "in": "header"
         }
     }
