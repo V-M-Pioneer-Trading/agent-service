@@ -235,3 +235,23 @@ func TestGatewayURLEnvIsReadOnlyAtConstruction(t *testing.T) {
 		t.Errorf("got %q, want the address captured at construction", got)
 	}
 }
+
+// Regression: the gateway URL was concatenated with "/proxy" unconditionally,
+// so ST_GATEWAY_URL="http://host:3002/" produced "//proxy/my/agent" — a path
+// st-gateway's Express router does not match, turning a plausible way to write
+// the variable into a 404 with no hint as to why.
+func TestATrailingSlashOnTheGatewayURLIsTolerated(t *testing.T) {
+	for _, configured := range []string{"http://gateway:3002", "http://gateway:3002/", "http://gateway:3002///"} {
+		if got := NewClientWithBaseURL(configured).BaseURL(); got != "http://gateway:3002/proxy" {
+			t.Errorf("NewClientWithBaseURL(%q) = %q, want a single /proxy suffix", configured, got)
+		}
+	}
+}
+
+// The same, through the environment path.
+func TestATrailingSlashOnSTGatewayURLIsTolerated(t *testing.T) {
+	t.Setenv("ST_GATEWAY_URL", "http://gateway:3002/")
+	if got := NewClient().BaseURL(); got != "http://gateway:3002/proxy" {
+		t.Errorf("got %q, want a single /proxy suffix", got)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"vnm/agent-info-service/spacetraders/schema"
@@ -59,9 +60,14 @@ func NewClient() *Client {
 
 // NewClientWithBaseURL builds a Client against an explicit gateway address.
 // Tests use it to point at a stub gateway without touching process env.
+//
+// A trailing slash on the configured URL is trimmed: "http://host:3002/" would
+// otherwise produce "//proxy/...", which st-gateway's Express router treats as
+// a different path and 404s. That is a plausible way to write the variable and
+// a confusing way to fail.
 func NewClientWithBaseURL(gatewayURL string) *Client {
 	return &Client{
-		baseURL: gatewayURL + "/proxy",
+		baseURL: strings.TrimRight(gatewayURL, "/") + "/proxy",
 		http:    &http.Client{Timeout: requestTimeout},
 	}
 }
