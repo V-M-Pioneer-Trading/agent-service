@@ -20,8 +20,10 @@ package api
 //     Postgres-backed reads.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -80,10 +82,22 @@ func scopesFrom(claims jwt.MapClaims) []string {
 	}
 }
 
+// authError is the JSON envelope every auth rejection uses, matching the
+// sibling services' shape.
+type authError struct {
+	Error struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
 func writeAuthError(w http.ResponseWriter, status int, message string) {
+	var body authError
+	body.Error.Message = message
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]map[string]string{"error": {"message": message}})
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		log.Default().Printf("failed to write auth error response: %v", err)
+	}
 }
 
 // verify runs the real check both requireScope and requireSession share: a
@@ -173,15 +187,37 @@ func RequireClerkJWTKey() (string, error) {
 	return "", errors.New("CLERK_JWT_KEY or CLERK_JWT_KEY_FILE must be set")
 }
 
-// requireSpaceTradersToken reads the game credential these handlers forward
-// upstream. It travels separately from Authorization (which now always
-// carries the Clerk session) because the two headers do two different jobs —
+// gameTokenKey carries the SpaceTraders credential from requireGameToken to
+// the handler. Its own unexported type keeps it from colliding with any other
+// package's context keys.
+type contextKey int
+
+const gameTokenKey contextKey = iota
+
+// requireGameToken rejects callers that did not present the game credential
+// these handlers forward upstream, and puts it on the request context ready to
+// use. It travels separately from Authorization (which always carries the
+// Clerk session) because the two headers do two different jobs —
 // auth-design.md decision 18.
-func requireSpaceTradersToken(w http.ResponseWriter, r *http.Request) (string, bool) {
-	token := r.Header.Get("X-SpaceTraders-Token")
-	if token == "" {
-		http.Error(w, "missing X-SpaceTraders-Token header", http.StatusUnauthorized)
-		return "", false
+//
+// Applying it as a wrapper rather than an in-handler guard means the router
+// declaration says which routes need a game token; previously that was
+// invisible outside each handler's first four lines.
+func requireGameToken(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("X-SpaceTraders-Token")
+		if token == "" {
+			writeAuthError(w, http.StatusUnauthorized, "an X-SpaceTraders-Token header is required")
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), gameTokenKey, "Bearer "+token)))
 	}
-	return "Bearer " + token, true
+}
+
+// gameToken returns the Authorization header value to forward upstream. It is
+// only ever called from a handler behind requireGameToken, so the value is
+// always present.
+func gameToken(r *http.Request) string {
+	token, _ := r.Context().Value(gameTokenKey).(string)
+	return token
 }

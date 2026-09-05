@@ -1,20 +1,26 @@
-# Start from a base Go image
-FROM golang:1.22-alpine
+# Build stage: the Go toolchain and module cache never reach the published image.
+FROM golang:1.22-alpine AS build
 
-# Set the Current Working Directory inside the container
-WORKDIR /agent-service
+WORKDIR /src
 
-# Copy go mod and sum files
-COPY ./src/go.mod ./src/go.sum ./
-
-# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
+# Dependencies are cached separately from source, so a code-only change doesn't
+# re-download the module graph.
+COPY src/go.mod src/go.sum ./
 RUN go mod download
 
-# Copy the source from the current directory to the Working Directory inside the container
-COPY ./src .
+COPY src/ ./
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agent-service .
 
-# Build the Go app
-RUN go build -o main .
+# Runtime stage: no compiler, no shell-accessible toolchain, ~10 MB instead of ~350 MB.
+FROM alpine:3.20
 
-# Command to run the executable
-CMD ["./main"]
+# ca-certificates so outbound HTTPS (should st-gateway ever be fronted by TLS)
+# validates rather than failing with an opaque x509 error.
+RUN apk add --no-cache ca-certificates
+
+COPY --from=build /out/agent-service /usr/local/bin/agent-service
+
+# The container keeps listening on 80 — the port its deployment already
+# publishes. PORT overrides it for anyone running the image directly.
+EXPOSE 80
+ENTRYPOINT ["agent-service"]

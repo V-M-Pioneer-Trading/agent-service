@@ -15,7 +15,7 @@ func UpsertContract(conn *sql.DB, id, factionSymbol, contractType string, accept
 			fulfilled  = VALUES(fulfilled),
 			raw_json   = VALUES(raw_json),
 			updated_at = VALUES(updated_at)
-	`, id, factionSymbol, contractType, accepted, fulfilled, string(rawJSON), time.Now())
+	`, id, factionSymbol, contractType, accepted, fulfilled, string(rawJSON), time.Now().UTC())
 	return err
 }
 
@@ -37,6 +37,8 @@ func InsertDelivery(conn *sql.DB, d Delivery) error {
 	return err
 }
 
+// GetDeliveriesForContract returns a contract's recorded deliveries, oldest first.
+// The result is never nil: a contract with no deliveries serialises as [], not null.
 func GetDeliveriesForContract(conn *sql.DB, contractID string) ([]Delivery, error) {
 	rows, err := conn.Query(`
 		SELECT contract_id, ship_symbol, trade_symbol, units, delivered_at
@@ -48,7 +50,7 @@ func GetDeliveriesForContract(conn *sql.DB, contractID string) ([]Delivery, erro
 	}
 	defer rows.Close()
 
-	var deliveries []Delivery
+	deliveries := []Delivery{}
 	for rows.Next() {
 		var d Delivery
 		if err := rows.Scan(&d.ContractID, &d.ShipSymbol, &d.TradeSymbol, &d.Units, &d.DeliveredAt); err != nil {

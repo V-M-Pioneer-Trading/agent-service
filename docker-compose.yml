@@ -1,10 +1,10 @@
-version: '3.1'
-
 services:
   mysql:
     container_name: vnm-agent-service-db
     restart: always
-    image: mysql:latest
+    # Pinned: mysql:latest now resolves to 9.x, which removed the
+    # mysql_native_password plugin MYSQL_NATIVE_PASSWORD below asks for.
+    image: mysql:8.4
     ports:
       - 3306:3306
     environment:
@@ -22,20 +22,30 @@ services:
       retries: 10
 
   app:
-      container_name: vnm-agent-service-app
-      build: .
-      ports:
-        - "8080:80"
-      environment:
-        MYSQL_HOST: mysql  # Using the service name of MySQL container
-        MYSQL_PORT: 3306
-        MYSQL_USER: user
-        MYSQL_PASSWORD: pass
-        MYSQL_DATABASE: vnm-agent-db
-        CORS_ALLOWED_ORIGIN: http://localhost:3000
-      depends_on:
-        mysql:
-          condition: service_healthy
+    container_name: vnm-agent-service-app
+    build: .
+    ports:
+      - "8080:80"
+    environment:
+      MYSQL_HOST: mysql  # Using the service name of MySQL container
+      MYSQL_PORT: 3306
+      MYSQL_USER: user
+      MYSQL_PASSWORD: pass
+      MYSQL_DATABASE: vnm-agent-db
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:3000}
+      ST_GATEWAY_URL: ${ST_GATEWAY_URL:-http://host.docker.internal:3002}
+      # The service refuses to start without a Clerk trust anchor — a service
+      # that boots with authentication silently off is worse than one that
+      # doesn't boot. Export CLERK_JWT_KEY (or point CLERK_JWT_KEY_FILE at a
+      # mounted PEM) before `docker compose up`; see the README.
+      CLERK_JWT_KEY: ${CLERK_JWT_KEY:-}
+      CLERK_JWT_KEY_FILE: ${CLERK_JWT_KEY_FILE:-}
+      CLERK_ISSUER: ${CLERK_ISSUER:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mysql:
+        condition: service_healthy
 
 volumes:
   mysql_datavolume:
