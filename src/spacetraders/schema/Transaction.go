@@ -7,7 +7,7 @@ import "time"
 type ShipyardTransaction struct {
 	WaypointSymbol string    `json:"waypointSymbol"`
 	ShipType       string    `json:"shipType"`
-	Price          int       `json:"price"`
+	Price          int64     `json:"price"`
 	AgentSymbol    string    `json:"agentSymbol"`
 	Timestamp      time.Time `json:"timestamp"`
 }
@@ -21,7 +21,7 @@ type MarketTransaction struct {
 	Type           string    `json:"type"`
 	Units          int       `json:"units"`
 	PricePerUnit   int       `json:"pricePerUnit"`
-	TotalPrice     int       `json:"totalPrice"`
+	TotalPrice     int64     `json:"totalPrice"`
 	Timestamp      time.Time `json:"timestamp"`
 }
 

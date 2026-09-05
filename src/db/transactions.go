@@ -41,6 +41,9 @@ func TransactionTypeNames() string {
 	return strings.Join(names, ", ")
 }
 
+// Money fields are int64 to match their BIGINT columns exactly. Go's int is
+// 64-bit on every platform this builds for, but pinning the type keeps the
+// widening honest rather than dependent on the build target.
 type Transaction struct {
 	Type           TransactionType `json:"type"`
 	ShipSymbol     string          `json:"shipSymbol"`
@@ -49,8 +52,8 @@ type Transaction struct {
 	TradeSymbol    *string         `json:"tradeSymbol,omitempty"`
 	Units          *int            `json:"units,omitempty"`
 	PricePerUnit   *int            `json:"pricePerUnit,omitempty"`
-	TotalPrice     int             `json:"totalPrice"`
-	AgentCredits   int             `json:"agentCredits"`
+	TotalPrice     int64           `json:"totalPrice"`
+	AgentCredits   int64           `json:"agentCredits"`
 	OccurredAt     time.Time       `json:"occurredAt"`
 }
 

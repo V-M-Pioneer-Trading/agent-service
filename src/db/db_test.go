@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-sql-driver/mysql"
@@ -288,4 +289,41 @@ func TestMigrateToleratesAnAbsentColumn(t *testing.T) {
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unexpected statements: %v", err)
 	}
+}
+
+// Regression: the BIGINT migration widened the columns but left the Go struct
+// on int, so the fix only held on 64-bit build targets. A balance past INT's
+// ceiling has to survive the round trip as a value, not as a platform accident.
+func TestMoneyFieldsHoldABalancePastTheINTCeiling(t *testing.T) {
+	const beyondInt32 = int64(3_000_000_000)
+
+	conn, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer conn.Close()
+
+	mock.ExpectQuery("SELECT").WillReturnRows(
+		sqlmock.NewRows(transactionColumnNames()).
+			AddRow("SHIP_PURCHASE", "SHIP-1", "X1-TEST", "FRIGATE", nil, nil, nil,
+				beyondInt32, beyondInt32+1, time.Now()))
+
+	got, err := ListTransactions(conn, "", "", 10)
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d rows, want 1", len(got))
+	}
+	if got[0].TotalPrice != beyondInt32 {
+		t.Errorf("totalPrice round-tripped as %d, want %d", got[0].TotalPrice, beyondInt32)
+	}
+	if got[0].AgentCredits != beyondInt32+1 {
+		t.Errorf("agentCredits round-tripped as %d, want %d", got[0].AgentCredits, beyondInt32+1)
+	}
+}
+
+func transactionColumnNames() []string {
+	return []string{"type", "ship_symbol", "waypoint_symbol", "ship_type", "trade_symbol",
+		"units", "price_per_unit", "total_price", "agent_credits", "occurred_at"}
 }
