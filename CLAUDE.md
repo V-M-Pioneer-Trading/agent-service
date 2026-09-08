@@ -26,9 +26,9 @@ CI runs format check, vet and the race/shuffle test suite on both pull requests 
 | File | Owns | Depends on |
 |---|---|---|
 | `src/app-runner.go` | Process lifecycle: config read, dependency construction, HTTP server, Swagger's top-level annotations | `api`, `db`, `spacetraders` |
-| `src/api/routes.go` | Route table, access tiers, handlers, request/response shaping | `db`, `spacetraders`, `spacetraders/schema`, `docs` (blank) |
-| `src/api/auth.go` | Clerk verification, the three guard wrappers, game-token middleware, `RequireClerkJWTKey` | `golang-jwt/jwt/v5` only |
-| `src/spacetraders/client.go` | The only outbound HTTP in the service; gateway address, timeout, priority normalisation | `spacetraders/schema` |
+| `src/api/routes.go` | Route table, access tiers, handlers, request/response shaping, `forwardCallerSession` | `db`, `spacetraders`, `spacetraders/schema`, `docs` (blank) |
+| `src/api/auth.go` | Clerk verification, the `requireSession`/`requireScope` wrappers, the `authError` envelope, `RequireClerkJWTKey` | `golang-jwt/jwt/v5` only |
+| `src/spacetraders/client.go` | The only outbound HTTP in the service; gateway address, timeout, path escaping, and the `WithCallerAuthorization` context helpers | `spacetraders/schema` |
 | `src/spacetraders/errors.go` | `UpstreamError` | — |
 | `src/spacetraders/schema/` | Wire types for the SpaceTraders API | — |
 | `src/db/db.go` | DSN, pool, startup wait, `Migrate` | `go-sql-driver/mysql` |
