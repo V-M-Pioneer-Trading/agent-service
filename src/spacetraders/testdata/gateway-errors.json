@@ -98,7 +98,7 @@
       "name": "oversized-error-body",
       "why": "The truncation cap, which had drifted to 64 KiB in one service and 500 characters in another. An error message is read by a person; echoing a megabyte of someone else's HTML through three logs is not diagnosis.",
       "gateway": { "status": 502, "bodyRepeat": { "chunk": "x", "times": 4000 } },
-      "expect": { "status": 502, "messageMaxLength": 500 }
+      "expect": { "status": 502, "messageNotEmpty": true, "messageMaxLength": 500 }
     },
     {
       "name": "empty-error-body",
