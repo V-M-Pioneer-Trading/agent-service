@@ -129,6 +129,14 @@ Changing any of these breaks a known consumer.
   OAuth convention; `scopesFrom` accepts both so a dashboard formatting choice can't lock
   callers out.
 * **Agent credits exceed `INT`.** Money columns are `BIGINT` for that reason.
+* **MySQL is `mysql:9`, in compose and in production alike** (`infrastructure/agent-service/main.tf`).
+  Both track the latest 9.x on purpose — minor upgrades are safe in place, and the tag still
+  blocks a silent jump to a future major. Do not pin one side to a different major: MySQL
+  refuses to start against a data directory written by a newer server, so pinning local dev
+  *down* (to 8.4, say) breaks any developer whose volume was created by 9.x, and pinning it
+  *up* hides version-specific behaviour until production meets it. `mysql_native_password` was
+  removed in 9, so neither side sets `MYSQL_NATIVE_PASSWORD`; the Go driver authenticates with
+  `caching_sha2_password`, requesting the server's public key itself over plaintext TCP.
 
 ## Testing
 

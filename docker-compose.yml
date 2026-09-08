@@ -2,14 +2,16 @@ services:
   mysql:
     container_name: vnm-agent-service-db
     restart: always
-    # Pinned: mysql:latest now resolves to 9.x, which removed the
-    # mysql_native_password plugin MYSQL_NATIVE_PASSWORD below asks for.
-    image: mysql:8.4
+    # Same tag production runs (infrastructure/agent-service/main.tf). Both
+    # track the latest 9.x deliberately: minor upgrades within 9 are safe in
+    # place, and the tag still blocks a silent jump to a future major. Keep
+    # the two in step — a local MySQL on a different major is a class of bug
+    # that only ever shows up in production.
+    image: mysql:9
     ports:
       - 3306:3306
     environment:
       MYSQL_ROOT_PASSWORD: example # TODO: Change this
-      MYSQL_NATIVE_PASSWORD: ON
       MYSQL_DATABASE: vnm-agent-db
       MYSQL_USER: 'user'
       MYSQL_PASSWORD: 'pass' # was MYSQL_PASS, which the mysql image doesn't recognize
