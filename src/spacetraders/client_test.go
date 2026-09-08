@@ -159,10 +159,16 @@ func TestNewClientSetsARequestTimeout(t *testing.T) {
 	}
 }
 
-func TestUpstreamErrorCarriesStatusAndBody(t *testing.T) {
+// The message is the upstream's own sentence and nothing else: lifted out of the
+// envelope, with no "GET /my/agent:" narration in front of it. Handlers write it
+// straight to the caller, so matching on it downstream has to mean the same thing
+// whichever service relayed it. Where the call happened is a separate field, for
+// the log line.
+func TestUpstreamErrorRelaysTheGatewaysOwnSentence(t *testing.T) {
 	client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "3")
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"error":{"message":"rate limited"}}`))
+		w.Write([]byte(`{"error":{"message":"You have reached your API limit."}}`))
 	})
 
 	_, err := client.GetMyAgent(context.Background())
@@ -173,13 +179,39 @@ func TestUpstreamErrorCarriesStatusAndBody(t *testing.T) {
 	if upstream.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("got status %d, want 429", upstream.StatusCode)
 	}
-	if !strings.Contains(upstream.Message, "rate limited") {
-		t.Errorf("expected the upstream body in the message, got %q", upstream.Message)
+	if upstream.Message != "You have reached your API limit." {
+		t.Errorf("got message %q, want the envelope's sentence alone", upstream.Message)
+	}
+	if upstream.Endpoint == "" {
+		t.Error("expected the endpoint to be carried for the log line")
+	}
+	if got := upstream.Headers["Retry-After"]; got != "3" {
+		t.Errorf("got Retry-After %q, want 3 — relaying the status without the pacing headers keeps the news and drops the instructions", got)
 	}
 }
 
-// Regression: the whole error body was read into the message with no bound, so
-// a misbehaving upstream could grow a log line without limit.
+// A gateway that does not answer is the one verdict this service reaches on its
+// own, and it is a 504: the fault is upstream of the caller and a retry may work,
+// where a 502 means "answered, and I cannot use it". It used to escape as a bare
+// transport error, which the handler could only render as an undifferentiated 502.
+func TestGatewayNotAnsweringIsAGatewayTimeout(t *testing.T) {
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	url := dead.URL
+	dead.Close()
+
+	_, err := NewClientWithBaseURL(url).GetMyAgent(context.Background())
+	var upstream *UpstreamError
+	if !errors.As(err, &upstream) {
+		t.Fatalf("expected an *UpstreamError, got %v", err)
+	}
+	if upstream.StatusCode != http.StatusGatewayTimeout {
+		t.Errorf("got status %d, want 504", upstream.StatusCode)
+	}
+}
+
+// Regression: the whole error body went into the message with no bound, so a
+// misbehaving upstream could grow a log line without limit. Two bounds now — the
+// read itself, and how much of an unrecognised body is worth relaying.
 func TestUpstreamErrorMessageIsBounded(t *testing.T) {
 	client := newStubGateway(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -187,11 +219,12 @@ func TestUpstreamErrorMessageIsBounded(t *testing.T) {
 	})
 
 	_, err := client.GetMyAgent(context.Background())
-	if err == nil {
-		t.Fatal("expected an error")
+	var upstream *UpstreamError
+	if !errors.As(err, &upstream) {
+		t.Fatalf("expected an *UpstreamError, got %v", err)
 	}
-	if len(err.Error()) > maxErrorBody+1024 {
-		t.Errorf("error message is %d bytes, want it capped near %d", len(err.Error()), maxErrorBody)
+	if len(upstream.Message) > maxMessageLength {
+		t.Errorf("message is %d bytes, want at most %d", len(upstream.Message), maxMessageLength)
 	}
 }
 

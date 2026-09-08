@@ -137,7 +137,8 @@ func SetUpRouter(conn *sql.DB, st *spacetraders.Client, auth AuthConfig) (*mux.R
 // @Produce      json
 // @Success      200  {object}  CurrentAgentResponse
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
-// @Failure      502  {string}  string     "SpaceTraders upstream error"
+// @Failure      502  {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504  {string}  string     "st-gateway did not answer"
 // @Router       /current-agent [get]
 func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 	var response CurrentAgentResponse
@@ -169,7 +170,8 @@ func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Success      200  {object}  schema.Agent
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
-// @Failure      502  {string}  string     "SpaceTraders upstream error"
+// @Failure      502  {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504  {string}  string     "st-gateway did not answer"
 // @Router       /agent [get]
 func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 	agent, err := h.st.GetMyAgent(r.Context())
@@ -183,7 +185,8 @@ func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Success      200  {array}   schema.Ship
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
-// @Failure      502  {string}  string     "SpaceTraders upstream error"
+// @Failure      502  {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504  {string}  string     "st-gateway did not answer"
 // @Router       /ships [get]
 func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 	ships, err := h.st.GetMyShips(r.Context())
@@ -199,7 +202,8 @@ func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 // @Success      200         {object}  schema.Ship
 // @Failure      401         {object}  authError  "no Clerk session, or no game token"
 // @Failure      404         {string}  string     "ship not found"
-// @Failure      502         {string}  string     "SpaceTraders upstream error"
+// @Failure      502         {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504         {string}  string     "st-gateway did not answer"
 // @Router       /ships/{shipSymbol} [get]
 func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 	ship, err := h.st.GetMyShip(r.Context(), mux.Vars(r)["shipSymbol"])
@@ -213,7 +217,8 @@ func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 // @Produce      json
 // @Success      200  {array}   schema.Contract
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
-// @Failure      502  {string}  string     "SpaceTraders upstream error"
+// @Failure      502  {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504  {string}  string     "st-gateway did not answer"
 // @Router       /contracts [get]
 func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 	contracts, err := h.st.GetMyContracts(r.Context())
@@ -229,7 +234,8 @@ func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 // @Success      200         {object}  schema.Contract
 // @Failure      401         {object}  authError  "no Clerk session, or no game token"
 // @Failure      404         {string}  string     "contract not found"
-// @Failure      502         {string}  string     "SpaceTraders upstream error"
+// @Failure      502         {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504         {string}  string     "st-gateway did not answer"
 // @Router       /contracts/{contractId} [get]
 func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 	contract, err := h.st.GetMyContract(r.Context(), mux.Vars(r)["contractId"])
@@ -246,7 +252,8 @@ func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 // @Success      200         {object}  schema.ContractAndAgent
 // @Failure      401         {object}  authError  "no Clerk session, or no game token"
 // @Failure      403         {object}  authError  "session lacks fleet:control"
-// @Failure      502         {string}  string     "SpaceTraders upstream error"
+// @Failure      502         {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504         {string}  string     "st-gateway did not answer"
 // @Router       /contracts/{contractId}/accept [post]
 func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 	h.contractStateChange(w, r, h.st.AcceptContract)
@@ -262,7 +269,8 @@ func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 // @Success      200         {object}  schema.ContractAndAgent
 // @Failure      401         {object}  authError  "no Clerk session, or no game token"
 // @Failure      403         {object}  authError  "session lacks fleet:control"
-// @Failure      502         {string}  string     "SpaceTraders upstream error"
+// @Failure      502         {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504         {string}  string     "st-gateway did not answer"
 // @Router       /contracts/{contractId}/fulfill [post]
 func (h *handlers) fulfillContract(w http.ResponseWriter, r *http.Request) {
 	h.contractStateChange(w, r, h.st.FulfillContract)
@@ -349,7 +357,8 @@ func (h *handlers) getDeliveries(w http.ResponseWriter, r *http.Request) {
 // @Failure      400   {string}  string     "invalid request body"
 // @Failure      401   {object}  authError  "no Clerk session, or no game token"
 // @Failure      403   {object}  authError  "session lacks fleet:control"
-// @Failure      502   {string}  string     "SpaceTraders upstream error"
+// @Failure      502   {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504   {string}  string     "st-gateway did not answer"
 // @Router       /ships/purchase [post]
 func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
 	var body purchaseShipRequest
@@ -392,7 +401,8 @@ func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
 // @Failure      400         {string}  string     "invalid request body"
 // @Failure      401         {object}  authError  "no Clerk session, or no game token"
 // @Failure      403         {object}  authError  "session lacks fleet:control"
-// @Failure      502         {string}  string     "SpaceTraders upstream error"
+// @Failure      502         {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504         {string}  string     "st-gateway did not answer"
 // @Router       /ships/{shipSymbol}/purchase [post]
 func (h *handlers) purchaseCargo(w http.ResponseWriter, r *http.Request) {
 	h.tradeCargo(w, r, db.CargoPurchase, h.st.PurchaseCargo)
@@ -411,7 +421,8 @@ func (h *handlers) purchaseCargo(w http.ResponseWriter, r *http.Request) {
 // @Failure      400         {string}  string     "invalid request body"
 // @Failure      401         {object}  authError  "no Clerk session, or no game token"
 // @Failure      403         {object}  authError  "session lacks fleet:control"
-// @Failure      502         {string}  string     "SpaceTraders upstream error"
+// @Failure      502         {string}  string     "st-gateway answered with something unreadable"
+// @Failure      504         {string}  string     "st-gateway did not answer"
 // @Router       /ships/{shipSymbol}/sell [post]
 func (h *handlers) sellCargo(w http.ResponseWriter, r *http.Request) {
 	h.tradeCargo(w, r, db.CargoSell, h.st.SellCargo)
@@ -564,14 +575,23 @@ func respond[T any](w http.ResponseWriter, v T, err error) {
 	writeJSON(w, v)
 }
 
-// writeUpstreamError maps an *UpstreamError to its SpaceTraders-reported status code
-// (or 502 for anything else, e.g. network failures and timeouts).
+// writeUpstreamError relays st-gateway's verdict: its status, its message, and the
+// pacing headers it forwards on a passed-through 429. See
+// meta/docs/design/upstream-errors.md.
+//
+// The 502 fallback is for anything that is not an *UpstreamError at all — a 2xx
+// body this service could not decode being the realistic one, which is exactly
+// what 502 means here. A gateway that did not answer is already a 504 by the time
+// it reaches this function.
 func writeUpstreamError(w http.ResponseWriter, err error) {
 	var upstreamErr *spacetraders.UpstreamError
 	if errors.As(err, &upstreamErr) {
 		status := upstreamErr.StatusCode
 		if status < 400 || status > 599 {
 			status = http.StatusBadGateway
+		}
+		for name, value := range upstreamErr.Headers {
+			w.Header().Set(name, value)
 		}
 		http.Error(w, upstreamErr.Message, status)
 		return

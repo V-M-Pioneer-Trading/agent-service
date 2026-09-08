@@ -29,7 +29,7 @@ CI runs format check, vet and the race/shuffle test suite on both pull requests 
 | `src/api/routes.go` | Route table, access tiers, handlers, request/response shaping, `forwardCallerSession` | `db`, `spacetraders`, `spacetraders/schema`, `docs` (blank) |
 | `src/api/auth.go` | Clerk verification, the `requireSession`/`requireScope` wrappers, the `authError` envelope, `RequireClerkJWTKey` | `golang-jwt/jwt/v5` only |
 | `src/spacetraders/client.go` | The only outbound HTTP in the service; gateway address, timeout, path escaping, and the `WithCallerAuthorization` context helpers | `spacetraders/schema` |
-| `src/spacetraders/errors.go` | `UpstreamError` | — |
+| `src/spacetraders/errors.go` | `UpstreamError`: st-gateway's status, its message, its pacing headers, and the endpoint for the log line | — |
 | `src/spacetraders/schema/` | Wire types for the SpaceTraders API | — |
 | `src/db/db.go` | DSN, pool, startup wait, `Migrate` | `go-sql-driver/mysql` |
 | `src/db/transactions.go` | `TransactionType` enum, transaction row read/write | stdlib |
@@ -72,6 +72,19 @@ Stated so a violation is recognisable in review:
 8. **Every path segment sent upstream is `url.PathEscape`d.** Symbols come straight from
    `mux.Vars`; an unescaped `../` steers the gateway at a different proxy path.
 9. **`SetUpRouter` returns an error rather than exiting.** Only `main` calls `log.Fatal`.
+10. **This service decides one upstream verdict and relays the rest.** "st-gateway did not
+    answer me" is a `504` and is genuinely its own observation; every status the gateway
+    *did* send is relayed unchanged, with the gateway's `error.message` and its pacing
+    headers. `502` means only "answered with something this service could not decode".
+    An unreachable gateway used to escape as a bare transport error and render as an
+    undifferentiated `502`, indistinguishable from `503 SpaceTraders credential not
+    configured` — the one message that says an operator must act rather than wait. The
+    rule is normative across all three gateway clients:
+    `meta/docs/design/upstream-errors.md`.
+11. **`UpstreamError.Message` is the upstream's own sentence and nothing else.** No
+    `"GET /my/agent:"` prefix — handlers write it straight to the caller, so matching on it
+    downstream has to mean the same thing whichever service relayed it. Where the call
+    happened goes in `Endpoint`, which only `Error()` uses.
 
 ## Critical sequences
 
@@ -140,12 +153,13 @@ Changing any of these breaks a known consumer.
 
 ## Testing
 
-Three layers, none of which need a database, a network, or a container:
+Four layers, none of which need a database, a network, or a container:
 
 | Layer | Where | Harness |
 |---|---|---|
 | Router + handlers | `api/routes_test.go`, `api/auth_test.go` | `httptest` recorder against the real router, `sqlmock` for the DB, a stub gateway for upstream |
 | Gateway client | `spacetraders/client_test.go` | `httptest.NewServer` standing in for st-gateway |
+| Upstream-error contract | `api/gateway_errors_conformance_test.go` | A subtest per condition, driven from `spacetraders/testdata/gateway-errors.json` — a **verbatim copy** of `meta/fixtures/gateway-errors.json`. Change meta first, then re-copy, or the copy is just a local opinion. It runs through the router rather than the client, because the contract is about what a caller receives: a 2xx body this service cannot decode never becomes an `*UpstreamError` at all, and it is the handler that turns it into the 502 |
 | Queries and migrations | `db/db_test.go` | `sqlmock`; migration tests assert the statement *sequence*, not the SQL dialect |
 
 Shared helpers live in `api/authtest_test.go`: `newTestRouter`, `stubGateway`, `newMockDB`,

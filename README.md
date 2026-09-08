@@ -200,9 +200,17 @@ they are not part of the resource API's compatibility surface.
 | 400 | `text/plain` | Malformed body, missing required field, bad query parameter |
 | 401 | `{"error":{"message":…}}` | No/invalid/expired Clerk session |
 | 403 | `{"error":{"message":…}}` | Valid session without `fleet:control` |
-| 4xx/5xx | `text/plain` | Passed through from SpaceTraders with its own status |
-| 500 | `text/plain` | A history read failed |
-| 502 | `text/plain` | The gateway was unreachable or timed out |
+| 4xx/5xx | `text/plain` | Relayed from st-gateway with its own status and message, and with its `Retry-After` / `X-RateLimit-*` headers |
+| 500 | `text/plain` | A history read failed — or a relayed gateway 500. The message says which |
+| 502 | `text/plain` | st-gateway answered with something this service could not decode |
+| 504 | `text/plain` | st-gateway did not answer at all — unreachable, DNS failure, or a timeout |
+
+The relayed row is st-gateway's verdict, not this service's. It is the only party
+that talked to SpaceTraders and the only one that can see whether a credential
+exists, so re-deciding its answer here would be a guess overwriting a fact — which
+is what collapsing an unreachable gateway and a rejected credential into one 502
+used to be. The rule and its conformance cases are
+[specified in meta](https://github.com/V-M-Pioneer-Trading/meta/blob/main/docs/design/upstream-errors.md).
 
 The auth tier answers in JSON; everything downstream of it uses `http.Error`'s plain text.
 That inconsistency is deliberate for now — see known limitations.

@@ -23,10 +23,22 @@ const (
 	// pins the calling handler — and its connection — indefinitely.
 	requestTimeout = 30 * time.Second
 
-	// maxErrorBody caps how much of a failing response we read back into an
-	// UpstreamError message.
+	// maxErrorBody caps how much of a failing response is read at all. Generous
+	// next to maxMessageLength because a real envelope has to parse whole, and
+	// small enough that a broken intermediary answering with a stream cannot be
+	// bounded only by memory.
 	maxErrorBody = 64 << 10
+
+	// maxMessageLength caps the part of an unrecognised error body worth
+	// relaying. An error message is read by a person; echoing a megabyte of
+	// someone else's HTML through three service logs is not diagnosis.
+	maxMessageLength = 500
 )
+
+// forwardedHeaders are the pacing signals st-gateway forwards on a passed-through
+// 429, and that a caller needs in order to back off rather than hammer the shared
+// budget.
+var forwardedHeaders = []string{"Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"}
 
 // Client talks to SpaceTraders through st-gateway's shared rate budget
 // (meta#1/meta#7) rather than hitting SpaceTraders directly. It holds no game
@@ -152,6 +164,43 @@ func (c *Client) tradeCargo(ctx context.Context, shipSymbol, action, tradeSymbol
 	return resp.Data, err
 }
 
+// upstreamMessage pulls the human-readable reason out of an error body.
+//
+// st-gateway and SpaceTraders both answer {"error":{"message"}}. Anything else —
+// a proxy between here and the gateway answering with an HTML page — has no
+// message to lift, so the raw body stands in, truncated.
+func upstreamMessage(body []byte) string {
+	var envelope struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &envelope); err == nil && strings.TrimSpace(envelope.Error.Message) != "" {
+		return envelope.Error.Message
+	}
+	text := string(body)
+	if strings.TrimSpace(text) == "" {
+		return "st-gateway returned an error with no message"
+	}
+	if len(text) > maxMessageLength {
+		return text[:maxMessageLength]
+	}
+	return text
+}
+
+func pacingHeaders(h http.Header) map[string]string {
+	var pacing map[string]string
+	for _, name := range forwardedHeaders {
+		if value := h.Get(name); value != "" {
+			if pacing == nil {
+				pacing = make(map[string]string, len(forwardedHeaders))
+			}
+			pacing[name] = value
+		}
+	}
+	return pacing
+}
+
 func jsonBody(v any) (io.Reader, error) {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -178,7 +227,16 @@ func request[T any](ctx context.Context, c *Client, method, endpoint string, bod
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return result, err
+		// Connection refused, DNS failure, timeout: st-gateway is not answering.
+		// The one verdict this service is entitled to reach on its own, because
+		// it is the only party that observed it. 504 rather than 502: the fault
+		// is upstream of the caller and a retry may work, where 502 here means
+		// "answered, and I cannot use it".
+		return result, &UpstreamError{
+			StatusCode: http.StatusGatewayTimeout,
+			Message:    fmt.Sprintf("st-gateway did not answer %s %s: %v", method, endpoint, err),
+			Endpoint:   method + " " + endpoint,
+		}
 	}
 	defer resp.Body.Close()
 
@@ -188,7 +246,9 @@ func request[T any](ctx context.Context, c *Client, method, endpoint string, bod
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 		return result, &UpstreamError{
 			StatusCode: resp.StatusCode,
-			Message:    fmt.Sprintf("%s %s: %s", method, endpoint, string(respBody)),
+			Message:    upstreamMessage(respBody),
+			Endpoint:   method + " " + endpoint,
+			Headers:    pacingHeaders(resp.Header),
 		}
 	}
 
