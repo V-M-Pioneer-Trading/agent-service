@@ -137,7 +137,7 @@ func assertRelayed(t *testing.T, testCase conformanceCase, rec *httptest.Respons
 
 	if raw, ok := testCase.Expect["message"]; ok {
 		var want string
-		json.Unmarshal(raw, &want)
+		mustUnmarshal(t, "message", raw, &want)
 		// Exact: the caller needs the upstream's own sentence unaltered, so that
 		// matching on it downstream means the same thing whoever relayed it.
 		if message != want {
@@ -146,32 +146,43 @@ func assertRelayed(t *testing.T, testCase conformanceCase, rec *httptest.Respons
 	}
 	if raw, ok := testCase.Expect["messageContains"]; ok {
 		var want string
-		json.Unmarshal(raw, &want)
+		mustUnmarshal(t, "messageContains", raw, &want)
 		if !strings.Contains(message, want) {
 			t.Errorf("got message %q, want it to contain %q", message, want)
 		}
 	}
 	if raw, ok := testCase.Expect["messageNotEmpty"]; ok {
 		var want bool
-		json.Unmarshal(raw, &want)
+		mustUnmarshal(t, "messageNotEmpty", raw, &want)
 		if want && strings.TrimSpace(message) == "" {
 			t.Error("got an empty message, want something an operator can act on")
 		}
 	}
 	if raw, ok := testCase.Expect["messageMaxLength"]; ok {
 		var want int
-		json.Unmarshal(raw, &want)
-		if len(message) > want {
-			t.Errorf("message is %d bytes, want at most %d", len(message), want)
+		mustUnmarshal(t, "messageMaxLength", raw, &want)
+		if len([]rune(message)) > want {
+			t.Errorf("message is %d characters, want at most %d", len([]rune(message)), want)
 		}
 	}
 	if raw, ok := testCase.Expect["headers"]; ok {
 		var want map[string]string
-		json.Unmarshal(raw, &want)
+		mustUnmarshal(t, "headers", raw, &want)
 		for name, value := range want {
 			if got := rec.Header().Get(name); got != value {
 				t.Errorf("got header %s=%q, want %q", name, got, value)
 			}
 		}
+	}
+}
+
+// mustUnmarshal fails the case rather than leaving a zero value behind. A
+// discarded error here is the same silent degradation the unknown-key guard above
+// exists to stop, one level down: if meta changes an assertion's shape — a string
+// becoming a list, say — the check would go on passing against "" or 0.
+func mustUnmarshal(t *testing.T, key string, raw json.RawMessage, into any) {
+	t.Helper()
+	if err := json.Unmarshal(raw, into); err != nil {
+		t.Fatalf("fixture key %q has a shape this test does not expect: %v", key, err)
 	}
 }

@@ -584,6 +584,11 @@ func respond[T any](w http.ResponseWriter, v T, err error) {
 // what 502 means here. A gateway that did not answer is already a 504 by the time
 // it reaches this function.
 func writeUpstreamError(w http.ResponseWriter, err error) {
+	// Logged here and not in each handler: one inbound request can make several
+	// upstream calls — /current-agent makes three — and the caller only ever sees
+	// the sentence, never which call produced it.
+	log.Default().Printf("upstream call failed: %v", err)
+
 	var upstreamErr *spacetraders.UpstreamError
 	if errors.As(err, &upstreamErr) {
 		status := upstreamErr.StatusCode
@@ -625,6 +630,12 @@ func corsMiddleware() mux.MiddlewareFunc {
 			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			// Pacing headers relayed from st-gateway. None is CORS-safelisted, so
+			// without this a browser sees the 429 and not the instructions that
+			// came with it — the relay would reach the network and stop at the
+			// last hop that matters.
+			w.Header().Set("Access-Control-Expose-Headers",
+				"Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
 				return

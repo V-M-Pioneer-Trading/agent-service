@@ -212,6 +212,11 @@ is what collapsing an unreachable gateway and a rejected credential into one 502
 used to be. The rule and its conformance cases are
 [specified in meta](https://github.com/V-M-Pioneer-Trading/meta/blob/main/docs/design/upstream-errors.md).
 
+One caveat worth knowing: the relayed sentence does not reach the dashboard yet.
+command-interface parses errors as JSON, and everything below the auth tier here is
+plain text, so it falls back to the status line. The message is in the response and
+in the logs; it is the last hop that drops it.
+
 The auth tier answers in JSON; everything downstream of it uses `http.Error`'s plain text.
 That inconsistency is deliberate for now — see known limitations.
 
@@ -242,7 +247,8 @@ ever needed to differ between environments.
 | Constant | Value | Where | What it bounds |
 |---|---|---|---|
 | `requestTimeout` | 30s | `spacetraders/client.go` | A single upstream call |
-| `maxErrorBody` | 64 KiB | `spacetraders/client.go` | How much of a failing upstream response is quoted back |
+| `maxErrorBody` | 64 KiB | `spacetraders/client.go` | How much of a failing upstream response is read at all |
+| `maxMessageLength` | 500 chars | `spacetraders/client.go` | How much of an unrecognised error body is relayed to the caller |
 | `maxBodyBytes` | 1 MiB | `api/routes.go` | An inbound request body |
 | `defaultTransactionLimit` | 100 | `api/routes.go` | `GET /transactions` page size |
 | `maxTransactionLimit` | 1000 | `api/routes.go` | The ceiling a caller can ask for |

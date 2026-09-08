@@ -21,8 +21,15 @@ type UpstreamError struct {
 	// separate field rather than being prefixed onto it.
 	Message string
 
-	// Endpoint is for the log line, not for the caller.
+	// Endpoint is for the log line, not for the caller. One inbound request can
+	// make several upstream calls — `/current-agent` makes three — so without it
+	// a failure names no call at all.
 	Endpoint string
+
+	// Err is the transport failure behind a 504, kept in the chain so
+	// errors.Is/errors.As still work on it. Never shown to a caller: it carries
+	// the internal gateway address.
+	Err error
 
 	// Headers are the pacing signals st-gateway forwards on a passed-through 429
 	// (Retry-After, X-RateLimit-*). Relaying the status without them keeps the
@@ -31,5 +38,10 @@ type UpstreamError struct {
 }
 
 func (e *UpstreamError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("spacetraders upstream error (%d) on %s: %s: %v", e.StatusCode, e.Endpoint, e.Message, e.Err)
+	}
 	return fmt.Sprintf("spacetraders upstream error (%d) on %s: %s", e.StatusCode, e.Endpoint, e.Message)
 }
+
+func (e *UpstreamError) Unwrap() error { return e.Err }

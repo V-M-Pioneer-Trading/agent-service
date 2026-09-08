@@ -84,7 +84,13 @@ Stated so a violation is recognisable in review:
 11. **`UpstreamError.Message` is the upstream's own sentence and nothing else.** No
     `"GET /my/agent:"` prefix — handlers write it straight to the caller, so matching on it
     downstream has to mean the same thing whichever service relayed it. Where the call
-    happened goes in `Endpoint`, which only `Error()` uses.
+    happened goes in `Endpoint`, and a 504's transport error goes in `Err` (reachable via
+    `errors.Is`); both are for the log line `writeUpstreamError` writes, never for the
+    caller. The transport error names the internal gateway address, which is not a
+    caller's business.
+12. **A caller that hangs up is not a gateway failure.** `request` checks `ctx.Err()`
+    before reaching for the 504, so an abandoned request does not put a gateway outage in
+    the logs. Nobody is left to read the answer either way.
 
 ## Critical sequences
 

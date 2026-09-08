@@ -164,6 +164,24 @@ func (c *Client) tradeCargo(ctx context.Context, shipSymbol, action, tradeSymbol
 	return resp.Data, err
 }
 
+// gatewayDidNotAnswer is the one verdict this service is entitled to reach on its
+// own, because it is the only party that observed it: connection refused, DNS
+// failure, timeout, or a body that died mid-read. 504 rather than 502 — the fault
+// is upstream of the caller and a retry may work, where 502 here means "answered,
+// and I cannot use it".
+//
+// The message names the gateway and stops there. The transport error carries the
+// internal ST_GATEWAY_URL host and port, which is not a caller's business; it
+// stays in the chain via Unwrap for logs and for errors.Is.
+func gatewayDidNotAnswer(method, endpoint string, err error) error {
+	return &UpstreamError{
+		StatusCode: http.StatusGatewayTimeout,
+		Message:    "st-gateway did not answer",
+		Endpoint:   method + " " + endpoint,
+		Err:        err,
+	}
+}
+
 // upstreamMessage pulls the human-readable reason out of an error body.
 //
 // st-gateway and SpaceTraders both answer {"error":{"message"}}. Anything else —
@@ -182,8 +200,10 @@ func upstreamMessage(body []byte) string {
 	if strings.TrimSpace(text) == "" {
 		return "st-gateway returned an error with no message"
 	}
-	if len(text) > maxMessageLength {
-		return text[:maxMessageLength]
+	// Runes, not bytes: slicing bytes can split a multi-byte character and hand
+	// the caller invalid UTF-8, and the contract counts characters.
+	if runes := []rune(text); len(runes) > maxMessageLength {
+		return string(runes[:maxMessageLength])
 	}
 	return text
 }
@@ -227,16 +247,13 @@ func request[T any](ctx context.Context, c *Client, method, endpoint string, bod
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		// Connection refused, DNS failure, timeout: st-gateway is not answering.
-		// The one verdict this service is entitled to reach on its own, because
-		// it is the only party that observed it. 504 rather than 502: the fault
-		// is upstream of the caller and a retry may work, where 502 here means
-		// "answered, and I cannot use it".
-		return result, &UpstreamError{
-			StatusCode: http.StatusGatewayTimeout,
-			Message:    fmt.Sprintf("st-gateway did not answer %s %s: %v", method, endpoint, err),
-			Endpoint:   method + " " + endpoint,
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// The caller hung up or its deadline passed. Not a gateway fault, and
+			// nobody is left to read the answer — returning it as one would put a
+			// gateway failure in the logs for every abandoned request.
+			return result, fmt.Errorf("%s %s: %w", method, endpoint, ctxErr)
 		}
+		return result, gatewayDidNotAnswer(method, endpoint, err)
 	}
 	defer resp.Body.Close()
 
@@ -254,7 +271,9 @@ func request[T any](ctx context.Context, c *Client, method, endpoint string, bod
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return result, err
+		// The body died mid-read. Same class as never connecting — the gateway's
+		// answer never arrived — so the same verdict, per the contract.
+		return result, gatewayDidNotAnswer(method, endpoint, err)
 	}
 	if len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, &result); err != nil {
