@@ -43,7 +43,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -82,7 +88,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -133,7 +145,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -185,7 +203,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -325,7 +349,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -362,7 +392,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -401,7 +437,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -464,7 +506,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -515,7 +563,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -585,7 +639,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }
@@ -655,7 +715,13 @@ const docTemplate = `{
                         }
                     },
                     "502": {
-                        "description": "SpaceTraders upstream error",
+                        "description": "st-gateway answered with something unreadable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "504": {
+                        "description": "st-gateway did not answer",
                         "schema": {
                             "type": "string"
                         }

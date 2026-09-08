@@ -1,0 +1,122 @@
+{
+  "$comment": "VENDORED COPY - do not edit here except this line. Source of truth: meta/fixtures/gateway-errors.json, specified by meta/docs/design/upstream-errors.md. Change meta first, then re-copy.",
+  "version": 1,
+  "cases": [
+    {
+      "name": "game-refusal",
+      "why": "SpaceTraders refused the action in this ship state. The gateway relays the game's status, body and content-type unchanged (st-gateway/src/server.ts, the `res.status(upstream.status)` relay).",
+      "gateway": {
+        "status": 400,
+        "body": "{\"error\":{\"message\":\"Ship is not currently docked.\",\"code\":4214}}"
+      },
+      "expect": { "status": 400, "message": "Ship is not currently docked." }
+    },
+    {
+      "name": "game-cooldown",
+      "why": "A 409 from the game, and a different remedy from a refusal: wait, rather than change what you asked for. Only the status and the sentence say which.",
+      "gateway": {
+        "status": 409,
+        "body": "{\"error\":{\"message\":\"Ship action is still on cooldown.\",\"code\":4000}}"
+      },
+      "expect": { "status": 409, "message": "Ship action is still on cooldown." }
+    },
+    {
+      "name": "game-token-rejected",
+      "why": "SpaceTraders rejected the agent token the gateway injects — not the caller's own session, which every service verifies before the gateway is reached. The gateway has already refreshed the credential and retried; a 401 arriving here means that did not help, so an operator has to look at auth-service.",
+      "gateway": {
+        "status": 401,
+        "body": "{\"error\":{\"message\":\"Token reset_date does not match the server. Expected: 2026-09-06, Actual: 2026-08-16\",\"code\":401}}"
+      },
+      "expect": { "status": 401, "messageContains": "reset_date" }
+    },
+    {
+      "name": "rate-limited",
+      "why": "A 429 the gateway could not absorb, passed through with its pacing headers. The gateway forwards retry-after and the x-ratelimit-* trio precisely so a caller can pace itself; relaying the status without them keeps the news and drops the instructions.",
+      "gateway": {
+        "status": 429,
+        "body": "{\"error\":{\"message\":\"You have reached your API limit.\",\"code\":429}}",
+        "headers": { "retry-after": "3", "x-ratelimit-remaining": "0" }
+      },
+      "expect": {
+        "status": 429,
+        "message": "You have reached your API limit.",
+        "headers": { "retry-after": "3" }
+      }
+    },
+    {
+      "name": "credential-not-configured",
+      "why": "auth-service has no agent token yet. An operator has to act; nothing retries its way out of it. This exact sentence is the only signal that says so — the gateway's other 503 means the opposite.",
+      "gateway": {
+        "status": 503,
+        "body": "{\"error\":{\"message\":\"SpaceTraders credential not configured\"}}"
+      },
+      "expect": { "status": 503, "message": "SpaceTraders credential not configured" }
+    },
+    {
+      "name": "auth-service-unavailable",
+      "why": "The same status as the case above, and a problem that resolves on its own. Relaying the message is the whole of what keeps them apart.",
+      "gateway": {
+        "status": 503,
+        "body": "{\"error\":{\"message\":\"auth-service unavailable: cannot obtain a SpaceTraders credential\"}}"
+      },
+      "expect": {
+        "status": 503,
+        "message": "auth-service unavailable: cannot obtain a SpaceTraders credential"
+      }
+    },
+    {
+      "name": "spacetraders-unreachable",
+      "why": "The gateway exhausted its retries against the game. It is a 502 because the gateway decided so — the client did not, and could not have.",
+      "gateway": {
+        "status": 502,
+        "body": "{\"error\":{\"message\":\"SpaceTraders unreachable: TypeError: fetch failed\"}}"
+      },
+      "expect": { "status": 502, "messageContains": "SpaceTraders unreachable" }
+    },
+    {
+      "name": "gateway-proxy-failed",
+      "why": "The gateway's own handler threw, or an upstream body died mid-read. Also a 502, and also the gateway's verdict rather than the client's.",
+      "gateway": {
+        "status": 502,
+        "body": "{\"error\":{\"message\":\"SpaceTraders proxy failed: TypeError: terminated\"}}"
+      },
+      "expect": { "status": 502, "messageContains": "SpaceTraders proxy failed" }
+    },
+    {
+      "name": "body-too-large",
+      "why": "The gateway's own 5 MB body limit. A 413 relayed as a 413 tells the caller to send less; relayed as a 502 it tells them to try again, which will not help.",
+      "gateway": { "status": 413, "body": "{\"error\":{\"message\":\"request entity too large\"}}" },
+      "expect": { "status": 413, "message": "request entity too large" }
+    },
+    {
+      "name": "non-envelope-error-body",
+      "why": "A proxy or load balancer between the client and the gateway answering with HTML. There is no message to lift, so the raw body stands in, truncated.",
+      "gateway": { "status": 502, "body": "<html><body>502 Bad Gateway</body></html>" },
+      "expect": { "status": 502, "messageContains": "502 Bad Gateway" }
+    },
+    {
+      "name": "oversized-error-body",
+      "why": "The truncation cap, which had drifted to 64 KiB in one service and 500 characters in another. An error message is read by a person; echoing a megabyte of someone else's HTML through three logs is not diagnosis.",
+      "gateway": { "status": 502, "bodyRepeat": { "chunk": "x", "times": 4000 } },
+      "expect": { "status": 502, "messageMaxLength": 500 }
+    },
+    {
+      "name": "empty-error-body",
+      "why": "A non-2xx with nothing in it at all. Still relayed by status; the message is the client's own, because there is none to relay.",
+      "gateway": { "status": 500, "body": "" },
+      "expect": { "status": 500, "messageNotEmpty": true }
+    },
+    {
+      "name": "gateway-unreachable",
+      "why": "No response at all: connection refused, DNS failure, read timeout, or a body that died mid-read on the client's side. The one condition the client itself gets to classify, because the gateway never spoke.",
+      "gateway": { "transport": "no-response" },
+      "expect": { "status": 504, "messageNotEmpty": true }
+    },
+    {
+      "name": "unusable-success-body",
+      "why": "A 2xx the client cannot parse at all. The gateway answered and the client cannot pass it on, which is what 502 means here.",
+      "gateway": { "status": 200, "body": "not json at all" },
+      "expect": { "status": 502, "messageNotEmpty": true }
+    }
+  ]
+}
