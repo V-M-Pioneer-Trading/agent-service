@@ -1,187 +1,142 @@
 package api
 
-// Clerk session verification, performed locally.
+// Route-level authorization: how agent-service's gorilla/mux router binds a
+// credential requirement to every route (auth-design.md decision 21,
+// meta#80 step 6).
 //
-// Same shape as automation-service and fleet-service's auth.ts: networkless
-// RS256 verification via a PEM public key (CLERK_JWT_KEY), no bypass flag.
-// Only the trust anchor differs between local dev, CI and production.
+// agent-service no longer verifies a Clerk token. The policy — which answer
+// for which header and which center response — lives in package
+// introspection and is pinned by meta/fixtures/introspection.json. This file
+// is only the adapter, and its one job is the part the fixture cannot reach:
+// making sure every route the router can dispatch to carries a declaration,
+// and that no mutating route declares "nothing needed".
 //
-// agent-service's routes split three ways under auth-design.md decision 18:
-//   - reads that forward live to SpaceTraders (agent, ships, contracts) need
-//     a signed-in session, no particular scope — agent-service holds no
-//     SpaceTraders credential of its own, so an anonymous caller has nothing
-//     to read regardless of scope, until auth-service exists.
-//   - mutations (accept/fulfill contract, purchase ship, buy/sell cargo) need
-//     fleet:control, same as fleet-service.
-//   - reads backed by agent-service's own MySQL history (transactions,
-//     deliveries) need neither — there is no credential problem for a read
-//     that never calls SpaceTraders at all, so these stay public, matching
-//     decision 2's "every GET is public" and automation-service's own
-//     Postgres-backed reads.
+// That is enforced twice:
+//
+//   - at startup, secureRouter walks the router and refuses to build it if any
+//     route's handler carries no declaration, or if a route that answers a
+//     mutating method (or any method at all) declares none or ignores
+//     credentials. SetUpRouter returns the error and main exits.
+//   - at request time, refuseUndeclared answers 500 for a matched route whose
+//     handler carries no declaration — belt and braces for a route added after
+//     the walk, which gorilla/mux permits.
+//
+// The requirement is carried by the handler value itself, so it is bound
+// exactly where mux binds the handler. HEAD is registered on the same route
+// object as GET, so HEAD /x is governed by what GET /x declared by
+// construction rather than by a lookup that could miss.
 
 import (
-	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/mux"
+
+	"vnm/agent-info-service/introspection"
 )
 
 // SCOPEFleetControl is the only scope this service enforces.
 const SCOPEFleetControl = "fleet:control"
 
-// AuthConfig holds the Clerk trust anchor.
-type AuthConfig struct {
-	ClerkJWTKeyPEM string
-	ClerkIssuer    string // empty means "don't check"
-}
-
-type verifier struct {
-	publicKey interface{}
-	issuer    string
-}
-
-func newVerifier(cfg AuthConfig) (*verifier, error) {
-	key, err := jwt.ParseRSAPublicKeyFromPEM([]byte(cfg.ClerkJWTKeyPEM))
-	if err != nil {
-		return nil, err
-	}
-	return &verifier{publicKey: key, issuer: cfg.ClerkIssuer}, nil
-}
-
-func bearerFrom(r *http.Request) string {
-	header := r.Header.Get("Authorization")
-	parts := strings.Fields(header)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-		return ""
-	}
-	return parts[1]
-}
-
-// scopesFrom accepts the `scope` claim as either a space-delimited string
-// (the OAuth convention Clerk's default session token uses) or an array, so a
-// caller is never locked out by a formatting choice made in a dashboard.
-func scopesFrom(claims jwt.MapClaims) []string {
-	switch v := claims["scope"].(type) {
-	case string:
-		return strings.Fields(v)
-	case []interface{}:
-		out := make([]string, 0, len(v))
-		for _, s := range v {
-			if str, ok := s.(string); ok {
-				out = append(out, str)
-			}
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
-// authError is the JSON envelope every auth rejection uses, matching the
-// sibling services' shape.
+// authError documents the {"error":{"message":…}} envelope every auth
+// rejection uses, for Swagger. The envelope itself is written by
+// introspection.WriteError.
 type authError struct {
 	Error struct {
 		Message string `json:"message"`
 	} `json:"error"`
 }
 
-func writeAuthError(w http.ResponseWriter, status int, message string) {
-	var body authError
-	body.Error.Message = message
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(body); err != nil {
-		log.Default().Printf("failed to write auth error response: %v", err)
-	}
-}
+// secureRouter installs the request-time check and then walks every route.
+// Call it after the last route is registered.
+func secureRouter(r *mux.Router) error {
+	r.Use(refuseUndeclared)
 
-// verify runs the real check both requireScope and requireSession share: a
-// well-formed, correctly-signed, unexpired Clerk session. hasScope decides
-// what additionally has to be true of its claims.
-func (v *verifier) verify(w http.ResponseWriter, r *http.Request, hasScope func([]string) bool) bool {
-	token := bearerFrom(r)
-	if token == "" {
-		writeAuthError(w, http.StatusUnauthorized, "a bearer token is required")
-		return false
-	}
-
-	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
-		return v.publicKey, nil
-	}, jwt.WithValidMethods([]string{"RS256"}), issuerOption(v.issuer))
-	if err != nil || !parsed.Valid {
-		// Not surfacing the specific reason — "expired" vs "bad signature" vs
-		// "wrong issuer" is a probing oracle, and the remedy is the same.
-		writeAuthError(w, http.StatusUnauthorized, "invalid or expired session")
-		return false
-	}
-
-	claims, ok := parsed.Claims.(jwt.MapClaims)
-	if !ok || !hasScope(scopesFrom(claims)) {
-		writeAuthError(w, http.StatusForbidden, "this action requires a scope this session does not carry")
-		return false
-	}
-	return true
-}
-
-func issuerOption(issuer string) jwt.ParserOption {
-	if issuer == "" {
-		return func(*jwt.Parser) {}
-	}
-	return jwt.WithIssuer(issuer)
-}
-
-// requireScope wraps a handler, rejecting unless the caller presents a valid
-// Clerk session carrying the given scope.
-func (v *verifier) requireScope(scope string, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !v.verify(w, r, func(scopes []string) bool {
-			for _, s := range scopes {
-				if s == scope {
-					return true
-				}
-			}
-			return false
-		}) {
-			return
+	var problems []string
+	err := r.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
+		handler := route.GetHandler()
+		if handler == nil {
+			// A subrouter mount: a matcher, not a handler. Its own routes are
+			// walked next.
+			return nil
 		}
-		next(w, r)
-	}
-}
+		name := describeRoute(route)
 
-// requireSession wraps a handler, rejecting unless the caller presents a
-// valid Clerk session — any scope, or none at all.
-func (v *verifier) requireSession(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !v.verify(w, r, func([]string) bool { return true }) {
-			return
+		decl, ok := introspection.DeclarationOf(handler)
+		if !ok {
+			problems = append(problems, name+" declares no credential requirement")
+			return nil
 		}
-		next(w, r)
-	}
-}
+		if !decl.IgnoresCredentials && !decl.Requirement.Declared() {
+			problems = append(problems, name+" was built with an undeclared requirement")
+			return nil
+		}
 
-// RequireClerkJWTKey reads Clerk's public key: inline CLERK_JWT_KEY (how
-// production passes it from SSM through the bootstrap script) wins over
-// CLERK_JWT_KEY_FILE (how compose mounts the local dev key). Neither has a
-// default — matches the sibling services' config.ts exactly, including the
-// reasoning: a service that can start without a trust anchor is one that can
-// be deployed with authentication silently off.
-func RequireClerkJWTKey() (string, error) {
-	if inline := os.Getenv("CLERK_JWT_KEY"); inline != "" {
-		return strings.ReplaceAll(inline, `\n`, "\n"), nil
-	}
-	if path := os.Getenv("CLERK_JWT_KEY_FILE"); path != "" {
-		pem, err := os.ReadFile(path)
+		methods, err := route.GetMethods()
 		if err != nil {
-			return "", err
+			methods = nil // no method matcher: the route answers every method
 		}
-		if len(strings.TrimSpace(string(pem))) == 0 {
-			return "", errors.New("CLERK_JWT_KEY_FILE (" + path + ") is empty")
+		mutating := len(methods) == 0
+		for _, m := range methods {
+			if !introspection.IsSafeMethod(m) {
+				mutating = true
+			}
 		}
-		return string(pem), nil
+		if mutating && (decl.IgnoresCredentials || decl.Requirement.IsNone()) {
+			problems = append(problems, name+" answers a mutating method but declares no session or scope")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	return "", errors.New("CLERK_JWT_KEY or CLERK_JWT_KEY_FILE must be set")
+	if len(problems) > 0 {
+		return errors.New("refusing to start: " + strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+func describeRoute(route *mux.Route) string {
+	path, err := route.GetPathTemplate()
+	if err != nil {
+		path = "(any path)"
+	}
+	methods, err := route.GetMethods()
+	if err != nil || len(methods) == 0 {
+		return fmt.Sprintf("route [any method] %s", path)
+	}
+	return fmt.Sprintf("route %v %s", methods, path)
+}
+
+// refuseUndeclared is the request-time half of default-deny. A matched route
+// whose handler carries no declaration is never served, on any method: a
+// resolver miss is a routing-table defect, never "none".
+func refuseUndeclared(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route := mux.CurrentRoute(r)
+		if route == nil {
+			introspection.WriteError(w, http.StatusInternalServerError, introspection.MessageUndeclaredRoute, nil)
+			return
+		}
+		if _, ok := introspection.DeclarationOf(route.GetHandler()); !ok {
+			introspection.WriteError(w, http.StatusInternalServerError, introspection.MessageUndeclaredRoute, nil)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// getRoute registers a safe read: GET, and HEAD on the SAME route object, so
+// the two can never carry different requirements. Go's server discards a
+// HEAD response body itself.
+func getRoute(r *mux.Router, path string, h introspection.Declared) {
+	r.Handle(path, h).Methods(http.MethodGet, http.MethodHead)
+}
+
+// postRoute registers a mutation. secureRouter refuses it at startup unless h
+// declares a session or a scope.
+func postRoute(r *mux.Router, path string, h introspection.Declared) {
+	r.Handle(path, h).Methods(http.MethodPost)
 }

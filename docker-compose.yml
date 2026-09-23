@@ -36,13 +36,13 @@ services:
       MYSQL_DATABASE: vnm-agent-db
       CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:3000}
       ST_GATEWAY_URL: ${ST_GATEWAY_URL:-http://host.docker.internal:3002}
-      # The service refuses to start without a Clerk trust anchor — a service
-      # that boots with authentication silently off is worse than one that
-      # doesn't boot. Export CLERK_JWT_KEY (or point CLERK_JWT_KEY_FILE at a
-      # mounted PEM) before `docker compose up`; see the README.
-      CLERK_JWT_KEY: ${CLERK_JWT_KEY:-}
-      CLERK_JWT_KEY_FILE: ${CLERK_JWT_KEY_FILE:-}
-      CLERK_ISSUER: ${CLERK_ISSUER:-}
+      # agent-service verifies no token itself (meta#80, decision 21): it asks
+      # auth-service, and refuses to start without both variables. The
+      # defaults point at the auth-service meta/docker-compose.yml publishes on
+      # the host (8082) with that compose file's local-only secret; override
+      # both to match whatever auth-service you run. See the README.
+      AUTH_INTROSPECTION_URL: ${AUTH_INTROSPECTION_URL:-http://host.docker.internal:8082/auth/v1/introspect}
+      AUTH_INTROSPECTION_SECRET: ${AUTH_INTROSPECTION_SECRET:-local-dev-introspection-secret}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

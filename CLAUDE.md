@@ -14,7 +14,7 @@ All Go commands run from `src/`.
 | Test as CI does | `go test ./... -race -shuffle=on` |
 | Vet | `go vet ./...` |
 | Format check | `test -z "$(gofmt -l .)"` |
-| Run locally | `PORT=8080 CLERK_JWT_KEY="$(cat key.pem)" go run .` |
+| Run locally | `PORT=8080 AUTH_INTROSPECTION_URL=http://localhost:8082/auth/v1/introspect AUTH_INTROSPECTION_SECRET=local-dev-introspection-secret go run .` |
 | Regenerate Swagger | `swag init -g app-runner.go --parseInternal --output ./docs` |
 | Start MySQL only | `docker compose up -d mysql` (from repo root) |
 
@@ -25,9 +25,12 @@ CI runs format check, vet and the race/shuffle test suite on both pull requests 
 
 | File | Owns | Depends on |
 |---|---|---|
-| `src/app-runner.go` | Process lifecycle: config read, dependency construction, HTTP server, Swagger's top-level annotations | `api`, `db`, `spacetraders` |
-| `src/api/routes.go` | Route table, access tiers, handlers, request/response shaping, `forwardCallerSession` | `db`, `spacetraders`, `spacetraders/schema`, `docs` (blank) |
-| `src/api/auth.go` | Clerk verification, the `requireSession`/`requireScope` wrappers, the `authError` envelope, `RequireClerkJWTKey` | `golang-jwt/jwt/v5` only |
+| `src/app-runner.go` | Process lifecycle: config read, dependency construction, HTTP server, Swagger's top-level annotations | `api`, `db`, `introspection`, `spacetraders` |
+| `src/api/routes.go` | Route table, access tiers, handlers, request/response shaping, `forwardCallerSession` | `db`, `introspection`, `spacetraders`, `spacetraders/schema`, `docs` (blank) |
+| `src/api/auth.go` | The mux adapter: `secureRouter` (startup walk + request-time `refuseUndeclared`), `getRoute`/`postRoute`, the `authError` Swagger type | `introspection`, `gorilla/mux` |
+| `src/introspection/policy.go` | The decision 21 policy: `Requirement` (`None`/`Session`/`Scope`, zero value = undeclared), `BearerFrom`, `IsSafeMethod`, `Authorizer`, the five messages | stdlib |
+| `src/introspection/center.go` | The one call to auth-service (`Client`), answer parsing, `LoadConfig` for `AUTH_INTROSPECTION_*` | stdlib |
+| `src/introspection/http.go` | net/http middleware: `Guard.Require`, `IgnoreCredentials`, `DeclarationOf`, `IdentityFrom`, the error envelope | stdlib |
 | `src/spacetraders/client.go` | The only outbound HTTP in the service; gateway address, timeout, path escaping, and the `WithCallerAuthorization` context helpers | `spacetraders/schema` |
 | `src/spacetraders/errors.go` | `UpstreamError`: st-gateway's status, its message, its pacing headers, and the endpoint for the log line | — |
 | `src/spacetraders/schema/` | Wire types for the SpaceTraders API | — |
@@ -38,13 +41,15 @@ CI runs format check, vet and the race/shuffle test suite on both pull requests 
 
 ### Dependency rules
 
-* `db` and `spacetraders` never import `api`. `api` is the only package that knows about HTTP.
+* `db`, `spacetraders` and `introspection` never import `api`. `introspection` imports nothing from this module.
 * `db` never imports `spacetraders` and vice versa. They are joined only in `api` handlers.
 * `spacetraders/schema` imports nothing from this module — it is pure wire types.
-* Only `spacetraders/client.go` makes outbound HTTP calls. If you need a new upstream call, add
-  a method there rather than a `http.Get` in a handler.
+* Only `spacetraders/client.go` and `introspection/center.go` make outbound HTTP calls. If you
+  need a new upstream call, add a method on `spacetraders.Client` rather than a `http.Get` in a
+  handler.
 * Only `db` writes SQL. Handlers call named functions, never build queries.
-* `api/auth.go` has no knowledge of routes, and `api/routes.go` has no knowledge of JWTs.
+* Nothing in this module parses, decodes or logs a token, or logs the introspection secret. No
+  JWT library is a dependency, in code or in tests.
 
 ## Invariants
 
@@ -54,12 +59,17 @@ Stated so a violation is recognisable in review:
    a parameter or a field. st-gateway injects it (auth-design.md decision 5). Anything that
    reintroduces one is a regression, not a feature.
 2. **`Authorization` is always the Clerk session, and it is forwarded verbatim.** It is read
-   in exactly two places: the verifier, and `forwardCallerSession`, which puts it on the
+   in exactly two places: the introspection guard (`introspection/http.go`), and
+   `forwardCallerSession`, which puts it on the
    request context for the spacetraders client to relay to st-gateway (decision 2). A handler
    that reads `Authorization` directly is wrong.
 3. **The access tier is declared at the router, never inside a handler.** Every route in
-   `SetUpRouter` goes through `read(…)`, `write(…)`, or is deliberately bare (public). A
-   handler that checks credentials itself has moved policy out of the one place it is readable.
+   `SetUpRouter` goes through `read(…)`, `write(…)`, `public(…)` or `ignore(…)`. A bare
+   handler is refused: `secureRouter` fails startup for an undeclared route, or for a route
+   answering a mutating method (or every method) that declares `none` or ignores credentials,
+   and `refuseUndeclared` answers `500` for one added after the walk. Register reads with
+   `getRoute` (GET + HEAD on one route object) and mutations with `postRoute`.
+   `TestEveryRouteDeclaresExactlyThisPolicy` pins the whole table.
 4. **Every SpaceTraders-backed route sits behind `read(…)` or `write(…)`**, both of which
    wrap `forwardCallerSession`. A route wired without them silently sends st-gateway no
    session, and every call from it lands in the background lane.
@@ -91,24 +101,30 @@ Stated so a violation is recognisable in review:
 12. **A caller that hangs up is not a gateway failure.** `request` checks `ctx.Err()`
     before reaching for the 504, so an abandoned request does not put a gateway outage in
     the logs. Nobody is left to read the answer either way.
+13. **One question to auth-service per request, and no other verification path.** 1 s timeout,
+    no retry, no cache, no redirect, no proxy, body capped at 64 KiB. Every failure is the
+    one `503`. A bad token is a `401` on every method, never a visitor. `kind` is the
+    center's answer, never derived from `sub`. Scopes match by exact membership only.
 
 ## Critical sequences
 
-**Startup — the order matters.** `main` opens the database *before* reading the Clerk key so a
-misconfigured database surfaces first; both must succeed before any port is bound.
+**Startup — the order matters.** `main` reads the introspection config *before* the database
+wait: it is instant, and a missing `AUTH_INTROSPECTION_*` must crash the container inside the
+bootstrap script's ~30 s liveness window rather than after a slow MySQL ping loop. All of it
+must succeed before any port is bound.
 
 ```
-db.SetUpDatabase()      → open pool, set limits, ping-with-retry, Migrate
-api.RequireClerkJWTKey() → CLERK_JWT_KEY, else CLERK_JWT_KEY_FILE, else error
-spacetraders.NewClient() → reads ST_GATEWAY_URL once
-api.SetUpRouter(...)     → parses the PEM; fails here if the key is malformed
-server.ListenAndServe()  → binds PORT (default 80)
+introspection.LoadConfig(os.Getenv) → AUTH_INTROSPECTION_URL + _SECRET, else error naming the var
+db.SetUpDatabase()                  → open pool, set limits, ping-with-retry, Migrate
+spacetraders.NewClient()            → reads ST_GATEWAY_URL once
+api.SetUpRouter(...)                → secureRouter; fails here on an undeclared route
+server.ListenAndServe()             → binds PORT (default 80)
 ```
 
 **Migration order within `Migrate`:** create tables → widen columns → create indexes. Widening
 must precede indexing so an index is never built on a column about to be rebuilt.
 
-**A write request:** verify Clerk session → check scope → put the session on the context →
+**A write request:** ask auth-service (once) → check scope → put the session on the context →
 decode and validate body → upstream call (session forwarded) → persist → respond. The upstream call is the point of no
 return; nothing after it may return an error status.
 
@@ -125,7 +141,9 @@ Changing any of these breaks a known consumer.
 | `SHIP_PURCHASE`, `PURCHASE`, `SELL` | anything reading `GET /transactions` | Defined once in `db.TransactionTypes`; also the `?type=` filter's accepted values |
 | JSON field names on `db.Transaction`, `db.Delivery`, `CurrentAgentResponse` | command-interface | |
 | `{"error":{"message":…}}` auth envelope | shared with automation-service / fleet-service | |
-| `POST /contracts/{id}/deliveries` request body | fleet-service | `{shipSymbol, tradeSymbol, units}` |
+| `POST /contracts/{id}/deliveries` request body | fleet-service | `{shipSymbol, tradeSymbol, units}`; needs `fleet:control` since meta#71 |
+| `AUTH_INTROSPECTION_URL`, `AUTH_INTROSPECTION_SECRET`, `X-Introspection-Secret` | infrastructure `agent-service/main.tf`, meta compose, auth-service | Names fixed by `meta/fixtures/introspection.json` |
+| The five auth sentences and their statuses | command-interface, automation-service's classifier | `introspection.Message*` |
 
 ## Domain and upstream facts
 
@@ -133,8 +151,8 @@ Changing any of these breaks a known consumer.
   SpaceTraders path>`. The gateway owns the shared rate budget (meta#1/meta#7). Calling
   SpaceTraders directly would bypass it and get the whole org rate-limited.
 * **Priority is the gateway's call (decision 2).** st-gateway derives it from the Clerk session
-  this service forwards: `sub` starting `user_` is interactive, anything else (automation-service's
-  `mch_` machine token, no session) is background. This service never declares a priority; the
+  this service forwards: an operator is interactive, anything else (automation-service's
+  machine token, no session) is background. This service never declares a priority; the
   old `X-Priority` header is ignored by the gateway and no longer sent.
 * **SpaceTraders wraps everything in `data`.** Hence the `…Response` structs whose only field is
   `Data`.
@@ -142,11 +160,10 @@ Changing any of these breaks a known consumer.
   sell-cargo (`MarketTransactionResult`). That is why each pair shares one implementation.
 * **Purchase and sell live here, not in fleet-service**, because they move credits and this
   service owns the transaction history.
-* **Clerk verification is offline.** The RSA public key is supplied by configuration; there is
-  no network call and no JWKS fetch, so Clerk being down does not affect this service.
-* **`scope` may be a string or an array.** Clerk's default session token uses the space-delimited
-  OAuth convention; `scopesFrom` accepts both so a dashboard formatting choice can't lock
-  callers out.
+* **auth-service verifies, this service asks (decision 21).** `POST` form `token=` to
+  `AUTH_INTROSPECTION_URL` verbatim, `X-Introspection-Secret` header. The answer's `scope` is
+  one string, split on whitespace runs; it is ABSENT for a scopeless session (auth-service
+  encodes it `omitempty`), which is the empty list, not a malformed answer.
 * **Agent credits exceed `INT`.** Money columns are `BIGINT` for that reason.
 * **MySQL is `mysql:9`, in compose and in production alike** (`infrastructure/agent-service/main.tf`).
   Both track the latest 9.x on purpose — minor upgrades are safe in place, and the tag still
@@ -159,19 +176,20 @@ Changing any of these breaks a known consumer.
 
 ## Testing
 
-Four layers, none of which need a database, a network, or a container:
+Five layers, none of which need a database, an external network, or a container:
 
 | Layer | Where | Harness |
 |---|---|---|
-| Router + handlers | `api/routes_test.go`, `api/auth_test.go` | `httptest` recorder against the real router, `sqlmock` for the DB, a stub gateway for upstream |
+| Router + handlers | `api/routes_test.go`, `api/auth_test.go` | `httptest` recorder against the real router, `sqlmock` for the DB, a stub gateway for upstream, a stub auth-service on loopback |
+| Introspection contract | `introspection/conformance_test.go`, `introspection/center_test.go` | All 35 calling-service cases of `introspection/testdata/introspection.json` — a **verbatim copy** of `meta/fixtures/introspection.json`, pinned by sha256 in `testdata/SOURCE.txt` and `-text` in `.gitattributes` — against a real `httptest` center; the 10 gateway cases are skipped by name with a count assertion. Unknown fixture keys fail |
 | Gateway client | `spacetraders/client_test.go` | `httptest.NewServer` standing in for st-gateway |
 | Upstream-error contract | `api/gateway_errors_conformance_test.go` | A subtest per condition, driven from `spacetraders/testdata/gateway-errors.json` — a **verbatim copy** of `meta/fixtures/gateway-errors.json`. Change meta first, then re-copy, or the copy is just a local opinion. It runs through the router rather than the client, because the contract is about what a caller receives: a 2xx body this service cannot decode never becomes an `*UpstreamError` at all, and it is the handler that turns it into the 502 |
 | Queries and migrations | `db/db_test.go` | `sqlmock`; migration tests assert the statement *sequence*, not the SQL dialect |
 
-Shared helpers live in `api/authtest_test.go`: `newTestRouter`, `stubGateway`, `newMockDB`,
-`doRequest`, and the token builders (`bearer`, `bearerWithoutScope`, `expiredBearer`,
-`foreignBearer`). Tests exercise the real verification path — there is no bypass flag; only the
-trust anchor differs, an RSA keypair generated once per test binary.
+Shared helpers live in `api/authtest_test.go`: `newTestRouter` / `newTestRouterWithCenter`,
+`stubGateway`, `newMockDB`, `doRequest`, `deadCenterURL`, and the bearer builders (`bearer`,
+`bearerWithoutScope`, `machineBearer`, `inactiveBearer`). Tests sign nothing: the tokens are
+opaque strings a stub auth-service answers for, over real HTTP through the real client.
 
 ### Flake patterns
 
@@ -194,8 +212,9 @@ Run `-shuffle=on` locally before pushing; it is what catches order dependence.
 
 * **A new upstream call:** add a method on `spacetraders.Client`, a response struct in
   `spacetraders/schema/`, then a handler. Do not add a second `http.Client`.
-* **A new route:** register it in `SetUpRouter` through `read`/`write`, or bare with a comment
-  saying why it needs no credential. Add the swagger annotations, then regenerate `docs/`.
+* **A new route:** register it in `SetUpRouter` with `getRoute`/`postRoute` through `read`,
+  `write`, `public` or `ignore`, add it to `TestEveryRouteDeclaresExactlyThisPolicy`, add the
+  swagger annotations, then regenerate `docs/`. A mutating route cannot be `public`.
 * **A new transaction type:** add the constant and put it in `db.TransactionTypes` — the
   `?type=` filter, its validation error message and the Swagger enum all derive from that list.
 * **A new table or column:** add the `CREATE TABLE IF NOT EXISTS` to `schema`, and if existing

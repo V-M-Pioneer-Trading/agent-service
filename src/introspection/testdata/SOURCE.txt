@@ -1,0 +1,22 @@
+introspection.json in this directory is a VERBATIM copy. Do not edit it here.
+
+  original: meta/fixtures/introspection.json
+            (V-M-Pioneer-Trading/meta, repo root `fixtures/introspection.json`)
+  meta commit: 53b2cd8cc1007c62d22a3abe7970bf7e16d8814f (2026-09-21, fixture version 2)
+  sha256: e605f62b820129068acbaef5d67af9b49df9fcf2247d0319ec4f9196338ea3a8
+
+The sha256 above is the hash of the LF bytes of introspection.json and is
+asserted by conformance_test.go, so the pin enforces itself instead of relying
+on someone remembering to re-copy. The repository's .gitattributes marks that
+one file `-text` so a Windows checkout (core.autocrlf=true) keeps the same
+bytes a Linux checkout has and the hash holds on both.
+
+The provenance lives in this sibling file rather than as a key inside the JSON
+so the copy stays byte-identical to the original and `diff` is the drift check.
+Change meta first, then re-copy and update the commit and the sha256 above.
+
+agent-service is a CALLING SERVICE. All 35 `cases` bind it and are driven by
+conformance_test.go against a real HTTP stub of the center. The 10
+`gatewayCases` are st-gateway's lane policy, which this service does not
+implement; the test skips them by name and asserts there are exactly 10, so a
+gateway case added in meta is noticed here too.
