@@ -101,12 +101,23 @@ type ignoring struct{ next http.Handler }
 
 func (i ignoring) Declaration() Declaration { return Declaration{IgnoresCredentials: true} }
 
-func (i ignoring) ServeHTTP(w http.ResponseWriter, r *http.Request) { i.next.ServeHTTP(w, r) }
+// ServeHTTP refuses any method but GET, HEAD and OPTIONS before anything
+// else. The startup walk refuses a mutating route that ignores credentials,
+// but gorilla/mux lets a route be added after the walk; this is the same rule
+// enforced where it cannot be skipped, as the TS ignoreCredentials() does.
+func (i ignoring) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !IsSafeMethod(r.Method) {
+		WriteError(w, http.StatusInternalServerError, MessageUndeclaredRoute, nil)
+		return
+	}
+	i.next.ServeHTTP(w, r)
+}
 
 // IgnoreCredentials declares a route that never reads identity. The
 // Authorization header is not read, the center is never called, and a bearer
 // sent here — valid, garbage or none — changes nothing. For health and
-// Swagger only; an adapter must refuse it on a mutating method.
+// Swagger only. A mutating method is refused at request time with a 500
+// (and an adapter must also refuse it at startup).
 func IgnoreCredentials(next http.Handler) Declared { return ignoring{next: next} }
 
 // errorEnvelope is the family's {"error":{"message":…}} shape.

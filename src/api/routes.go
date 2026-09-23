@@ -157,6 +157,7 @@ func SetUpRouter(conn *sql.DB, st *spacetraders.Client, guard *introspection.Gua
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
 // @Failure      502  {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504  {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /current-agent [get]
 func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 	var response CurrentAgentResponse
@@ -190,6 +191,7 @@ func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
 // @Failure      502  {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504  {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /agent [get]
 func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 	agent, err := h.st.GetMyAgent(r.Context())
@@ -205,6 +207,7 @@ func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
 // @Failure      502  {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504  {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships [get]
 func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 	ships, err := h.st.GetMyShips(r.Context())
@@ -222,6 +225,7 @@ func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 // @Failure      404         {string}  string     "ship not found"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships/{shipSymbol} [get]
 func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 	ship, err := h.st.GetMyShip(r.Context(), mux.Vars(r)["shipSymbol"])
@@ -237,6 +241,7 @@ func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
 // @Failure      502  {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504  {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /contracts [get]
 func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 	contracts, err := h.st.GetMyContracts(r.Context())
@@ -254,6 +259,7 @@ func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 // @Failure      404         {string}  string     "contract not found"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /contracts/{contractId} [get]
 func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 	contract, err := h.st.GetMyContract(r.Context(), mux.Vars(r)["contractId"])
@@ -272,6 +278,7 @@ func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /contracts/{contractId}/accept [post]
 func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 	h.contractStateChange(w, r, h.st.AcceptContract)
@@ -289,6 +296,7 @@ func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /contracts/{contractId}/fulfill [post]
 func (h *handlers) fulfillContract(w http.ResponseWriter, r *http.Request) {
 	h.contractStateChange(w, r, h.st.FulfillContract)
@@ -357,6 +365,7 @@ func (h *handlers) recordDelivery(w http.ResponseWriter, r *http.Request) {
 // @Param        contractId  path      string  true  "Contract ID"
 // @Success      200         {array}   db.Delivery
 // @Failure      500         {string}  string  "failed to load deliveries"
+// @Failure      503  {object}  authError  "a token was presented and auth-service could not be asked"
 // @Router       /contracts/{contractId}/deliveries [get]
 func (h *handlers) getDeliveries(w http.ResponseWriter, r *http.Request) {
 	deliveries, err := db.GetDeliveriesForContract(h.conn, mux.Vars(r)["contractId"])
@@ -381,6 +390,7 @@ func (h *handlers) getDeliveries(w http.ResponseWriter, r *http.Request) {
 // @Failure      403   {object}  authError  "session lacks fleet:control"
 // @Failure      502   {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504   {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships/purchase [post]
 func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
 	var body purchaseShipRequest
@@ -425,6 +435,7 @@ func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships/{shipSymbol}/purchase [post]
 func (h *handlers) purchaseCargo(w http.ResponseWriter, r *http.Request) {
 	h.tradeCargo(w, r, db.CargoPurchase, h.st.PurchaseCargo)
@@ -445,6 +456,7 @@ func (h *handlers) purchaseCargo(w http.ResponseWriter, r *http.Request) {
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships/{shipSymbol}/sell [post]
 func (h *handlers) sellCargo(w http.ResponseWriter, r *http.Request) {
 	h.tradeCargo(w, r, db.CargoSell, h.st.SellCargo)
@@ -501,6 +513,7 @@ func (h *handlers) tradeCargo(
 // @Success      200         {array}   db.Transaction
 // @Failure      400         {string}  string  "invalid query parameter"
 // @Failure      500         {string}  string  "failed to load transactions"
+// @Failure      503  {object}  authError  "a token was presented and auth-service could not be asked"
 // @Router       /transactions [get]
 func (h *handlers) getTransactions(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()

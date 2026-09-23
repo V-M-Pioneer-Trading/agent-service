@@ -48,6 +48,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -91,6 +97,12 @@ const docTemplate = `{
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -148,6 +160,12 @@ const docTemplate = `{
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -208,6 +226,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -249,6 +273,12 @@ const docTemplate = `{
                         "description": "failed to load deliveries",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "a token was presented and auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     }
                 }
@@ -377,6 +407,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -418,6 +454,12 @@ const docTemplate = `{
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -463,6 +505,12 @@ const docTemplate = `{
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -534,6 +582,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -589,6 +643,12 @@ const docTemplate = `{
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -667,6 +727,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -743,6 +809,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -808,6 +880,12 @@ const docTemplate = `{
                         "description": "failed to load transactions",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "a token was presented and auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     }
                 }

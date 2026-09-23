@@ -477,6 +477,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -505,6 +509,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -541,6 +549,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -579,6 +591,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -609,6 +625,10 @@ paths:
           description: failed to load deliveries
           schema:
             type: string
+        "503":
+          description: a token was presented and auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
       summary: List recorded deliveries for a contract
       tags:
       - contracts
@@ -690,6 +710,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -717,6 +741,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -745,6 +773,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -781,6 +813,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -831,6 +867,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -881,6 +921,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -926,6 +970,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -974,6 +1022,10 @@ paths:
           description: failed to load transactions
           schema:
             type: string
+        "503":
+          description: a token was presented and auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
       summary: List recorded transactions
       tags:
       - ships

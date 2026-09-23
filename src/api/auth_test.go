@@ -504,3 +504,37 @@ func TestSetUpRouterNeedsAGuard(t *testing.T) {
 		t.Fatal("SetUpRouter accepted a nil guard")
 	}
 }
+
+// A route added after the startup walk that ignores credentials on a mutating
+// method: the walk never saw it, refuseUndeclared passes it (it IS declared),
+// so the ignoring handler itself must refuse.
+func TestLateMutatingRouteIgnoringCredentialsIsA500(t *testing.T) {
+	center := newTestCenter(t)
+	ok := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+	r := mux.NewRouter()
+	getRoute(r, "/fine", guardFor(center.url).Require(introspection.None(), ok))
+	if err := secureRouter(r); err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	late := introspection.IgnoreCredentials(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { ran = true }))
+	r.Handle("/late", late).Methods(http.MethodPost, http.MethodDelete)
+	r.PathPrefix("/late-any/").Handler(late)
+
+	for _, path := range []string{"/late", "/late-any/x"} {
+		for _, method := range []string{http.MethodPost, http.MethodDelete} {
+			for _, header := range []string{"", bearer()} {
+				rec := doRequest(t, r, method, path, header)
+				if rec.Code != http.StatusInternalServerError || decodeAuthError(t, rec) != introspection.MessageUndeclaredRoute {
+					t.Errorf("%s %s with %q: got %d %s", method, path, header, rec.Code, rec.Body.String())
+				}
+			}
+		}
+	}
+	if ran {
+		t.Error("the late ignoring handler ran for a mutating method")
+	}
+	if center.Calls() != 0 {
+		t.Errorf("center called %d times", center.Calls())
+	}
+}

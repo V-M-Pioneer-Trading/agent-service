@@ -41,6 +41,12 @@
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -84,6 +90,12 @@
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -141,6 +153,12 @@
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -201,6 +219,12 @@
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -242,6 +266,12 @@
                         "description": "failed to load deliveries",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "a token was presented and auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     }
                 }
@@ -370,6 +400,12 @@
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -411,6 +447,12 @@
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -456,6 +498,12 @@
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -527,6 +575,12 @@
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -582,6 +636,12 @@
                         "description": "st-gateway answered with something unreadable",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     },
                     "504": {
@@ -660,6 +720,12 @@
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -736,6 +802,12 @@
                             "type": "string"
                         }
                     },
+                    "503": {
+                        "description": "auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
+                        }
+                    },
                     "504": {
                         "description": "st-gateway did not answer",
                         "schema": {
@@ -801,6 +873,12 @@
                         "description": "failed to load transactions",
                         "schema": {
                             "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "a token was presented and auth-service could not be asked",
+                        "schema": {
+                            "$ref": "#/definitions/api.authError"
                         }
                     }
                 }

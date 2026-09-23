@@ -1,6 +1,7 @@
 package introspection
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -194,55 +195,131 @@ func (c *Client) Introspect(ctx context.Context, token string) Answer {
 	return answer
 }
 
-// wireAnswer uses pointers so "absent" and "wrong type" are both visible.
-// json.Unmarshal fails on a type mismatch (active: "true", exp: "soon"), on a
-// top-level array or string, and on trailing bytes.
-type wireAnswer struct {
-	Active *bool    `json:"active"`
-	Sub    *string  `json:"sub"`
-	Scope  *string  `json:"scope"`
-	Exp    *float64 `json:"exp"`
-	Kind   *string  `json:"kind"`
-}
+// contractKeys are the five names the contract defines, spelled exactly.
+var contractKeys = map[string]bool{"active": true, "sub": true, "scope": true, "exp": true, "kind": true}
 
 var errNotContract = errors.New("not the introspection contract")
+
+// decodeObject reads raw as exactly one JSON object and returns its members
+// by their exact key. It does NOT go through encoding/json's struct binding,
+// which matches keys case-insensitively and lets the last duplicate win:
+// {"active":false,"Active":true} would bind active=true. Here a key repeated
+// in any spelling, or a contract key in any spelling but its own, makes the
+// whole answer unusable rather than letting one copy win.
+func decodeObject(raw []byte) (map[string]json.RawMessage, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if tok != json.Delim('{') {
+		return nil, errors.New("top level is not an object")
+	}
+	members := map[string]json.RawMessage{}
+	seen := map[string]bool{} // lowercased keys
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := tok.(string)
+		if !ok {
+			return nil, errors.New("object key is not a string")
+		}
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return nil, err
+		}
+		folded := strings.ToLower(key)
+		if seen[folded] {
+			return nil, fmt.Errorf("key %q appears more than once (ignoring case)", folded)
+		}
+		seen[folded] = true
+		if contractKeys[folded] && key != folded {
+			return nil, fmt.Errorf("key %q is not spelled %q", key, folded)
+		}
+		members[key] = value
+	}
+	if _, err := dec.Token(); err != nil { // the closing brace
+		return nil, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("trailing data after the object")
+	}
+	return members, nil
+}
+
+// member decodes one present, non-null member into dst. present is false
+// when the key is absent; a present null or a wrong type is an error.
+func member(members map[string]json.RawMessage, key string, dst any) (present bool, err error) {
+	value, ok := members[key]
+	if !ok {
+		return false, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+		return true, fmt.Errorf("`%s` is null", key)
+	}
+	if err := json.Unmarshal(value, dst); err != nil {
+		return true, fmt.Errorf("`%s`: %v", key, err)
+	}
+	return true, nil
+}
+
+// isScopeSeparator is the ASCII whitespace RFC 7662's scope list is split on
+// (space, tab, CR, LF). Unicode spaces are not separators: a scope string
+// carrying U+00A0 or U+2003 is one opaque scope, never two.
+func isScopeSeparator(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\r' || r == '\n'
+}
 
 // parseAnswer turns a body into an answer. A partial or wrongly typed answer
 // is NOT active:false: treating it as an inactive token would turn a
 // half-deployed center into a fleet-wide 401 storm.
 func parseAnswer(raw []byte) (Answer, error) {
-	var w wireAnswer
-	if err := json.Unmarshal(raw, &w); err != nil {
+	members, err := decodeObject(raw)
+	if err != nil {
 		return unavailable, fmt.Errorf("%w: %v", errNotContract, err)
 	}
-	if w.Active == nil {
+
+	var active bool
+	if present, err := member(members, "active", &active); err != nil || !present {
 		return unavailable, fmt.Errorf("%w: no boolean `active`", errNotContract)
 	}
-	if !*w.Active {
+	if !active {
 		return Answer{State: StateInactive}, nil
 	}
-	if w.Sub == nil || *w.Sub == "" {
+
+	var sub string
+	if present, err := member(members, "sub", &sub); err != nil || !present || sub == "" {
 		return unavailable, fmt.Errorf("%w: active without `sub`", errNotContract)
 	}
-	if w.Exp == nil {
+	var exp float64
+	if present, err := member(members, "exp", &exp); err != nil || !present {
 		return unavailable, fmt.Errorf("%w: active without numeric `exp`", errNotContract)
 	}
-	if w.Kind == nil || (Kind(*w.Kind) != KindOperator && Kind(*w.Kind) != KindMachine) {
+	var kind string
+	if present, err := member(members, "kind", &kind); err != nil || !present ||
+		(Kind(kind) != KindOperator && Kind(kind) != KindMachine) {
 		return unavailable, fmt.Errorf("%w: active with an unknown `kind`", errNotContract)
 	}
+
 	// `scope` may be ABSENT: auth-service encodes it with omitempty, so a
 	// session carrying no scopes arrives without the key (RFC 7662 makes it
-	// optional too). Absent is the empty list. Present-but-not-a-string was
-	// already refused by Unmarshal.
-	scopes := []string{}
-	if w.Scope != nil {
-		// Whitespace RUNS, empties discarded — strings.Fields, as every
-		// verifier in the fleet did before decision 21.
-		scopes = strings.Fields(*w.Scope)
+	// optional too). Absent is the empty list. Present-but-null and
+	// present-but-not-a-string are not the contract.
+	var scope string
+	if _, err := member(members, "scope", &scope); err != nil {
+		return unavailable, fmt.Errorf("%w: %v", errNotContract, err)
+	}
+	// Separator RUNS, empties discarded, as every verifier in the fleet did
+	// before decision 21 — but ASCII whitespace only.
+	scopes := strings.FieldsFunc(scope, isScopeSeparator)
+	if scopes == nil {
+		scopes = []string{}
 	}
 	return Answer{State: StateActive, Identity: Identity{
-		Sub:    *w.Sub,
-		Kind:   Kind(*w.Kind),
+		Sub:    sub,
+		Kind:   Kind(kind),
 		Scopes: scopes,
 	}}, nil
 }
