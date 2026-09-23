@@ -275,6 +275,7 @@ func TestAnswersThatAreNotTheContract(t *testing.T) {
 		"one key in another case":           `{"active":true,"sub":"user_1","scope":"fleet:control","exp":1,"Kind":"operator"}`,
 		"active repeated exactly":           `{"active":false,"active":true,"sub":"user_1","scope":"fleet:control","exp":1,"kind":"operator"}`,
 		"scope repeated exactly":            `{"active":true,"sub":"user_1","scope":"x","scope":"fleet:control","exp":1,"kind":"operator"}`,
+		"scope only in another case":        `{"active":true,"sub":"user_1","SCOPE":"fleet:control","exp":1,"kind":"operator"}`,
 		"scope null":                        `{"active":true,"sub":"user_1","scope":null,"exp":1,"kind":"operator"}`,
 		"scope a number":                    `{"active":true,"sub":"user_1","scope":1,"exp":1,"kind":"operator"}`,
 		"scope an object":                   `{"active":true,"sub":"user_1","scope":{},"exp":1,"kind":"operator"}`,
@@ -530,6 +531,9 @@ func TestParseAnswerTakesOnlyExactKeysOnce(t *testing.T) {
 		`{"active":true,"sub":"user_1","scope":"x","Scope":"fleet:control","exp":1,"kind":"operator"}`,
 		`{"ACTIVE":true,"SUB":"user_1","SCOPE":"fleet:control","EXP":1,"KIND":"operator"}`,
 		`{"active":true,"sub":"user_1","scope":null,"exp":1,"kind":"operator"}`,
+		// The only case-variant that is neither a duplicate nor a missing
+		// required key: read as absent, it would be a scope-less session.
+		`{"active":true,"sub":"user_1","Scope":"fleet:control","exp":1,"kind":"operator"}`,
 		`{"active":true,"active":true,"sub":"user_1","exp":1,"kind":"operator"}`,
 	} {
 		if a, err := parseAnswer([]byte(body)); err == nil || a.State != StateUnavailable {
