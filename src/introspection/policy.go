@@ -3,7 +3,7 @@
 //
 // agent-service no longer verifies a Clerk token itself. It sends the bytes it
 // received to the center, gets back {active, sub, scope, exp, kind}, and
-// decides only what its own route needs. The whole policy is the 35
+// decides only what its own route needs. The whole policy is the 37
 // calling-service cases of meta/fixtures/introspection.json, vendored into
 // testdata/ and driven by conformance_test.go.
 //

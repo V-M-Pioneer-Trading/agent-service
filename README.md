@@ -171,7 +171,7 @@ go test ./... -race -shuffle=on    # what CI runs
 
 No database or external network is needed: the DB layer is exercised through a mock driver,
 the gateway through a stub HTTP server, and auth-service through a stub center on loopback.
-`src/introspection/conformance_test.go` drives all 35 calling-service cases of the vendored
+`src/introspection/conformance_test.go` drives all 37 calling-service cases of the vendored
 introspection fixture and pins the copy by sha256.
 
 ## API

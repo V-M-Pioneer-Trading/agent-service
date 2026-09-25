@@ -2,8 +2,8 @@ introspection.json in this directory is a VERBATIM copy. Do not edit it here.
 
   original: meta/fixtures/introspection.json
             (V-M-Pioneer-Trading/meta, repo root `fixtures/introspection.json`)
-  meta commit: 53b2cd8cc1007c62d22a3abe7970bf7e16d8814f (2026-09-21, fixture version 2)
-  sha256: e605f62b820129068acbaef5d67af9b49df9fcf2247d0319ec4f9196338ea3a8
+  meta commit: 9b6274657743ec6f626f7d56e4a01069de7d43e0 (2026-09-25, fixture version 3, meta#88)
+  sha256: 77f845c89d4baabef7a336325a9e30360d908fd761ad450904c693621547dfa3
 
 The sha256 above is the hash of the LF bytes of introspection.json and is
 asserted by conformance_test.go, so the pin enforces itself instead of relying
@@ -15,8 +15,8 @@ The provenance lives in this sibling file rather than as a key inside the JSON
 so the copy stays byte-identical to the original and `diff` is the drift check.
 Change meta first, then re-copy and update the commit and the sha256 above.
 
-agent-service is a CALLING SERVICE. All 35 `cases` bind it and are driven by
-conformance_test.go against a real HTTP stub of the center. The 10
+agent-service is a CALLING SERVICE. All 37 `cases` bind it and are driven by
+conformance_test.go against a real HTTP stub of the center. The 11
 `gatewayCases` are st-gateway's lane policy, which this service does not
-implement; the test skips them by name and asserts there are exactly 10, so a
+implement; the test skips them by name and asserts there are exactly 11, so a
 gateway case added in meta is noticed here too.

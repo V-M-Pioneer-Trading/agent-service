@@ -1,6 +1,6 @@
 {
-  "$comment": "Canonical token-introspection conditions: what auth-service (the center) answers, and what a calling service must answer its own caller for each. Source of truth for the conformance tests in the TS introspection client package (fleet-service, automation-service, st-gateway), agent-service (Go) and navigation-service (Java), which vendor this file verbatim. See ../docs/design/token-introspection.md and auth-design.md decision 21. DECIDED 2026-09-20, NOT SHIPPED: no service behaves this way yet — rollout is meta#80. Assertion vocabulary: a case is a route declaration, an inbound Authorization header, a stubbed center, and the expected outcome. `route.requires` is \"none\" (no credential declared), \"session\" (any verified session) or a scope literal. `expect.outcome` is \"proceed\" (the middleware ran the handler) or \"reject\". `expect.identity` is the {sub, kind, scopes} handed to the handler, or null for a visitor; `kind` is the center's answer and must be used verbatim, never re-derived from the `sub` prefix, and `scopes` is the `scope` string split on whitespace RUNS with empties discarded, matching every verifier live today. `expect.centerCalls` is how many HTTP requests the client made to the center for this one inbound request — 0 and 1 are both assertions, and 2 fails. An unknown key in `expect` must fail the case rather than be skipped, or a copy that falls behind quietly checks less. No case may be satisfiable by an empty or absent answer: every rejection asserts its exact message, every proceed asserts the identity, and every case asserts the call count (meta#79). VERSION 2 (2026-09-21, owner's delegate) adds cases and changes none: default-deny applies to MUTATING methods only, `GET`, `HEAD` and `OPTIONS` being the safe methods of RFC 9110 §9.2.1, so a safe method on a route declaring \"none\" proceeds as a visitor instead of answering 500. `route.method` is the method the request will actually be handled as — never a method-override header, and for a framework that dispatches HEAD to the GET handler (Express does) a HEAD of a route declared for GET arrives here as the requirement GET declared. It is compared case-insensitively; scope literals are compared exactly, and the bearer scheme case-insensitively. THE EXEMPTION IS FROM DEFAULT-DENY ONLY: a safe method on a route that DID declare a session or a scope is enforced exactly as a POST is. Read \"none\" precisely: it means the route DECLARED that no credential is needed. It is not the same thing as a route an adapter could find no declaration for — \"undeclared\" has no representation in this file, and an adapter must treat a resolver miss as a loud failure (the 500 above) and never as \"none\". Everything about how an adapter binds a requirement to a route — prefix-mounted routers, trailing slashes, case-variant paths, parameterised paths, `app.all` handlers answering OPTIONS — is outside this file's reach and is the adapter's own obligation to test.",
-  "version": 2,
+  "$comment": "Canonical token-introspection conditions: what auth-service (the center) answers, and what a calling service must answer its own caller for each. Source of truth for the conformance tests in the TS introspection client package (fleet-service, automation-service, st-gateway), agent-service (Go) and navigation-service (Java), which vendor this file verbatim. See ../docs/design/token-introspection.md and auth-design.md decision 21. DECIDED 2026-09-20, NOT SHIPPED: no service behaves this way yet — rollout is meta#80. Assertion vocabulary: a case is a route declaration, an inbound Authorization header, a stubbed center, and the expected outcome. `route.requires` is \"none\" (no credential declared), \"session\" (any verified session) or a scope literal. `expect.outcome` is \"proceed\" (the middleware ran the handler) or \"reject\". `expect.identity` is the {sub, kind, scopes} handed to the handler, or null for a visitor; `kind` is the center's answer and must be used verbatim, never re-derived from the `sub` prefix, and `scopes` is the `scope` string split on whitespace RUNS with empties discarded, matching every verifier live today. `expect.centerCalls` is how many HTTP requests the client made to the center for this one inbound request — 0 and 1 are both assertions, and 2 fails. An unknown key in `expect` must fail the case rather than be skipped, or a copy that falls behind quietly checks less. No case may be satisfiable by an empty or absent answer: every rejection asserts its exact message, every proceed asserts the identity, and every case asserts the call count (meta#79). VERSION 2 (2026-09-21, owner's delegate) adds cases and changes none: default-deny applies to MUTATING methods only, `GET`, `HEAD` and `OPTIONS` being the safe methods of RFC 9110 §9.2.1, so a safe method on a route declaring \"none\" proceeds as a visitor instead of answering 500. `route.method` is the method the request will actually be handled as — never a method-override header, and for a framework that dispatches HEAD to the GET handler (Express does) a HEAD of a route declared for GET arrives here as the requirement GET declared. It is compared case-insensitively; scope literals are compared exactly, and the bearer scheme case-insensitively. THE EXEMPTION IS FROM DEFAULT-DENY ONLY: a safe method on a route that DID declare a session or a scope is enforced exactly as a POST is. Read \"none\" precisely: it means the route DECLARED that no credential is needed. It is not the same thing as a route an adapter could find no declaration for — \"undeclared\" has no representation in this file, and an adapter must treat a resolver miss as a loud failure (the 500 above) and never as \"none\". Everything about how an adapter binds a requirement to a route — prefix-mounted routers, trailing slashes, case-variant paths, parameterised paths, `app.all` handlers answering OPTIONS — is outside this file's reach and is the adapter's own obligation to test. VERSION 3 (2026-09-25, meta#87) adds cases and changes none: an active answer may leave the `scope` key out, as RFC 7662 allows, and a client reads the absence exactly as `\"scope\":\"\"` — no scopes, never a malformed answer. The center itself always sends the key (auth-service#4), so these cases are a client's obligation only and are not ones the center can produce.",
+  "version": 3,
   "contract": {
     "endpoint": {
       "method": "POST",
@@ -155,6 +155,42 @@
           "kind": "operator",
           "scopes": []
         },
+        "centerCalls": 1
+      }
+    },
+    {
+      "name": "session-route-with-token-lacking-scope-key",
+      "why": "The previous case with the `scope` KEY absent rather than empty. RFC 7662 makes `scope` OPTIONAL on an active answer, and until auth-service#4 the center left it out for a token carrying no scopes. A client that reads the missing key as a malformed answer turns every scopeless session into a 503 (ts-introspection-client 1.0.0–1.1.0 did, in production). Absent means no scopes: the identity carries an empty list, exactly as for `\"scope\":\"\"`. A `scope` that is present but not a string is still a center the client does not understand.",
+      "route": { "method": "GET", "requires": "session" },
+      "request": { "authorization": "Bearer guest.token.two" },
+      "center": {
+        "status": 200,
+        "body": "{\"active\":true,\"sub\":\"user_31qP8k2cQeXampleGuest\",\"exp\":4102444800,\"kind\":\"operator\"}"
+      },
+      "expect": {
+        "outcome": "proceed",
+        "identity": {
+          "sub": "user_31qP8k2cQeXampleGuest",
+          "kind": "operator",
+          "scopes": []
+        },
+        "centerCalls": 1
+      }
+    },
+    {
+      "name": "scoped-route-with-token-lacking-scope-key",
+      "why": "The partner of the case above, so it cannot be passed by reading an absent `scope` as \"any scope\" or by skipping the scope check when the key is missing. No scopes means the route's scope is missing: 403 with the generic sentence, not 503 and not a proceed.",
+      "route": { "method": "POST", "requires": "fleet:control" },
+      "request": { "authorization": "Bearer guest.token.two" },
+      "center": {
+        "status": 200,
+        "body": "{\"active\":true,\"sub\":\"user_31qP8k2cQeXampleGuest\",\"exp\":4102444800,\"kind\":\"operator\"}"
+      },
+      "expect": {
+        "outcome": "reject",
+        "status": 403,
+        "message": "this action requires a scope this session does not carry",
+        "messageMustNotContain": ["fleet:control"],
         "centerCalls": 1
       }
     },
@@ -570,6 +606,16 @@
       "center": {
         "status": 200,
         "body": "{\"active\":true,\"sub\":\"user_31qP8k2cQeXampleOperator\",\"scope\":\"fleet:control\",\"exp\":4102444800,\"kind\":\"operator\"}"
+      },
+      "expect": { "outcome": "lane", "lane": "interactive", "centerCalls": 1 }
+    },
+    {
+      "name": "gateway-active-operator-lacking-scope-key",
+      "why": "An active operator whose answer carries no `scope` key (RFC 7662 allows it; the center sent it until auth-service#4). The lane is decided by `kind`, so this is `interactive`. A gateway that read the missing key as an unreadable answer would drop every scopeless operator into `background`, quietly and with no error anywhere.",
+      "request": { "authorization": "Bearer guest.token.two" },
+      "center": {
+        "status": 200,
+        "body": "{\"active\":true,\"sub\":\"user_31qP8k2cQeXampleGuest\",\"exp\":4102444800,\"kind\":\"operator\"}"
       },
       "expect": { "outcome": "lane", "lane": "interactive", "centerCalls": 1 }
     },
