@@ -132,6 +132,7 @@ func TestOversizedRequestBodyIsRejected(t *testing.T) {
 	body := `{"shipSymbol":"S","tradeSymbol":"` + strings.Repeat("A", maxBodyBytes) + `","units":1}`
 	req := httptest.NewRequest(http.MethodPost, "/api/agent/v1/contracts/abc/deliveries", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", bearer())
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

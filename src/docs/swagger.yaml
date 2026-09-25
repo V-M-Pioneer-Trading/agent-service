@@ -477,6 +477,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -505,6 +509,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -541,6 +549,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -579,6 +591,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -609,6 +625,10 @@ paths:
           description: failed to load deliveries
           schema:
             type: string
+        "503":
+          description: a token was presented and auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
       summary: List recorded deliveries for a contract
       tags:
       - contracts
@@ -616,7 +636,7 @@ paths:
       consumes:
       - application/json
       description: Called by fleet-service after a successful deliver-contract action
-        on SpaceTraders.
+        on SpaceTraders, forwarding its caller's session.
       parameters:
       - description: Contract ID
         in: path
@@ -640,10 +660,24 @@ paths:
           description: invalid request body
           schema:
             type: string
+        "401":
+          description: no verified session
+          schema:
+            $ref: '#/definitions/api.authError'
+        "403":
+          description: session lacks fleet:control
+          schema:
+            $ref: '#/definitions/api.authError'
         "500":
           description: failed to record delivery
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
+      security:
+      - BearerAuth: []
       summary: Record a contract delivery (internal)
       tags:
       - contracts
@@ -676,6 +710,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -703,6 +741,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -731,6 +773,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -767,6 +813,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -817,6 +867,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -867,6 +921,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -912,6 +970,10 @@ paths:
           description: st-gateway answered with something unreadable
           schema:
             type: string
+        "503":
+          description: auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
         "504":
           description: st-gateway did not answer
           schema:
@@ -960,12 +1022,17 @@ paths:
           description: failed to load transactions
           schema:
             type: string
+        "503":
+          description: a token was presented and auth-service could not be asked
+          schema:
+            $ref: '#/definitions/api.authError'
       summary: List recorded transactions
       tags:
       - ships
 securityDefinitions:
   BearerAuth:
-    description: Clerk session token, as "Bearer <jwt>".
+    description: Clerk session token, as "Bearer <jwt>". Verified by auth-service,
+      not here.
     in: header
     name: Authorization
     type: apiKey

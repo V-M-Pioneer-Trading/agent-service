@@ -1,113 +1,121 @@
 package api
 
-// Test credentials: an ephemeral keypair, generated once per test binary run.
+// Test support: a stub auth-service center, not a keypair.
 //
-// Tests exercise the real verification path in auth.go — there is no stub
-// verifier and no bypass flag. Only the trust anchor differs from production,
-// matching the same approach as automation-service and fleet-service's
-// testSupport/authTokens.ts.
+// agent-service no longer verifies tokens (auth-design.md decision 21), so its
+// tests sign nothing. A test router's guard talks over real HTTP to a stub
+// center that answers from a fixed table of opaque token strings — the same
+// arrangement meta/fixtures/introspection.json prescribes, and the one the
+// conformance suite in package introspection uses. The token strings are
+// deliberately not JWTs.
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"encoding/pem"
+	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"strings"
+	"net/url"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/golang-jwt/jwt/v5"
 
+	"vnm/agent-info-service/introspection"
 	"vnm/agent-info-service/spacetraders"
 )
 
-var (
-	testPrivateKey, testPublicKey = mustGenerateKeyPair()
-	foreignPrivateKey, _          = mustGenerateKeyPair()
-	testClerkPublicKeyPEM         = mustEncodePublicKeyPEM(testPublicKey)
+const (
+	testIntrospectionPath   = "/auth/v1/introspect"
+	testIntrospectionSecret = "api-test-introspection-secret"
+
+	tokenOperator        = "operator.fleet-control"
+	tokenOperatorNoScope = "operator.no-scope"
+	tokenMachine         = "machine.fleet-control"
+	tokenInactive        = "inactive.token"
 )
 
-func mustGenerateKeyPair() (*rsa.PrivateKey, *rsa.PublicKey) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+// centerAnswers is what the stub center says about each token. Anything not
+// listed is {"active":false}, as the real center answers for a token it cannot
+// verify.
+var centerAnswers = map[string]string{
+	tokenOperator:        `{"active":true,"sub":"user_2TestOperator","scope":"fleet:control","exp":4102444800,"kind":"operator"}`,
+	tokenOperatorNoScope: `{"active":true,"sub":"user_2TestGuest","exp":4102444800,"kind":"operator"}`,
+	tokenMachine:         `{"active":true,"sub":"mch_2TestMachine","scope":"fleet:control agent:reset","exp":4102444800,"kind":"machine"}`,
+}
+
+// bearer is an operator holding fleet:control.
+func bearer() string { return "Bearer " + tokenOperator }
+
+// bearerWithoutScope is a verified session carrying no scope at all.
+func bearerWithoutScope() string { return "Bearer " + tokenOperatorNoScope }
+
+// machineBearer is automation-service's M2M token.
+func machineBearer() string { return "Bearer " + tokenMachine }
+
+// inactiveBearer is a token the center does not accept: expired, foreign,
+// forged — the center does not say which, and neither does this service.
+func inactiveBearer() string { return "Bearer " + tokenInactive }
+
+// testCenter is a stub auth-service.
+type testCenter struct {
+	url   string
+	calls atomic.Int64
+}
+
+func (c *testCenter) Calls() int { return int(c.calls.Load()) }
+
+func newTestCenter(t *testing.T) *testCenter {
+	t.Helper()
+	c := &testCenter{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c.calls.Add(1)
+		if r.Method != http.MethodPost || r.URL.Path != testIntrospectionPath || r.URL.RawQuery != "" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get(introspection.SecretHeader) != testIntrospectionSecret {
+			w.WriteHeader(http.StatusUnauthorized)
+			io.WriteString(w, `{"error":{"message":"a valid introspection secret is required"}}`)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		form, err := url.ParseQuery(string(body))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		answer, ok := centerAnswers[form.Get("token")]
+		if !ok {
+			answer = `{"active":false}`
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, answer)
+	}))
+	t.Cleanup(server.Close)
+	c.url = server.URL + testIntrospectionPath
+	return c
+}
+
+// deadCenterURL is an introspection URL on a port nothing listens on.
+func deadCenterURL(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
-	return key, &key.PublicKey
+	addr := ln.Addr().String()
+	ln.Close()
+	return "http://" + addr + testIntrospectionPath
 }
 
-func mustEncodePublicKeyPEM(key *rsa.PublicKey) string {
-	der, err := x509.MarshalPKIXPublicKey(key)
-	if err != nil {
-		panic(err)
-	}
-	return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}))
-}
-
-type testTokenOptions struct {
-	scopes           []string
-	sub              string
-	expiresInSeconds int
-	issuer           string
-}
-
-func signTestToken(key *rsa.PrivateKey, opts testTokenOptions) string {
-	if opts.sub == "" {
-		opts.sub = "user_2TestOperator"
-	}
-	if opts.expiresInSeconds == 0 {
-		opts.expiresInSeconds = 300
-	}
-	scope := strings.Join(opts.scopes, " ")
-
-	claims := jwt.MapClaims{
-		"sub":   opts.sub,
-		"scope": scope,
-		"iat":   time.Now().Unix(),
-		"exp":   time.Now().Add(time.Duration(opts.expiresInSeconds) * time.Second).Unix(),
-	}
-	if opts.issuer != "" {
-		claims["iss"] = opts.issuer
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	signed, err := token.SignedString(key)
-	if err != nil {
-		panic(err)
-	}
-	return signed
-}
-
-// bearer returns a ready-to-use Authorization header value for an operator
-// with fleet:control.
-func bearer() string {
-	return "Bearer " + signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEFleetControl}})
-}
-
-// bearerWithoutScope returns a signed-in operator who holds no scope at all.
-func bearerWithoutScope() string {
-	return "Bearer " + signTestToken(testPrivateKey, testTokenOptions{scopes: []string{}})
-}
-
-// expiredBearer returns a well-formed token whose exp has already passed.
-func expiredBearer() string {
-	return "Bearer " + signTestToken(testPrivateKey, testTokenOptions{scopes: []string{SCOPEFleetControl}, expiresInSeconds: -60})
-}
-
-// foreignBearer is correctly shaped, correct scopes, valid exp — signed by a
-// key the service has never seen. The one token that proves the signature is
-// actually checked rather than the payload merely being decoded.
-func foreignBearer() string {
-	return "Bearer " + signTestToken(foreignPrivateKey, testTokenOptions{scopes: []string{SCOPEFleetControl}})
-}
-
-func testAuthConfig() AuthConfig {
-	return AuthConfig{ClerkJWTKeyPEM: testClerkPublicKeyPEM}
+func guardFor(centerURL string) *introspection.Guard {
+	quiet := log.New(io.Discard, "", 0)
+	return introspection.NewGuard(introspection.NewClient(introspection.Config{
+		URL: centerURL, Secret: testIntrospectionSecret,
+	}, quiet), quiet)
 }
 
 // Column lists mirroring the SELECTs in package db, so a stubbed row set
@@ -118,16 +126,25 @@ var (
 	deliveryColumns = []string{"contract_id", "ship_symbol", "trade_symbol", "units", "delivered_at"}
 )
 
-// newTestRouter builds the real router. Both dependencies are injected rather
-// than discovered from process environment, so tests never mutate global state
-// and can run in any order.
+// newTestRouter builds the real router against a fresh stub center.
+// Dependencies are injected rather than discovered from process environment,
+// so tests never mutate global state and can run in any order.
 func newTestRouter(t *testing.T, conn *sql.DB, st *spacetraders.Client) http.Handler {
 	t.Helper()
-	router, err := SetUpRouter(conn, st, testAuthConfig())
+	router, _ := newTestRouterWithCenter(t, conn, st)
+	return router
+}
+
+// newTestRouterWithCenter also returns the stub center, for tests that count
+// calls to it.
+func newTestRouterWithCenter(t *testing.T, conn *sql.DB, st *spacetraders.Client) (http.Handler, *testCenter) {
+	t.Helper()
+	center := newTestCenter(t)
+	router, err := SetUpRouter(conn, st, guardFor(center.url))
 	if err != nil {
 		t.Fatalf("SetUpRouter: %v", err)
 	}
-	return router
+	return router, center
 }
 
 // stubGateway stands in for st-gateway and returns a client pointed at it.
@@ -159,8 +176,4 @@ func decodeAuthError(t *testing.T, rec *httptest.ResponseRecorder) string {
 		t.Fatalf("decoding auth error %q: %v", rec.Body.String(), err)
 	}
 	return body.Error.Message
-}
-
-func writeFile(path, contents string) error {
-	return os.WriteFile(path, []byte(contents), 0o600)
 }

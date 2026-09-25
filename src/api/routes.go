@@ -16,6 +16,7 @@ import (
 
 	"vnm/agent-info-service/db"
 	_ "vnm/agent-info-service/docs"
+	"vnm/agent-info-service/introspection"
 	"vnm/agent-info-service/spacetraders"
 	"vnm/agent-info-service/spacetraders/schema"
 )
@@ -57,42 +58,54 @@ type handlers struct {
 	st   *spacetraders.Client
 }
 
-// SetUpRouter wires every route to one of three access tiers. st may be nil
-// only when no SpaceTraders-backed route will be exercised.
-func SetUpRouter(conn *sql.DB, st *spacetraders.Client, auth AuthConfig) (*mux.Router, error) {
-	h := &handlers{conn: conn, st: st}
-	v, err := newVerifier(auth)
-	if err != nil {
-		return nil, err
+// SetUpRouter wires every route to one of its access tiers and refuses to
+// build a router in which any route is undeclared, or any mutating route
+// declares no session or scope. st may be nil only when no SpaceTraders-backed
+// route will be exercised.
+func SetUpRouter(conn *sql.DB, st *spacetraders.Client, guard *introspection.Guard) (*mux.Router, error) {
+	if guard == nil {
+		return nil, errors.New("SetUpRouter: an introspection guard is required")
 	}
+	h := &handlers{conn: conn, st: st}
 
-	// The three access tiers, named once (auth-design.md decision 18):
+	// The access tiers, named once. Tokens are verified by auth-service
+	// (auth-design.md decision 21); what each tier asks of the answer is
+	// decided here and nowhere else.
 	//
 	//   read   — forwards live to SpaceTraders on the fleet's credential (which
-	//            st-gateway injects, decision 5): a signed-in Clerk session, no
-	//            particular scope. Not anonymous: these are reads about the one
-	//            account, and decision 3 allows anonymous live reads only where a
-	//            visitor cannot expand them.
+	//            st-gateway injects, decision 5): a verified session, no
+	//            particular scope (decision 18). Not anonymous: these are reads
+	//            about the one account, and decision 3 allows anonymous live
+	//            reads only where a visitor cannot expand them.
 	//   write  — mutations, which additionally need fleet:control, same as
-	//            fleet-service.
+	//            fleet-service. Includes recording a delivery (meta#71).
 	//   public — reads served entirely from this service's own MySQL history.
-	//            They never call SpaceTraders, so there is no credential
-	//            problem to gate against; matches decision 2 and
-	//            automation-service's Postgres-backed reads.
-	read := func(next http.HandlerFunc) http.HandlerFunc {
-		return v.requireSession(forwardCallerSession(next))
+	//            A visitor with no header is served; a presented token is still
+	//            introspected, and a bad one is a 401, never a visitor.
+	//   ignore — health and Swagger: the header is never read and the center
+	//            never called, so they keep answering while auth-service is down.
+	read := func(next http.HandlerFunc) introspection.Declared {
+		return guard.Require(introspection.Session(), forwardCallerSession(next))
 	}
-	write := func(next http.HandlerFunc) http.HandlerFunc {
-		return v.requireScope(SCOPEFleetControl, forwardCallerSession(next))
+	write := func(next http.HandlerFunc) introspection.Declared {
+		return guard.Require(introspection.Scope(SCOPEFleetControl), forwardCallerSession(next))
+	}
+	public := func(next http.HandlerFunc) introspection.Declared {
+		return guard.Require(introspection.None(), next)
+	}
+	ignore := func(next http.Handler) introspection.Declared {
+		return introspection.IgnoreCredentials(next)
 	}
 
 	r := mux.NewRouter()
 	r.Use(loggingMiddleware, corsMiddleware())
-	// Catch-all for CORS preflight: corsMiddleware answers OPTIONS requests itself and
-	// never calls this handler, but a route has to exist here for OPTIONS to match at all.
-	r.Methods(http.MethodOptions).HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	// Catch-all for CORS preflight: corsMiddleware answers OPTIONS requests
+	// itself, in front of any guard, and never calls this handler, but a route
+	// has to exist here for OPTIONS to match at all. Declared none because it
+	// is: a preflight carries no Authorization header by definition.
+	r.Methods(http.MethodOptions).Handler(public(func(http.ResponseWriter, *http.Request) {}))
 
-	r.HandleFunc("/health", handleHealth).Methods(http.MethodGet)
+	getRoute(r, "/health", ignore(http.HandlerFunc(handleHealth)))
 
 	agentAPI := r.PathPrefix("/api/agent").Subrouter()
 
@@ -100,32 +113,37 @@ func SetUpRouter(conn *sql.DB, st *spacetraders.Client, auth AuthConfig) (*mux.R
 	// tooling and stay directly under /api/agent, not nested under /v1. Health
 	// is mounted both bare above (local dev/compose) and here (production
 	// CloudFront only routes requests matching a configured path pattern).
-	agentAPI.HandleFunc("/health", handleHealth).Methods(http.MethodGet)
+	getRoute(agentAPI, "/health", ignore(http.HandlerFunc(handleHealth)))
 
 	v1 := agentAPI.PathPrefix("/v1").Subrouter()
 
-	v1.HandleFunc("/current-agent", read(h.getCurrentAgent)).Methods(http.MethodGet)
-	v1.HandleFunc("/agent", read(h.getAgent)).Methods(http.MethodGet)
-	v1.HandleFunc("/ships", read(h.getShips)).Methods(http.MethodGet)
-	v1.HandleFunc("/ships/{shipSymbol}", read(h.getShip)).Methods(http.MethodGet)
-	v1.HandleFunc("/contracts", read(h.getContracts)).Methods(http.MethodGet)
-	v1.HandleFunc("/contracts/{contractId}", read(h.getContract)).Methods(http.MethodGet)
+	getRoute(v1, "/current-agent", read(h.getCurrentAgent))
+	getRoute(v1, "/agent", read(h.getAgent))
+	getRoute(v1, "/ships", read(h.getShips))
+	getRoute(v1, "/ships/{shipSymbol}", read(h.getShip))
+	getRoute(v1, "/contracts", read(h.getContracts))
+	getRoute(v1, "/contracts/{contractId}", read(h.getContract))
 
-	v1.HandleFunc("/contracts/{contractId}/accept", write(h.acceptContract)).Methods(http.MethodPost)
-	v1.HandleFunc("/contracts/{contractId}/fulfill", write(h.fulfillContract)).Methods(http.MethodPost)
-	v1.HandleFunc("/ships/purchase", write(h.purchaseShip)).Methods(http.MethodPost)
-	v1.HandleFunc("/ships/{shipSymbol}/purchase", write(h.purchaseCargo)).Methods(http.MethodPost)
-	v1.HandleFunc("/ships/{shipSymbol}/sell", write(h.sellCargo)).Methods(http.MethodPost)
+	postRoute(v1, "/contracts/{contractId}/accept", write(h.acceptContract))
+	postRoute(v1, "/contracts/{contractId}/fulfill", write(h.fulfillContract))
+	postRoute(v1, "/ships/purchase", write(h.purchaseShip))
+	postRoute(v1, "/ships/{shipSymbol}/purchase", write(h.purchaseCargo))
+	postRoute(v1, "/ships/{shipSymbol}/sell", write(h.sellCargo))
+	// Called by fleet-service after a successful deliver-contract, forwarding
+	// its own caller's bearer (meta#80 step 5). Unauthenticated before meta#71.
+	postRoute(v1, "/contracts/{contractId}/deliveries", write(h.recordDelivery))
 
-	// recordDelivery is an internal call from fleet-service, not a browser
-	// route. It is the one *write* on this tier — see "known limitations" in
-	// the README.
-	v1.HandleFunc("/contracts/{contractId}/deliveries", h.recordDelivery).Methods(http.MethodPost)
-	v1.HandleFunc("/contracts/{contractId}/deliveries", h.getDeliveries).Methods(http.MethodGet)
-	v1.HandleFunc("/transactions", h.getTransactions).Methods(http.MethodGet)
+	getRoute(v1, "/contracts/{contractId}/deliveries", public(h.getDeliveries))
+	getRoute(v1, "/transactions", public(h.getTransactions))
 
-	agentAPI.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+	// GET and HEAD only: Swagger never needed another method, and a route
+	// answering every method would be a mutating route declaring nothing.
+	agentAPI.PathPrefix("/swagger/").Handler(ignore(httpSwagger.WrapHandler)).
+		Methods(http.MethodGet, http.MethodHead)
 
+	if err := secureRouter(r); err != nil {
+		return nil, err
+	}
 	return r, nil
 }
 
@@ -139,6 +157,7 @@ func SetUpRouter(conn *sql.DB, st *spacetraders.Client, auth AuthConfig) (*mux.R
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
 // @Failure      502  {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504  {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /current-agent [get]
 func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 	var response CurrentAgentResponse
@@ -172,6 +191,7 @@ func (h *handlers) getCurrentAgent(w http.ResponseWriter, r *http.Request) {
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
 // @Failure      502  {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504  {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /agent [get]
 func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 	agent, err := h.st.GetMyAgent(r.Context())
@@ -187,6 +207,7 @@ func (h *handlers) getAgent(w http.ResponseWriter, r *http.Request) {
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
 // @Failure      502  {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504  {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships [get]
 func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 	ships, err := h.st.GetMyShips(r.Context())
@@ -204,6 +225,7 @@ func (h *handlers) getShips(w http.ResponseWriter, r *http.Request) {
 // @Failure      404         {string}  string     "ship not found"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships/{shipSymbol} [get]
 func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 	ship, err := h.st.GetMyShip(r.Context(), mux.Vars(r)["shipSymbol"])
@@ -219,6 +241,7 @@ func (h *handlers) getShip(w http.ResponseWriter, r *http.Request) {
 // @Failure      401  {object}  authError  "no Clerk session, or no game token"
 // @Failure      502  {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504  {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /contracts [get]
 func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 	contracts, err := h.st.GetMyContracts(r.Context())
@@ -236,6 +259,7 @@ func (h *handlers) getContracts(w http.ResponseWriter, r *http.Request) {
 // @Failure      404         {string}  string     "contract not found"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /contracts/{contractId} [get]
 func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 	contract, err := h.st.GetMyContract(r.Context(), mux.Vars(r)["contractId"])
@@ -254,6 +278,7 @@ func (h *handlers) getContract(w http.ResponseWriter, r *http.Request) {
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /contracts/{contractId}/accept [post]
 func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 	h.contractStateChange(w, r, h.st.AcceptContract)
@@ -271,6 +296,7 @@ func (h *handlers) acceptContract(w http.ResponseWriter, r *http.Request) {
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /contracts/{contractId}/fulfill [post]
 func (h *handlers) fulfillContract(w http.ResponseWriter, r *http.Request) {
 	h.contractStateChange(w, r, h.st.FulfillContract)
@@ -294,15 +320,19 @@ func (h *handlers) contractStateChange(
 
 // recordDelivery godoc
 // @Summary      Record a contract delivery (internal)
-// @Description  Called by fleet-service after a successful deliver-contract action on SpaceTraders.
+// @Description  Called by fleet-service after a successful deliver-contract action on SpaceTraders, forwarding its caller's session.
 // @Tags         contracts
+// @Security     BearerAuth
 // @Accept       json
 // @Produce      json
 // @Param        contractId  path      string           true  "Contract ID"
 // @Param        delivery    body      deliveryRequest  true  "Delivery details"
 // @Success      200         {object}  db.Delivery
-// @Failure      400         {string}  string  "invalid request body"
-// @Failure      500         {string}  string  "failed to record delivery"
+// @Failure      400         {string}  string     "invalid request body"
+// @Failure      401         {object}  authError  "no verified session"
+// @Failure      403         {object}  authError  "session lacks fleet:control"
+// @Failure      500         {string}  string     "failed to record delivery"
+// @Failure      503         {object}  authError  "auth-service could not be asked"
 // @Router       /contracts/{contractId}/deliveries [post]
 func (h *handlers) recordDelivery(w http.ResponseWriter, r *http.Request) {
 	var body deliveryRequest
@@ -335,6 +365,7 @@ func (h *handlers) recordDelivery(w http.ResponseWriter, r *http.Request) {
 // @Param        contractId  path      string  true  "Contract ID"
 // @Success      200         {array}   db.Delivery
 // @Failure      500         {string}  string  "failed to load deliveries"
+// @Failure      503  {object}  authError  "a token was presented and auth-service could not be asked"
 // @Router       /contracts/{contractId}/deliveries [get]
 func (h *handlers) getDeliveries(w http.ResponseWriter, r *http.Request) {
 	deliveries, err := db.GetDeliveriesForContract(h.conn, mux.Vars(r)["contractId"])
@@ -359,6 +390,7 @@ func (h *handlers) getDeliveries(w http.ResponseWriter, r *http.Request) {
 // @Failure      403   {object}  authError  "session lacks fleet:control"
 // @Failure      502   {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504   {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships/purchase [post]
 func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
 	var body purchaseShipRequest
@@ -403,6 +435,7 @@ func (h *handlers) purchaseShip(w http.ResponseWriter, r *http.Request) {
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships/{shipSymbol}/purchase [post]
 func (h *handlers) purchaseCargo(w http.ResponseWriter, r *http.Request) {
 	h.tradeCargo(w, r, db.CargoPurchase, h.st.PurchaseCargo)
@@ -423,6 +456,7 @@ func (h *handlers) purchaseCargo(w http.ResponseWriter, r *http.Request) {
 // @Failure      403         {object}  authError  "session lacks fleet:control"
 // @Failure      502         {string}  string     "st-gateway answered with something unreadable"
 // @Failure      504         {string}  string     "st-gateway did not answer"
+// @Failure      503  {object}  authError  "auth-service could not be asked"
 // @Router       /ships/{shipSymbol}/sell [post]
 func (h *handlers) sellCargo(w http.ResponseWriter, r *http.Request) {
 	h.tradeCargo(w, r, db.CargoSell, h.st.SellCargo)
@@ -479,6 +513,7 @@ func (h *handlers) tradeCargo(
 // @Success      200         {array}   db.Transaction
 // @Failure      400         {string}  string  "invalid query parameter"
 // @Failure      500         {string}  string  "failed to load transactions"
+// @Failure      503  {object}  authError  "a token was presented and auth-service could not be asked"
 // @Router       /transactions [get]
 func (h *handlers) getTransactions(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()

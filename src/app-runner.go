@@ -8,6 +8,7 @@ import (
 
 	"vnm/agent-info-service/api"
 	"vnm/agent-info-service/db"
+	"vnm/agent-info-service/introspection"
 	"vnm/agent-info-service/spacetraders"
 )
 
@@ -29,23 +30,25 @@ const (
 // @securityDefinitions.apikey  BearerAuth
 // @in                          header
 // @name                        Authorization
-// @description                 Clerk session token, as "Bearer <jwt>".
+// @description                 Clerk session token, as "Bearer <jwt>". Verified by auth-service, not here.
 func main() {
+	// Introspection config first, before the database wait: it is instant, and
+	// a missing AUTH_INTROSPECTION_* must crash the container within the
+	// bootstrap script's liveness window rather than after a slow MySQL ping
+	// loop has already made it look healthy. No error here echoes the secret.
+	introspectionConfig, err := introspection.LoadConfig(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	conn, err := db.SetUpDatabase()
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer conn.Close()
 
-	clerkJWTKey, err := api.RequireClerkJWTKey()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	router, err := api.SetUpRouter(conn, spacetraders.NewClient(), api.AuthConfig{
-		ClerkJWTKeyPEM: clerkJWTKey,
-		ClerkIssuer:    os.Getenv("CLERK_ISSUER"),
-	})
+	guard := introspection.NewGuard(introspection.NewClient(introspectionConfig, nil), nil)
+	router, err := api.SetUpRouter(conn, spacetraders.NewClient(), guard)
 	if err != nil {
 		log.Fatal(err)
 	}
