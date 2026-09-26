@@ -86,8 +86,8 @@ func (g *guarded) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // never a credential, whatever they hold: picking one would let a caller
 // choose which of two credentials this service verifies, and folding them
 // the way a proxy does ("Bearer a, Bearer b") is not safe either, because a
-// second empty line folds to "Bearer a, " and reads as the token "a,". The
-// count decides, independent of content, so the center is never asked.
+// second empty line folds to "Bearer a, " and asks the center about the
+// token "a," nobody sent. The count decides, independent of content.
 // Header.Get alone would silently pick the first.
 func authorizationHeader(r *http.Request) string {
 	values := r.Header.Values("Authorization")

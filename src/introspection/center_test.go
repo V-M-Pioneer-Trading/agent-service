@@ -381,7 +381,7 @@ func TestBearerVariants(t *testing.T) {
 	// count decides: a second empty line must not fold into "Bearer a, " and
 	// become the token "a,", and two full lines must not let the caller pick
 	// which one is verified. Sent as raw bytes so the wire carries exactly the
-	// lines under test; a Go client may drop an empty header value.
+	// lines under test, independent of how any client serializes headers.
 	for _, c := range []struct{ name, second string }{
 		{"two Authorization lines, second empty", ""},
 		{"two Authorization lines, both non-empty", "Bearer b"},
@@ -393,7 +393,7 @@ func TestBearerVariants(t *testing.T) {
 				t.Error("handler ran")
 			}))
 			srv := httptest.NewServer(handler)
-			defer srv.Close()
+			t.Cleanup(srv.Close)
 			status, body := sendRaw(t, srv, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n"+
 				"Authorization: Bearer a\r\nAuthorization: "+c.second+"\r\n\r\n")
 			if status != http.StatusUnauthorized {
@@ -413,11 +413,14 @@ func TestBearerVariants(t *testing.T) {
 // code and body of the reply.
 func sendRaw(t *testing.T, srv *httptest.Server, raw string) (int, string) {
 	t.Helper()
-	conn, err := net.Dial("tcp", strings.TrimPrefix(srv.URL, "http://"))
+	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := io.WriteString(conn, raw); err != nil {
 		t.Fatal(err)
 	}
