@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strings"
 )
 
 // Declaration is what a route handler declares about credentials. It is
@@ -82,13 +81,20 @@ func (g *guarded) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.next.ServeHTTP(w, r)
 }
 
-// authorizationHeader returns the Authorization header as one value. Two
-// header lines are joined the way a proxy would fold them ("Bearer a, Bearer
-// b"), which is four parts and therefore no credential: picking one would let
-// a caller choose which of two credentials this service verifies.
+// authorizationHeader returns the Authorization header as one value, or ""
+// when the request carries more than one Authorization line. Two lines are
+// never a credential, whatever they hold: picking one would let a caller
+// choose which of two credentials this service verifies, and folding them
+// the way a proxy does ("Bearer a, Bearer b") is not safe either, because a
+// second empty line folds to "Bearer a, " and reads as the token "a,". The
+// count decides, independent of content, so the center is never asked.
 // Header.Get alone would silently pick the first.
 func authorizationHeader(r *http.Request) string {
-	return strings.Join(r.Header.Values("Authorization"), ", ")
+	values := r.Header.Values("Authorization")
+	if len(values) != 1 {
+		return ""
+	}
+	return values[0]
 }
 
 // Require wraps next in the policy for req. The returned handler carries the
