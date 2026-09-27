@@ -1,6 +1,6 @@
 {
-  "$comment": "Canonical token-introspection conditions: what auth-service (the center) answers, and what a calling service must answer its own caller for each. Source of truth for the conformance tests in the TS introspection client package (fleet-service, automation-service, st-gateway), agent-service (Go) and navigation-service (Java), which vendor this file verbatim. See ../docs/design/token-introspection.md and auth-design.md decision 21. DECIDED 2026-09-20, NOT SHIPPED: no service behaves this way yet — rollout is meta#80. Assertion vocabulary: a case is a route declaration, an inbound Authorization header, a stubbed center, and the expected outcome. `route.requires` is \"none\" (no credential declared), \"session\" (any verified session) or a scope literal. `expect.outcome` is \"proceed\" (the middleware ran the handler) or \"reject\". `expect.identity` is the {sub, kind, scopes} handed to the handler, or null for a visitor; `kind` is the center's answer and must be used verbatim, never re-derived from the `sub` prefix, and `scopes` is the `scope` string split on whitespace RUNS with empties discarded, matching every verifier live today. `expect.centerCalls` is how many HTTP requests the client made to the center for this one inbound request — 0 and 1 are both assertions, and 2 fails. An unknown key in `expect` must fail the case rather than be skipped, or a copy that falls behind quietly checks less. No case may be satisfiable by an empty or absent answer: every rejection asserts its exact message, every proceed asserts the identity, and every case asserts the call count (meta#79). VERSION 2 (2026-09-21, owner's delegate) adds cases and changes none: default-deny applies to MUTATING methods only, `GET`, `HEAD` and `OPTIONS` being the safe methods of RFC 9110 §9.2.1, so a safe method on a route declaring \"none\" proceeds as a visitor instead of answering 500. `route.method` is the method the request will actually be handled as — never a method-override header, and for a framework that dispatches HEAD to the GET handler (Express does) a HEAD of a route declared for GET arrives here as the requirement GET declared. It is compared case-insensitively; scope literals are compared exactly, and the bearer scheme case-insensitively. THE EXEMPTION IS FROM DEFAULT-DENY ONLY: a safe method on a route that DID declare a session or a scope is enforced exactly as a POST is. Read \"none\" precisely: it means the route DECLARED that no credential is needed. It is not the same thing as a route an adapter could find no declaration for — \"undeclared\" has no representation in this file, and an adapter must treat a resolver miss as a loud failure (the 500 above) and never as \"none\". Everything about how an adapter binds a requirement to a route — prefix-mounted routers, trailing slashes, case-variant paths, parameterised paths, `app.all` handlers answering OPTIONS — is outside this file's reach and is the adapter's own obligation to test. VERSION 3 (2026-09-25, meta#87) adds cases and changes none: an active answer may leave the `scope` key out, as RFC 7662 allows, and a client reads the absence exactly as `\"scope\":\"\"` — no scopes, never a malformed answer. The center itself always sends the key (auth-service#4), so these cases are a client's obligation only and are not ones the center can produce.",
-  "version": 3,
+  "$comment": "Canonical token-introspection conditions: what auth-service (the center) answers, and what a calling service must answer its own caller for each. Source of truth for the conformance tests in the TS introspection client package (fleet-service, automation-service, st-gateway), agent-service (Go) and navigation-service (Java), which vendor this file verbatim. See ../docs/design/token-introspection.md and auth-design.md decision 21. DECIDED 2026-09-20, NOT SHIPPED: no service behaves this way yet — rollout is meta#80. Assertion vocabulary: a case is a route declaration, an inbound Authorization header, a stubbed center, and the expected outcome. `route.requires` is \"none\" (no credential declared), \"session\" (any verified session) or a scope literal. `expect.outcome` is \"proceed\" (the middleware ran the handler) or \"reject\". `expect.identity` is the {sub, kind, scopes} handed to the handler, or null for a visitor; `kind` is the center's answer and must be used verbatim, never re-derived from the `sub` prefix, and `scopes` is the `scope` string split on whitespace RUNS with empties discarded, matching every verifier live today. `expect.centerCalls` is how many HTTP requests the client made to the center for this one inbound request — 0 and 1 are both assertions, and 2 fails. An unknown key in `expect` must fail the case rather than be skipped, or a copy that falls behind quietly checks less. No case may be satisfiable by an empty or absent answer: every rejection asserts its exact message, every proceed asserts the identity, and every case asserts the call count (meta#79). VERSION 2 (2026-09-21, owner's delegate) adds cases and changes none: default-deny applies to MUTATING methods only, `GET`, `HEAD` and `OPTIONS` being the safe methods of RFC 9110 §9.2.1, so a safe method on a route declaring \"none\" proceeds as a visitor instead of answering 500. `route.method` is the method the request will actually be handled as — never a method-override header, and for a framework that dispatches HEAD to the GET handler (Express does) a HEAD of a route declared for GET arrives here as the requirement GET declared. It is compared case-insensitively; scope literals are compared exactly, and the bearer scheme case-insensitively. THE EXEMPTION IS FROM DEFAULT-DENY ONLY: a safe method on a route that DID declare a session or a scope is enforced exactly as a POST is. Read \"none\" precisely: it means the route DECLARED that no credential is needed. It is not the same thing as a route an adapter could find no declaration for — \"undeclared\" has no representation in this file, and an adapter must treat a resolver miss as a loud failure (the 500 above) and never as \"none\". Everything about how an adapter binds a requirement to a route — prefix-mounted routers, trailing slashes, case-variant paths, parameterised paths, `app.all` handlers answering OPTIONS — is outside this file's reach and is the adapter's own obligation to test. VERSION 3 (2026-09-25, meta#87) adds cases and changes none: an active answer may leave the `scope` key out, as RFC 7662 allows, and a client reads the absence exactly as `\"scope\":\"\"` — no scopes, never a malformed answer. The center itself always sends the key (auth-service#4), so these cases are a client's obligation only and are not ones the center can produce. VERSION 4 (2026-09-26) adds cases and changes none: `request.authorization` is EITHER a string — one `Authorization` header line, or null for none — OR an array of two or more strings, each element one header line in the order sent, an empty string being an empty line. More than one `Authorization` line, whatever the lines hold, is no credential, and the center is not called. The count comes from the raw header list: never from a value joined with \", \" and then split into parts (Go's `Header.Values` and Tomcat's `getHeaders` keep every line, and joining `Bearer a` with an empty second line invents the token `a,`), and never from a parser that keeps one line and drops the rest (Node's HTTP parser discards duplicate `authorization` lines and keeps the first; only `req.rawHeaders` shows how many arrived). The file holds forty calling-service cases and twelve gateway cases, fifty-two in all.",
+  "version": 4,
   "contract": {
     "endpoint": {
       "method": "POST",
@@ -519,6 +519,40 @@
       }
     },
     {
+      "name": "two-authorization-lines",
+      "why": "Two `Authorization` lines, each a well-formed bearer credential on its own, are no credential at all: 401, the missing-token sentence, and the center is not asked. Picking one lets a caller choose which of two credentials a proxy sees a service verify — a proxy that checks or logs one line while the service verifies the other is the hazard. The count must come from the raw header list. Node's HTTP parser discards duplicate `authorization` lines and keeps the first, so an Express client reading `req.headers.authorization` sees `Bearer a` and asks the center about `a`; only `req.rawHeaders` shows two lines arrived. Go and Java keep both lines, and a client that joins them with \", \" and counts parts gets this one right by accident and the next case wrong.",
+      "route": { "method": "POST", "requires": "fleet:control" },
+      "request": { "authorization": ["Bearer a", "Bearer b"] },
+      "center": { "notCalled": true },
+      "expect": {
+        "outcome": "reject",
+        "status": 401,
+        "message": "a bearer token is required",
+        "centerCalls": 0
+      }
+    },
+    {
+      "name": "two-authorization-lines-second-empty",
+      "why": "The case that caught join-then-count in practice (navigation-service#22, agent-service#27). Go's `Header.Values` and Tomcat's `getHeaders` return both lines; joining them with \", \" gives `Bearer a, `, which trims and splits into exactly two parts, and the client asks the center about the token `a,` — which nobody sent. An empty line is still a line: two lines are no credential whatever they hold. 401, the missing-token sentence, and no call to the center.",
+      "route": { "method": "POST", "requires": "fleet:control" },
+      "request": { "authorization": ["Bearer a", ""] },
+      "center": { "notCalled": true },
+      "expect": {
+        "outcome": "reject",
+        "status": 401,
+        "message": "a bearer token is required",
+        "centerCalls": 0
+      }
+    },
+    {
+      "name": "two-authorization-lines-on-public-get",
+      "why": "No credential is no credential on a public route too, so two lines on a GET declaring \"none\" proceed as a visitor, identity null, and the center is not asked — the same answer as no header at all. A client that rejects here has made a malformed header worse than a missing one; a client that picks a line and introspects it turns a visitor into whichever operator the first line names, and puts the center on the path of a public read.",
+      "route": { "method": "GET", "requires": "none" },
+      "request": { "authorization": ["Bearer a", "Bearer b"] },
+      "center": { "notCalled": true },
+      "expect": { "outcome": "proceed", "identity": null, "centerCalls": 0 }
+    },
+    {
       "name": "head-on-guarded-route-with-valid-token",
       "why": "The positive half of the HEAD rule, and the one no other case can catch. `head-on-guarded-route-with-no-header` is satisfied by a client that simply answers 401 to every HEAD it ever sees — which would be a working conformance run and a broken service, because the operator's dashboard could then never issue a conditional read of a route it is fully entitled to. A HEAD carrying a token that satisfies the route's scope PROCEEDS, with the same identity a GET of that route would receive, and the center is called exactly once. Pinning only the refusal would have left \"401 everything\" green (meta#79 philosophy: a case an empty answer can satisfy is not a case).",
       "route": { "method": "HEAD", "requires": "fleet:control" },
@@ -674,6 +708,13 @@
       "name": "gateway-bearer-with-empty-token",
       "why": "The gateway's half of the empty-token rule. \"Bearer \" carries nothing to introspect, so the lane is background and the center is not called — the gateway must not spend a round trip on a malformed header, which is the cheapest thing for an anonymous flood to send. It still never rejects: a malformed credential is a lane decision here, not a 401.",
       "request": { "authorization": "Bearer " },
+      "center": { "notCalled": true },
+      "expect": { "outcome": "lane", "lane": "background", "centerCalls": 0 }
+    },
+    {
+      "name": "gateway-two-authorization-lines",
+      "why": "The gateway's half of the line-count rule. Two `Authorization` lines are no credential, so the lane is background and the center is not called. st-gateway runs on Node, whose HTTP parser keeps the first `authorization` line and discards the rest, so a gateway reading `req.headers.authorization` would introspect line one and could hand a caller the interactive lane on a credential the calling service never verified; only `req.rawHeaders` shows the count.",
+      "request": { "authorization": ["Bearer a", "Bearer b"] },
       "center": { "notCalled": true },
       "expect": { "outcome": "lane", "lane": "background", "centerCalls": 0 }
     }
