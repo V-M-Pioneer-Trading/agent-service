@@ -239,7 +239,7 @@ type fixtureCase struct {
 
 // token is the bearer the case presents, or "" when it presents none: no
 // header, a malformed line, or more than one line. Two lines are never a
-// credential, so no token from either may reach the center or the logs.
+// credential, so no token from either may reach the center.
 func (c fixtureCase) token() string {
 	if len(c.Authorization) != 1 {
 		return ""
@@ -311,12 +311,21 @@ func authorizationLines(t *testing.T, raw json.RawMessage) []string {
 	if err := json.Unmarshal(raw, &one); err == nil {
 		return []string{one}
 	}
-	var many []string
-	if err := json.Unmarshal(raw, &many); err != nil {
+	// Element by element, so a null element is refused rather than read as
+	// an empty line: encoding/json would decode ["Bearer a", null] into
+	// []string{"Bearer a", ""} without complaint.
+	var elements []json.RawMessage
+	if err := json.Unmarshal(raw, &elements); err != nil {
 		t.Fatalf("request.authorization %s is neither null, a string nor an array of strings: %v", raw, err)
 	}
-	if len(many) < 2 {
-		t.Fatalf("request.authorization %s is an array of %d; the fixture defines the array form for two or more lines", raw, len(many))
+	if len(elements) < 2 {
+		t.Fatalf("request.authorization %s is an array of %d; the fixture defines the array form for two or more lines", raw, len(elements))
+	}
+	many := make([]string, len(elements))
+	for i, e := range elements {
+		if err := json.Unmarshal(e, &many[i]); err != nil {
+			t.Fatalf("request.authorization element %d (%s) is not a string: %v", i, e, err)
+		}
 	}
 	return many
 }
