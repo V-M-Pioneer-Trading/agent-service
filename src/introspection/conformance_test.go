@@ -3,7 +3,7 @@ package introspection
 // Conformance against meta/fixtures/introspection.json, vendored verbatim into
 // testdata/ (provenance and sha256 in testdata/SOURCE.txt).
 //
-// Every one of the 37 calling-service cases is driven through the real
+// Every one of the 40 calling-service cases is driven through the real
 // middleware (Guard.Require) and the real HTTP client against a real
 // httptest stub of the center that implements the case's `center` object:
 // status, body, delayMs, notCalled, and transport "no-response" (a TCP
@@ -11,7 +11,7 @@ package introspection
 // `expect` key is asserted, and an unknown key in any part of a case fails the
 // case rather than being skipped, so a copy that falls behind meta says so.
 //
-// The 11 st-gateway cases are a different policy (a lane, never a verdict)
+// The 12 st-gateway cases are a different policy (a lane, never a verdict)
 // that agent-service does not implement. They are skipped by name, and their
 // count is asserted, so a gateway case added in meta is noticed here too.
 
@@ -76,8 +76,8 @@ func readFixture(t *testing.T) ([]byte, fixtureFile) {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatalf("the vendored fixture does not parse: %v", err)
 	}
-	if f.Version != 3 {
-		t.Fatalf("vendored fixture is version %d; this test was written against version 3 — re-read it before re-copying", f.Version)
+	if f.Version != 4 {
+		t.Fatalf("vendored fixture is version %d; this test was written against version 4 — re-read it before re-copying", f.Version)
 	}
 	return raw, f
 }
@@ -98,8 +98,8 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			t.Fatal("testdata/SOURCE.txt records no sha256")
 		}
 		want := string(m[1])
-		if want != "77f845c89d4baabef7a336325a9e30360d908fd761ad450904c693621547dfa3" {
-			t.Fatalf("SOURCE.txt records %s; this test was written against meta 9b62746 (77f845c8…)", want)
+		if want != "5fe6d77e1113c05af899e554db0723a06cf42c197f9eb46a8b93b2f3c682201c" {
+			t.Fatalf("SOURCE.txt records %s; this test was written against meta 46c033e (5fe6d77e…)", want)
 		}
 		got := fmt.Sprintf("%x", sha256.Sum256(raw))
 		if got != want {
@@ -110,8 +110,8 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			t.Fatalf("fixture hashes to %s, SOURCE.txt records %s — testdata/introspection.json and meta have drifted; "+
 				"re-copy it from meta and update BOTH the commit and the sha256 in SOURCE.txt", got, want)
 		}
-		if len(raw) != 49347 {
-			t.Errorf("fixture is %d bytes, meta 9b62746's is 49347", len(raw))
+		if len(raw) != 53749 {
+			t.Errorf("fixture is %d bytes, meta 46c033e's is 53749", len(raw))
 		}
 	})
 
@@ -151,6 +151,7 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"gateway-kind-operator-with-machine-subject",
 			"gateway-no-header",
 			"gateway-non-bearer-scheme",
+			"gateway-two-authorization-lines",
 			"head-on-guarded-route-with-no-header",
 			"head-on-guarded-route-with-valid-token",
 			"head-on-public-get",
@@ -173,6 +174,9 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"session-route-with-scopeless-token",
 			"session-route-with-token-lacking-scope-key",
 			"token-on-public-get-while-center-is-down",
+			"two-authorization-lines",
+			"two-authorization-lines-on-public-get",
+			"two-authorization-lines-second-empty",
 			"visitor-on-public-get",
 		}
 		if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -219,7 +223,10 @@ type fixtureCase struct {
 		Method   string `json:"method"`
 		Requires string `json:"requires"`
 	}
-	Authorization *string
+	// Authorization is the header lines as sent: nil for no header, one
+	// element for the usual single line, two or more for the line-count cases
+	// (fixture v4), an empty string being an empty line.
+	Authorization []string
 	Center        struct {
 		NotCalled bool   `json:"notCalled"`
 		Status    int    `json:"status"`
@@ -228,6 +235,16 @@ type fixtureCase struct {
 		Transport string `json:"transport"`
 	}
 	Expect map[string]json.RawMessage
+}
+
+// token is the bearer the case presents, or "" when it presents none: no
+// header, a malformed line, or more than one line. Two lines are never a
+// credential, so no token from either may reach the center.
+func (c fixtureCase) token() string {
+	if len(c.Authorization) != 1 {
+		return ""
+	}
+	return BearerFrom(c.Authorization[0])
 }
 
 // strictKeys fails when raw has a key outside allowed.
@@ -263,10 +280,10 @@ func decodeCase(t *testing.T, raw map[string]json.RawMessage) fixtureCase {
 	mustUnmarshal(t, raw["route"], &c.Route)
 	strictKeys(t, "request", raw["request"], "authorization")
 	var request struct {
-		Authorization *string `json:"authorization"`
+		Authorization json.RawMessage `json:"authorization"`
 	}
 	mustUnmarshal(t, raw["request"], &request)
-	c.Authorization = request.Authorization
+	c.Authorization = authorizationLines(t, request.Authorization)
 	strictKeys(t, "center", raw["center"], "notCalled", "status", "body", "delayMs", "transport")
 	mustUnmarshal(t, raw["center"], &c.Center)
 	if c.Center.Transport != "" && c.Center.Transport != "no-response" {
@@ -276,6 +293,41 @@ func decodeCase(t *testing.T, raw map[string]json.RawMessage) fixtureCase {
 		"status", "message", "messageMustNotContain", "maxElapsedMs")
 	mustUnmarshal(t, raw["expect"], &c.Expect)
 	return c
+}
+
+// authorizationLines reads request.authorization in the fixture's three
+// shapes: null (no header), one string (one line), or an array of two or
+// more strings (one element per line, in the order sent). Anything else
+// fails the case: a one-element array is not a shape the fixture defines.
+func authorizationLines(t *testing.T, raw json.RawMessage) []string {
+	t.Helper()
+	if raw == nil {
+		t.Fatal("request.authorization is missing")
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil
+	}
+	var one string
+	if err := json.Unmarshal(raw, &one); err == nil {
+		return []string{one}
+	}
+	// Element by element, so a null element is refused rather than read as
+	// an empty line: encoding/json would decode ["Bearer a", null] into
+	// []string{"Bearer a", ""} without complaint.
+	var elements []json.RawMessage
+	if err := json.Unmarshal(raw, &elements); err != nil {
+		t.Fatalf("request.authorization %s is neither null, a string nor an array of strings: %v", raw, err)
+	}
+	if len(elements) < 2 {
+		t.Fatalf("request.authorization %s is an array of %d; the fixture defines the array form for two or more lines", raw, len(elements))
+	}
+	many := make([]string, len(elements))
+	for i, e := range elements {
+		if err := json.Unmarshal(e, &many[i]); err != nil {
+			t.Fatalf("request.authorization element %d (%s) is not a string: %v", i, e, err)
+		}
+	}
+	return many
 }
 
 func mustUnmarshal(t *testing.T, raw json.RawMessage, v any) {
@@ -405,6 +457,16 @@ type served struct {
 }
 
 func serveThroughGuard(guard *Guard, req Requirement, method, authorization string, hasHeader bool) served {
+	var lines []string
+	if hasHeader {
+		lines = []string{authorization}
+	}
+	return serveThroughGuardLines(guard, req, method, lines)
+}
+
+// serveThroughGuardLines sends one Authorization header line per element of
+// lines, in order, the way they would arrive on the wire. nil sends none.
+func serveThroughGuardLines(guard *Guard, req Requirement, method string, lines []string) served {
 	var out served
 	handler := guard.Require(req, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		out.ran = true
@@ -412,8 +474,8 @@ func serveThroughGuard(guard *Guard, req Requirement, method, authorization stri
 		w.WriteHeader(http.StatusOK)
 	}))
 	r := httptest.NewRequest(method, "/route-under-test", nil)
-	if hasHeader {
-		r.Header.Set("Authorization", authorization)
+	for _, line := range lines {
+		r.Header.Add("Authorization", line)
 	}
 	out.rec = httptest.NewRecorder()
 	start := time.Now()
@@ -450,8 +512,8 @@ func assertEnvelope(t *testing.T, rec *httptest.ResponseRecorder) string {
 
 func TestCallingServiceCases(t *testing.T) {
 	_, f := readFixture(t)
-	if len(f.Cases) != 37 {
-		t.Fatalf("fixture has %d calling-service cases; this test was written against 37", len(f.Cases))
+	if len(f.Cases) != 40 {
+		t.Fatalf("fixture has %d calling-service cases; this test was written against 40", len(f.Cases))
 	}
 	endpointPath := f.Contract.Endpoint.Path
 
@@ -494,16 +556,12 @@ func TestCallingServiceCases(t *testing.T) {
 			logger := log.New(logs, "", 0)
 			guard := NewGuard(NewClient(Config{URL: center.URL, Secret: testSecret}, logger), logger)
 
-			authorization, hasHeader := "", c.Authorization != nil
-			if hasHeader {
-				authorization = *c.Authorization
-			}
-			out := serveThroughGuard(guard, requirementFor(t, c.Route.Requires), c.Route.Method, authorization, hasHeader)
+			out := serveThroughGuardLines(guard, requirementFor(t, c.Route.Requires), c.Route.Method, c.Authorization)
 
 			assertExpectations(t, c, out, center, endpointPath)
 
 			// Nothing sensitive leaks, in any case.
-			token := BearerFrom(authorization)
+			token := c.token()
 			for _, where := range []struct{ name, text string }{
 				{"log", logs.String()},
 				{"response body", out.rec.Body.String()},
@@ -623,10 +681,7 @@ func assertExpectations(t *testing.T, c fixtureCase, out served, center *stubCen
 	// What was sent, for every case that reached an HTTP center. The one case
 	// carrying expect.centerRequest pins it from the fixture; the rest must
 	// agree with the contract all the same.
-	token := ""
-	if c.Authorization != nil {
-		token = BearerFrom(*c.Authorization)
-	}
+	token := c.token()
 	for _, r := range center.Requests() {
 		assertSentRequest(t, r, token, endpointPath)
 	}
@@ -694,8 +749,8 @@ func assertSentRequest(t *testing.T, r recordedRequest, token, endpointPath stri
 // someone decides whether it is really gateway-only.
 func TestGatewayCasesAreNotThisServicesPolicy(t *testing.T) {
 	_, f := readFixture(t)
-	if len(f.GatewayCases) != 11 {
-		t.Fatalf("fixture has %d gateway cases; this test was written against 11 — re-read the fixture", len(f.GatewayCases))
+	if len(f.GatewayCases) != 12 {
+		t.Fatalf("fixture has %d gateway cases; this test was written against 12 — re-read the fixture", len(f.GatewayCases))
 	}
 	for _, raw := range f.GatewayCases {
 		var name string
