@@ -6,6 +6,7 @@ package introspection
 // shapes of a center answer that are not the contract.
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -376,30 +377,63 @@ func TestBearerVariants(t *testing.T) {
 		})
 	}
 
-	t.Run("two Authorization headers are no credential", func(t *testing.T) {
-		center := newStubCenter(t, "/auth/v1/introspect", answerWith(200, activeOperator))
-		guard := guardFor(center, io.Discard)
-		handler := guard.Require(Scope("fleet:control"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			t.Error("handler ran")
-		}))
-		// Served over a real connection, so the header travels as two lines.
-		srv := httptest.NewServer(handler)
-		defer srv.Close()
-		req, _ := http.NewRequest(http.MethodPost, srv.URL, nil)
-		req.Header.Add("Authorization", "Bearer a")
-		req.Header.Add("Authorization", "Bearer b")
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Errorf("status %d, want 401", resp.StatusCode)
-		}
-		if center.Calls() != 0 {
-			t.Errorf("center called %d times, want 0", center.Calls())
-		}
-	})
+	// Two Authorization lines are never a credential, whatever they hold. The
+	// count decides: a second empty line must not fold into "Bearer a, " and
+	// become the token "a,", and two full lines must not let the caller pick
+	// which one is verified. Sent as raw bytes so the wire carries exactly the
+	// lines under test, independent of how any client serializes headers.
+	for _, c := range []struct{ name, second string }{
+		{"two Authorization lines, second empty", ""},
+		{"two Authorization lines, both non-empty", "Bearer b"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			center := newStubCenter(t, "/auth/v1/introspect", answerWith(200, activeOperator))
+			guard := guardFor(center, io.Discard)
+			handler := guard.Require(Scope("fleet:control"), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Error("handler ran")
+			}))
+			srv := httptest.NewServer(handler)
+			t.Cleanup(srv.Close)
+			status, body := sendRaw(t, srv, "POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n"+
+				"Authorization: Bearer a\r\nAuthorization: "+c.second+"\r\n\r\n")
+			if status != http.StatusUnauthorized {
+				t.Errorf("status %d, want 401", status)
+			}
+			if !strings.Contains(body, MessageMissingToken) {
+				t.Errorf("body %q, want %q", body, MessageMissingToken)
+			}
+			if center.Calls() != 0 {
+				t.Errorf("center called %d times, want 0", center.Calls())
+			}
+		})
+	}
+}
+
+// sendRaw writes one HTTP/1.1 request verbatim to srv and returns the status
+// code and body of the reply.
+func sendRaw(t *testing.T, srv *httptest.Server, raw string) (int, string) {
+	t.Helper()
+	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(conn, raw); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(body)
 }
 
 func TestConcurrentRequestsGetTheirOwnIdentity(t *testing.T) {
