@@ -1,5 +1,5 @@
 # Build stage: the Go toolchain and module cache never reach the published image.
-FROM golang:1.22-alpine AS build
+FROM golang:1.25-alpine AS build
 
 WORKDIR /src
 
