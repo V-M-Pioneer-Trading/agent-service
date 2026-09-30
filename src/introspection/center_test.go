@@ -617,6 +617,8 @@ func TestDuplicateKeyAtAnyDepthIsRefused(t *testing.T) {
 		"same key at different depths": head + `"k":{"k":{"k":1}}}`,
 		"case variants nested":         head + `"x":{"k":1,"K":2}}`,
 		"null nested":                  head + `"x":{"k":null}}`,
+		"huge number nested":           head + `"x":{"n":1e400}}`,
+		"huge number in an array":      head + `"x":[1e400,-1e400]}`,
 	}
 	for name, body := range accepted {
 		if a, err := parseAnswer([]byte(body)); err != nil || a.State != StateActive {
@@ -641,6 +643,10 @@ func TestNestingDeeperThanTheLimitIsRefused(t *testing.T) {
 		if a, err := parseAnswer(nested(levels)); err == nil || a.State != StateUnavailable {
 			t.Errorf("depth %d: state %v err %v, want unavailable", levels, a.State, err)
 		}
+	}
+	// A number beyond float64 in a member we ignore is not malformed.
+	if a, err := parseAnswer([]byte(`{"active":false,"k":1e400}`)); err != nil || a.State != StateInactive {
+		t.Errorf("top-level 1e400: state %v err %v, want inactive", a.State, err)
 	}
 	// Objects count the same as arrays.
 	obj := `{"active":false,"x":` + strings.Repeat(`{"a":`, 1000) + `1` + strings.Repeat("}", 1000) + `}`

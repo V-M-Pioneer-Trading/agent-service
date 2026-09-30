@@ -238,7 +238,11 @@ func decodeObject(raw []byte) (map[string]json.RawMessage, error) {
 		if err := dec.Decode(&value); err != nil {
 			return nil, err
 		}
-		if err := walkValue(json.NewDecoder(bytes.NewReader(value)), 2); err != nil {
+		// UseNumber: the walk only checks structure, so a number beyond
+		// float64's range in a member we ignore must not fail it.
+		vdec := json.NewDecoder(bytes.NewReader(value))
+		vdec.UseNumber()
+		if err := walkValue(vdec, 2); err != nil {
 			return nil, err
 		}
 		folded := strings.ToLower(key)
@@ -263,6 +267,9 @@ func decodeObject(raw []byte) (map[string]json.RawMessage, error) {
 // walkValue consumes one JSON value from dec, refusing a key repeated within
 // one object and nesting beyond MaxJSONDepth. depth is the level of the value
 // being read. Sibling objects and array elements each get their own key set.
+// Errors never carry the key or a number: they are logged, the body is not.
+// Known difference: Go decodes a lone surrogate in a key as U+FFFD, so two
+// different lone-surrogate keys collide here; the TS client keeps them apart.
 func walkValue(dec *json.Decoder, depth int) error {
 	tok, err := dec.Token()
 	if err != nil {
@@ -275,7 +282,10 @@ func walkValue(dec *json.Decoder, depth int) error {
 	if depth > MaxJSONDepth {
 		return fmt.Errorf("nesting deeper than %d levels", MaxJSONDepth)
 	}
-	seen := map[string]bool{}
+	var seen map[string]bool
+	if delim == '{' {
+		seen = map[string]bool{}
+	}
 	for dec.More() {
 		if delim == '{' {
 			tok, err := dec.Token()
@@ -287,7 +297,7 @@ func walkValue(dec *json.Decoder, depth int) error {
 				return errors.New("object key is not a string")
 			}
 			if seen[key] {
-				return fmt.Errorf("key %q appears more than once in a nested object", key)
+				return errors.New("a key appears more than once in a nested object")
 			}
 			seen[key] = true
 		}
