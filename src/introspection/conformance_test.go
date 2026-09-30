@@ -11,7 +11,7 @@ package introspection
 // `expect` key is asserted, and an unknown key in any part of a case fails the
 // case rather than being skipped, so a copy that falls behind meta says so.
 //
-// The 12 st-gateway cases are a different policy (a lane, never a verdict)
+// The 13 st-gateway cases are a different policy (a lane, never a verdict)
 // that agent-service does not implement. They are skipped by name, and their
 // count is asserted, so a gateway case added in meta is noticed here too.
 
@@ -76,8 +76,8 @@ func readFixture(t *testing.T) ([]byte, fixtureFile) {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		t.Fatalf("the vendored fixture does not parse: %v", err)
 	}
-	if f.Version != 4 {
-		t.Fatalf("vendored fixture is version %d; this test was written against version 4 — re-read it before re-copying", f.Version)
+	if f.Version != 5 {
+		t.Fatalf("vendored fixture is version %d; this test was written against version 5 — re-read it before re-copying", f.Version)
 	}
 	return raw, f
 }
@@ -98,7 +98,7 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			t.Fatal("testdata/SOURCE.txt records no sha256")
 		}
 		want := string(m[1])
-		if want != "5fe6d77e1113c05af899e554db0723a06cf42c197f9eb46a8b93b2f3c682201c" {
+		if want != "ffbb7aa932d8d8523da125a0ff9a93f1fd771d5a32841d7e03ee25ec7b1315b7" {
 			t.Fatalf("SOURCE.txt records %s; this test was written against meta 46c033e (5fe6d77e…)", want)
 		}
 		got := fmt.Sprintf("%x", sha256.Sum256(raw))
@@ -110,8 +110,8 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			t.Fatalf("fixture hashes to %s, SOURCE.txt records %s — testdata/introspection.json and meta have drifted; "+
 				"re-copy it from meta and update BOTH the commit and the sha256 in SOURCE.txt", got, want)
 		}
-		if len(raw) != 53749 {
-			t.Errorf("fixture is %d bytes, meta 46c033e's is 53749", len(raw))
+		if len(raw) != 56516 {
+			t.Errorf("fixture is %d bytes, meta aa877e7's is 56516", len(raw))
 		}
 	})
 
@@ -137,6 +137,7 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"bearer-with-internal-whitespace",
 			"center-rejects-our-caller-secret",
 			"center-returns-500",
+			"center-returns-duplicate-key",
 			"center-returns-malformed-json",
 			"center-times-out",
 			"center-unreachable",
@@ -145,6 +146,7 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			"gateway-active-operator-lacking-scope-key",
 			"gateway-bearer-with-empty-token",
 			"gateway-center-rejects-our-caller-secret",
+			"gateway-center-returns-duplicate-key",
 			"gateway-center-unreachable",
 			"gateway-inactive-token",
 			"gateway-kind-machine-with-user-subject",
@@ -512,8 +514,8 @@ func assertEnvelope(t *testing.T, rec *httptest.ResponseRecorder) string {
 
 func TestCallingServiceCases(t *testing.T) {
 	_, f := readFixture(t)
-	if len(f.Cases) != 40 {
-		t.Fatalf("fixture has %d calling-service cases; this test was written against 40", len(f.Cases))
+	if len(f.Cases) != 41 {
+		t.Fatalf("fixture has %d calling-service cases; this test was written against 41", len(f.Cases))
 	}
 	endpointPath := f.Contract.Endpoint.Path
 
@@ -749,8 +751,8 @@ func assertSentRequest(t *testing.T, r recordedRequest, token, endpointPath stri
 // someone decides whether it is really gateway-only.
 func TestGatewayCasesAreNotThisServicesPolicy(t *testing.T) {
 	_, f := readFixture(t)
-	if len(f.GatewayCases) != 12 {
-		t.Fatalf("fixture has %d gateway cases; this test was written against 12 — re-read the fixture", len(f.GatewayCases))
+	if len(f.GatewayCases) != 13 {
+		t.Fatalf("fixture has %d gateway cases; this test was written against 13 — re-read the fixture", len(f.GatewayCases))
 	}
 	for _, raw := range f.GatewayCases {
 		var name string
