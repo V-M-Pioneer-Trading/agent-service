@@ -32,6 +32,11 @@ const (
 	// answer larger than this is a center we do not understand, and reading
 	// the rest of it only spends memory on the way to the same 503.
 	MaxResponseBytes = 64 << 10
+
+	// MaxJSONDepth is how deeply the answer may nest, the top-level object
+	// being level 1. The Java and TypeScript clients refuse the same depth, so
+	// a body of open brackets is a 503 in all three, never unbounded recursion.
+	MaxJSONDepth = 1000
 )
 
 // State is what one introspection call learned.
@@ -205,7 +210,10 @@ var errNotContract = errors.New("not the introspection contract")
 // which matches keys case-insensitively and lets the last duplicate win:
 // {"active":false,"Active":true} would bind active=true. Here a key repeated
 // in any spelling, or a contract key in any spelling but its own, makes the
-// whole answer unusable rather than letting one copy win.
+// whole answer unusable rather than letting one copy win. Below the top level
+// a key repeated within one object, at any depth, does the same; there the
+// comparison is exact on decoded strings (so "sub" is "sub"), matching
+// the Java and TypeScript clients.
 func decodeObject(raw []byte) (map[string]json.RawMessage, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	tok, err := dec.Token()
@@ -230,6 +238,13 @@ func decodeObject(raw []byte) (map[string]json.RawMessage, error) {
 		if err := dec.Decode(&value); err != nil {
 			return nil, err
 		}
+		// UseNumber: the walk only checks structure, so a number beyond
+		// float64's range in a member we ignore must not fail it.
+		vdec := json.NewDecoder(bytes.NewReader(value))
+		vdec.UseNumber()
+		if err := walkValue(vdec, 2); err != nil {
+			return nil, err
+		}
 		folded := strings.ToLower(key)
 		if seen[folded] {
 			return nil, fmt.Errorf("key %q appears more than once (ignoring case)", folded)
@@ -247,6 +262,51 @@ func decodeObject(raw []byte) (map[string]json.RawMessage, error) {
 		return nil, errors.New("trailing data after the object")
 	}
 	return members, nil
+}
+
+// walkValue consumes one JSON value from dec, refusing a key repeated within
+// one object and nesting beyond MaxJSONDepth. depth is the level of the value
+// being read. Sibling objects and array elements each get their own key set.
+// Errors never carry the key or a number: they are logged, the body is not.
+// Known difference: Go decodes a lone surrogate in a key as U+FFFD, so two
+// different lone-surrogate keys collide here; the TS client keeps them apart.
+func walkValue(dec *json.Decoder, depth int) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		return nil
+	}
+	if depth > MaxJSONDepth {
+		return fmt.Errorf("nesting deeper than %d levels", MaxJSONDepth)
+	}
+	var seen map[string]bool
+	if delim == '{' {
+		seen = map[string]bool{}
+	}
+	for dec.More() {
+		if delim == '{' {
+			tok, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := tok.(string)
+			if !ok {
+				return errors.New("object key is not a string")
+			}
+			if seen[key] {
+				return errors.New("a key appears more than once in a nested object")
+			}
+			seen[key] = true
+		}
+		if err := walkValue(dec, depth+1); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token() // the closing bracket
+	return err
 }
 
 // member decodes one present, non-null member into dst. present is false

@@ -585,6 +585,76 @@ func TestParseAnswerTakesOnlyExactKeysOnce(t *testing.T) {
 	}
 }
 
+// The Java and TypeScript clients refuse a repeated key in ANY object at ANY
+// depth; so must this one, or the three disagree on what is malformed.
+func TestDuplicateKeyAtAnyDepthIsRefused(t *testing.T) {
+	const head = `{"active":true,"sub":"user_1","scope":"fleet:control","exp":1,"kind":"operator",`
+	refused := map[string]string{
+		"depth 2":           head + `"x":{"k":1,"k":2}}`,
+		"depth 3":           head + `"x":{"y":{"k":1,"k":2}}}`,
+		"in an array":       head + `"x":[{"k":1,"k":2}]}`,
+		"escaped":           head + `"x":{"s\u0075b":1,"sub":2}}`,
+		"escaped, reversed": head + `"x":{"sub":1,"s\u0075b":2}}`,
+		"null duplicates":   head + `"x":{"k":null,"k":null}}`,
+		"after a clean one": head + `"x":{"a":{"k":1},"b":{"k":1,"k":1}}}`,
+		"top level only":    `{"active":false,"active":false}`,
+	}
+	for name, body := range refused {
+		if a, err := parseAnswer([]byte(body)); err == nil || a.State != StateUnavailable {
+			t.Errorf("%s: state %v err %v, want unavailable", name, a.State, err)
+		}
+		// End to end: the 503 sentence.
+		center := newStubCenter(t, "/auth/v1/introspect", answerWith(200, body))
+		out := serveThroughGuard(guardFor(center, io.Discard), Session(), http.MethodGet, "Bearer abc", true)
+		if out.rec.Code != http.StatusServiceUnavailable || assertEnvelope(t, out.rec) != MessageCenterUnavailable {
+			t.Errorf("%s: got %d %s, want 503", name, out.rec.Code, out.rec.Body.String())
+		}
+	}
+
+	accepted := map[string]string{
+		"same key in sibling objects":  head + `"x":{"a":{"k":1},"b":{"k":2}}}`,
+		"same key in array elements":   head + `"x":[{"k":1},{"k":2}]}`,
+		"same key at different depths": head + `"k":{"k":{"k":1}}}`,
+		"case variants nested":         head + `"x":{"k":1,"K":2}}`,
+		"null nested":                  head + `"x":{"k":null}}`,
+		"huge number nested":           head + `"x":{"n":1e400}}`,
+		"huge number in an array":      head + `"x":[1e400,-1e400]}`,
+	}
+	for name, body := range accepted {
+		if a, err := parseAnswer([]byte(body)); err != nil || a.State != StateActive {
+			t.Errorf("%s: state %v err %v, want active", name, a.State, err)
+		}
+	}
+}
+
+// nested builds an inactive answer whose total nesting is exactly levels
+// (the top-level object counts as 1).
+func nested(levels int) []byte {
+	return []byte(`{"active":false,"x":` + strings.Repeat("[", levels-1) + strings.Repeat("]", levels-1) + `}`)
+}
+
+func TestNestingDeeperThanTheLimitIsRefused(t *testing.T) {
+	for _, levels := range []int{2, 999, MaxJSONDepth} {
+		if a, err := parseAnswer(nested(levels)); err != nil || a.State != StateInactive {
+			t.Errorf("depth %d: state %v err %v, want inactive", levels, a.State, err)
+		}
+	}
+	for _, levels := range []int{MaxJSONDepth + 1, 5000} {
+		if a, err := parseAnswer(nested(levels)); err == nil || a.State != StateUnavailable {
+			t.Errorf("depth %d: state %v err %v, want unavailable", levels, a.State, err)
+		}
+	}
+	// A number beyond float64 in a member we ignore is not malformed.
+	if a, err := parseAnswer([]byte(`{"active":false,"k":1e400}`)); err != nil || a.State != StateInactive {
+		t.Errorf("top-level 1e400: state %v err %v, want inactive", a.State, err)
+	}
+	// Objects count the same as arrays.
+	obj := `{"active":false,"x":` + strings.Repeat(`{"a":`, 1000) + `1` + strings.Repeat("}", 1000) + `}`
+	if _, err := parseAnswer([]byte(obj)); err == nil {
+		t.Error("1001 nested objects were accepted")
+	}
+}
+
 func TestScopeIsSplitOnASCIIWhitespaceOnly(t *testing.T) {
 	cases := map[string][]string{
 		"a fleet:control":             {"a", "fleet:control"},

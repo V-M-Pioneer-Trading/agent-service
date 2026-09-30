@@ -273,6 +273,7 @@ ever needed to differ between environments.
 | `maxBodyBytes` | 1 MiB | `api/routes.go` | An inbound request body |
 | `DefaultTimeout` | 1s | `introspection/center.go` | One call to auth-service, body read included. Fixed by the fixture's contract |
 | `MaxResponseBytes` | 64 KiB | `introspection/center.go` | auth-service's answer; anything larger is a `503` |
+| `MaxJSONDepth` | 1000 | `introspection/center.go` | Nesting in auth-service's answer; deeper is a `503`, as is a key repeated in any object at any depth. Same as the Java and TS clients |
 | `defaultTransactionLimit` | 100 | `api/routes.go` | `GET /transactions` page size |
 | `maxTransactionLimit` | 1000 | `api/routes.go` | The ceiling a caller can ask for |
 | `readHeaderTimeout` / `readTimeout` | 10s / 30s | `app-runner.go` | Slow inbound clients |
