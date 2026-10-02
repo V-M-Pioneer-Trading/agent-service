@@ -4,3 +4,7 @@
 # core.autocrlf=true a Windows checkout would otherwise hash differently from a
 # Linux one and the pin would only hold on CI.
 src/introspection/testdata/introspection.json -text
+
+# The generated OpenAPI spec is synced byte-for-byte to meta and diffed in CI
+# after regeneration. swag writes LF; keep LF in the working tree on Windows too.
+src/docs/* text eol=lf
