@@ -155,10 +155,13 @@ curl localhost:8080/api/agent/v1/agent \
 ```
 
 Swagger UI: `http://localhost:8080/api/agent/swagger/index.html`. Regenerate it after changing
-any handler annotation:
+any handler annotation. The command pins swag v1.16.6 (the version in `go.mod`), needs no server or
+DB, and CI fails if `src/docs` is stale. Bump both together. `src/docs/swagger.json` is the
+canonical spec; pushes to `main` will sync it to meta's `openapi/agent-service.json` (sync added
+in a later PR):
 
 ```bash
-cd src && swag init -g app-runner.go --parseInternal --output ./docs
+cd src && go generate ./...
 ```
 
 ### Tests

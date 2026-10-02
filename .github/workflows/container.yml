@@ -59,6 +59,13 @@ jobs:
       - name: Check formatting
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
 
+      - name: Check the OpenAPI spec is current
+        # Same pinned command a developer runs (the //go:generate in
+        # app-runner.go). Needs the network only to fetch the swag CLI.
+        run: |
+          go generate ./...
+          git diff --exit-code -- docs || { echo "::error::src/docs is stale. Run 'go generate ./...' from src/ and commit the result."; exit 1; }
+
       - run: go vet ./...
 
       - run: go test ./... -race -shuffle=on

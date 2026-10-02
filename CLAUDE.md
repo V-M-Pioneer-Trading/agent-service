@@ -15,7 +15,7 @@ All Go commands run from `src/`.
 | Vet | `go vet ./...` |
 | Format check | `test -z "$(gofmt -l .)"` |
 | Run locally | `PORT=8080 AUTH_INTROSPECTION_URL=http://localhost:8082/auth/v1/introspect AUTH_INTROSPECTION_SECRET=local-dev-introspection-secret go run .` |
-| Regenerate Swagger | `swag init -g app-runner.go --parseInternal --output ./docs` |
+| Regenerate OpenAPI spec | `go generate ./...` (pinned swag, see `//go:generate` in `app-runner.go`; CI fails on drift) |
 | Start MySQL only | `docker compose up -d mysql` (from repo root) |
 
 CI runs format check, vet and the race/shuffle test suite on both pull requests and pushes to
@@ -214,7 +214,7 @@ Run `-shuffle=on` locally before pushing; it is what catches order dependence.
   `spacetraders/schema/`, then a handler. Do not add a second `http.Client`.
 * **A new route:** register it in `SetUpRouter` with `getRoute`/`postRoute` through `read`,
   `write`, `public` or `ignore`, add it to `TestEveryRouteDeclaresExactlyThisPolicy`, add the
-  swagger annotations, then regenerate `docs/`. A mutating route cannot be `public`.
+  swagger annotations, then regenerate `docs/` (`go generate ./...`). A mutating route cannot be `public`.
 * **A new transaction type:** add the constant and put it in `db.TransactionTypes` — the
   `?type=` filter, its validation error message and the Swagger enum all derive from that list.
 * **A new table or column:** add the `CREATE TABLE IF NOT EXISTS` to `schema`, and if existing
