@@ -154,11 +154,18 @@ curl localhost:8080/api/agent/v1/agent \
   -H "Authorization: Bearer <clerk-session-jwt>"
 ```
 
-Swagger UI: `http://localhost:8080/api/agent/swagger/index.html`. Regenerate it after changing
-any handler annotation. The command pins swag v1.16.6 (the version in `go.mod`), needs no server or
-DB, and CI fails if `src/docs` is stale. Bump both together. `src/docs/swagger.json` is the
-canonical spec; pushes to `main` will sync it to meta's `openapi/agent-service.json` (sync added
-in a later PR):
+Swagger UI: `http://localhost:8080/api/agent/swagger/index.html`. Regenerate the spec after changing
+any handler annotation. The command pins swag v2.0.0-rc6 with `--v3.1` (the version in `go.mod`;
+bump both together), needs no server or DB, and CI fails if `src/docs` is stale.
+`src/docs/swagger.json` is the canonical spec, **OpenAPI 3.1.0** (the file keeps swag's name);
+pushes to `main` will sync it to meta's `openapi/agent-service.json` (sync added in a later PR).
+
+swag v2 is still a release candidate. It was taken for a native 3.1 spec instead of converting
+v1's Swagger 2.0, with two workarounds in `src/api/swagger.go`, both pinned by
+`TestSwaggerServesTheOpenAPI31Spec`: http-swagger still reads swag v1's registry, so the spec
+is registered there too (swaggo/swag#1588), and the root `"schemes": null` that rc6 leaves in
+`docs.go` is dropped from the served `doc.json` (swaggo/swag#2194). Recheck both on every swag
+or http-swagger bump.
 
 ```bash
 cd src && go generate ./...

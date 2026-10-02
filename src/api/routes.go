@@ -12,10 +12,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	httpSwagger "github.com/swaggo/http-swagger"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 
 	"vnm/agent-info-service/db"
-	_ "vnm/agent-info-service/docs"
 	"vnm/agent-info-service/introspection"
 	"vnm/agent-info-service/spacetraders"
 	"vnm/agent-info-service/spacetraders/schema"

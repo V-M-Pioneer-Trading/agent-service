@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -414,6 +415,51 @@ func TestSwaggerAnswersOnlySafeMethodsAndIgnoresCredentials(t *testing.T) {
 	}
 	if center.Calls() != 0 {
 		t.Errorf("swagger asked the center %d times", center.Calls())
+	}
+}
+
+// The served doc is the generated OpenAPI 3.1 spec, not merely some 200: swag
+// v2 registers it in its own registry, which http-swagger does not read, so a
+// missing bridge shows up here and nowhere else. The UI page must load too.
+func TestSwaggerServesTheOpenAPI31Spec(t *testing.T) {
+	router := newTestRouter(t, nil, nil)
+	rec := doRequest(t, router, http.MethodGet, "/api/agent/swagger/doc.json", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET doc.json: %d %s", rec.Code, rec.Body)
+	}
+	var doc struct {
+		OpenAPI string                     `json:"openapi"`
+		Swagger string                     `json:"swagger"`
+		Paths   map[string]json.RawMessage `json:"paths"`
+		Servers []struct {
+			URL string `json:"url"`
+		} `json:"servers"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("doc.json is not JSON: %v", err)
+	}
+	if doc.OpenAPI != "3.1.0" || doc.Swagger != "" {
+		t.Errorf("served openapi %q swagger %q, want openapi 3.1.0 only", doc.OpenAPI, doc.Swagger)
+	}
+	if len(doc.Servers) != 1 || doc.Servers[0].URL != "/api/agent/v1" {
+		t.Errorf("servers %+v, want the one /api/agent/v1", doc.Servers)
+	}
+	if _, ok := doc.Paths["/current-agent"]; !ok {
+		t.Errorf("served doc has no /current-agent path")
+	}
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &root); err != nil {
+		t.Fatal(err)
+	}
+	for _, swagger2Only := range []string{"schemes", "host", "basePath"} {
+		if v, ok := root[swagger2Only]; ok {
+			t.Errorf("served doc carries Swagger 2.0 root key %q: %s", swagger2Only, v)
+		}
+	}
+
+	rec = doRequest(t, router, http.MethodGet, "/api/agent/swagger/index.html", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "swagger-ui") {
+		t.Errorf("GET index.html: %d", rec.Code)
 	}
 }
 

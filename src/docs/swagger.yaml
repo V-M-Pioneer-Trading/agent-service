@@ -1,490 +1,515 @@
-basePath: /api/agent/v1
-definitions:
-  api.CurrentAgentResponse:
-    properties:
-      agent:
-        $ref: '#/definitions/schema.Agent'
-      contracts:
-        items:
-          $ref: '#/definitions/schema.Contract'
-        type: array
-      ships:
-        items:
-          $ref: '#/definitions/schema.Ship'
-        type: array
-    type: object
-  api.authError:
-    properties:
-      error:
-        properties:
-          message:
-            type: string
-        type: object
-    type: object
-  api.cargoTransactionRequest:
-    properties:
-      symbol:
-        type: string
-      units:
-        type: integer
-    type: object
-  api.deliveryRequest:
-    properties:
-      shipSymbol:
-        type: string
-      tradeSymbol:
-        type: string
-      units:
-        type: integer
-    type: object
-  api.purchaseShipRequest:
-    properties:
-      shipType:
-        type: string
-      waypointSymbol:
-        type: string
-    type: object
-  db.Delivery:
-    properties:
-      contractId:
-        type: string
-      deliveredAt:
-        type: string
-      shipSymbol:
-        type: string
-      tradeSymbol:
-        type: string
-      units:
-        type: integer
-    type: object
-  db.Transaction:
-    properties:
-      agentCredits:
-        type: integer
-      occurredAt:
-        type: string
-      pricePerUnit:
-        type: integer
-      shipSymbol:
-        type: string
-      shipType:
-        type: string
-      totalPrice:
-        type: integer
-      tradeSymbol:
-        type: string
-      type:
-        $ref: '#/definitions/db.TransactionType'
-      units:
-        type: integer
-      waypointSymbol:
-        type: string
-    type: object
-  db.TransactionType:
-    enum:
-    - SHIP_PURCHASE
-    - PURCHASE
-    - SELL
-    type: string
-    x-enum-varnames:
-    - ShipPurchase
-    - CargoPurchase
-    - CargoSell
-  schema.Agent:
-    properties:
-      accountId:
-        type: string
-      credits:
-        type: integer
-      headquarters:
-        type: string
-      shipCount:
-        type: integer
-      startingFaction:
-        type: string
-      symbol:
-        type: string
-    type: object
-  schema.Cargo:
-    properties:
-      capacity:
-        type: integer
-      inventory:
-        items:
-          $ref: '#/definitions/schema.CargoItem'
-        type: array
-      units:
-        type: integer
-    type: object
-  schema.CargoItem:
-    properties:
-      description:
-        type: string
-      name:
-        type: string
-      symbol:
-        type: string
-      units:
-        type: integer
-    type: object
-  schema.Contract:
-    properties:
-      accepted:
-        type: boolean
-      deadlineToAccept:
-        type: string
-      expiration:
-        type: string
-      factionSymbol:
-        type: string
-      fulfilled:
-        type: boolean
-      id:
-        type: string
-      terms:
-        $ref: '#/definitions/schema.ContractTerms'
-      type:
-        type: string
-    type: object
-  schema.ContractAndAgent:
-    properties:
-      agent:
-        $ref: '#/definitions/schema.Agent'
-      contract:
-        $ref: '#/definitions/schema.Contract'
-    type: object
-  schema.ContractTerms:
-    properties:
-      deadline:
-        type: string
-      deliver:
-        items:
-          $ref: '#/definitions/schema.DeliveryInfo'
-        type: array
-      payment:
-        $ref: '#/definitions/schema.Payment'
-    type: object
-  schema.Cooldown:
-    properties:
-      expiration:
-        type: string
-      remainingSeconds:
-        type: integer
-      shipSymbol:
-        type: string
-      totalSeconds:
-        type: integer
-    type: object
-  schema.Crew:
-    properties:
-      capacity:
-        type: integer
-      current:
-        type: integer
-      morale:
-        type: integer
-      required:
-        type: integer
-      rotation:
-        type: string
-      wages:
-        type: integer
-    type: object
-  schema.DeliveryInfo:
-    properties:
-      destinationSymbol:
-        type: string
-      tradeSymbol:
-        type: string
-      unitsFulfilled:
-        type: integer
-      unitsRequired:
-        type: integer
-    type: object
-  schema.Engine:
-    properties:
-      condition:
-        type: integer
-      description:
-        type: string
-      integrity:
-        type: integer
-      name:
-        type: string
-      requirements:
-        $ref: '#/definitions/schema.Requirements'
-      speed:
-        type: integer
-      symbol:
-        type: string
-    type: object
-  schema.Frame:
-    properties:
-      condition:
-        type: integer
-      description:
-        type: string
-      fuelCapacity:
-        type: integer
-      integrity:
-        type: integer
-      moduleSlots:
-        type: integer
-      mountingPoints:
-        type: integer
-      name:
-        type: string
-      requirements:
-        $ref: '#/definitions/schema.Requirements'
-      symbol:
-        type: string
-    type: object
-  schema.Fuel:
-    properties:
-      capacity:
-        type: integer
-      consumed:
-        properties:
-          amount:
-            type: integer
-          timestamp:
-            type: string
-        type: object
-      current:
-        type: integer
-    type: object
-  schema.MarketTransaction:
-    properties:
-      pricePerUnit:
-        type: integer
-      shipSymbol:
-        type: string
-      timestamp:
-        type: string
-      totalPrice:
-        type: integer
-      tradeSymbol:
-        type: string
-      type:
-        type: string
-      units:
-        type: integer
-      waypointSymbol:
-        type: string
-    type: object
-  schema.MarketTransactionResult:
-    properties:
-      agent:
-        $ref: '#/definitions/schema.Agent'
-      cargo:
-        $ref: '#/definitions/schema.Cargo'
-      transaction:
-        $ref: '#/definitions/schema.MarketTransaction'
-    type: object
-  schema.Module:
-    properties:
-      capacity:
-        description: Modules that provide capacity, such as cargo hold or crew quarters
-          will show this value to denote how much of a bonus the module grants.
-        type: integer
-      description:
-        type: string
-      name:
-        type: string
-      range:
-        description: Modules that have a range will such as a sensor array show this
-          value to denote how far can the module reach with its capabilities.
-        type: integer
-      requirements:
-        $ref: '#/definitions/schema.Requirements'
-      symbol:
-        type: string
-    type: object
-  schema.Mount:
-    properties:
-      deposits:
-        description: Mounts that have this value denote what goods can be produced
-          from using the mount.
-        items:
+components:
+  schemas:
+    api.CurrentAgentResponse:
+      properties:
+        agent:
+          $ref: '#/components/schemas/schema.Agent'
+        contracts:
+          items:
+            $ref: '#/components/schemas/schema.Contract'
+          type: array
+          uniqueItems: false
+        ships:
+          items:
+            $ref: '#/components/schemas/schema.Ship'
+          type: array
+          uniqueItems: false
+      type: object
+    api.authError:
+      properties:
+        error:
+          properties:
+            message:
+              type: string
+          type: object
+      type: object
+    api.cargoTransactionRequest:
+      properties:
+        symbol:
           type: string
-        type: array
-      description:
-        type: string
-      name:
-        type: string
-      requirements:
-        $ref: '#/definitions/schema.Requirements'
-      strength:
-        description: Mounts that have this value, such as mining lasers, denote how
-          powerful this mount's capabilities are.
-        type: integer
-      symbol:
-        type: string
-    type: object
-  schema.Nav:
-    properties:
-      flightMode:
-        type: string
-      route:
-        $ref: '#/definitions/schema.Route'
-      status:
-        type: string
-      systemSymbol:
-        type: string
-      waypointSymbol:
-        type: string
-    type: object
-  schema.Payment:
-    properties:
-      onAccepted:
-        type: integer
-      onFulfilled:
-        type: integer
-    type: object
-  schema.PurchaseShipResult:
-    properties:
-      agent:
-        $ref: '#/definitions/schema.Agent'
-      ship:
-        $ref: '#/definitions/schema.Ship'
-      transaction:
-        $ref: '#/definitions/schema.ShipyardTransaction'
-    type: object
-  schema.Reactor:
-    properties:
-      condition:
-        type: integer
-      description:
-        type: string
-      integrity:
-        type: integer
-      name:
-        type: string
-      powerOutput:
-        type: integer
-      requirements:
-        $ref: '#/definitions/schema.Requirements'
-      symbol:
-        type: string
-    type: object
-  schema.Registration:
-    properties:
-      factionSymbol:
-        type: string
-      name:
-        type: string
-      role:
-        type: string
-    type: object
-  schema.Requirements:
-    properties:
-      crew:
-        type: integer
-      power:
-        type: integer
-      slots:
-        type: integer
-    type: object
-  schema.Route:
-    properties:
-      arrival:
-        type: string
-      departureTime:
-        type: string
-      destination:
-        $ref: '#/definitions/schema.RouteWaypoint'
-      origin:
-        $ref: '#/definitions/schema.RouteWaypoint'
-    type: object
-  schema.RouteWaypoint:
-    properties:
-      symbol:
-        type: string
-      systemSymbol:
-        type: string
-      type:
-        type: string
-      x:
-        type: integer
-      "y":
-        type: integer
-    type: object
-  schema.Ship:
-    properties:
-      cargo:
-        $ref: '#/definitions/schema.Cargo'
-      cooldown:
-        $ref: '#/definitions/schema.Cooldown'
-      crew:
-        $ref: '#/definitions/schema.Crew'
-      engine:
-        $ref: '#/definitions/schema.Engine'
-      frame:
-        $ref: '#/definitions/schema.Frame'
-      fuel:
-        $ref: '#/definitions/schema.Fuel'
-      modules:
-        items:
-          $ref: '#/definitions/schema.Module'
-        type: array
-      mounts:
-        items:
-          $ref: '#/definitions/schema.Mount'
-        type: array
-      nav:
-        $ref: '#/definitions/schema.Nav'
-      reactor:
-        $ref: '#/definitions/schema.Reactor'
-      registration:
-        $ref: '#/definitions/schema.Registration'
-      symbol:
-        type: string
-    type: object
-  schema.ShipyardTransaction:
-    properties:
-      agentSymbol:
-        type: string
-      price:
-        type: integer
-      shipType:
-        type: string
-      timestamp:
-        type: string
-      waypointSymbol:
-        type: string
-    type: object
+        units:
+          type: integer
+      type: object
+    api.deliveryRequest:
+      properties:
+        shipSymbol:
+          type: string
+        tradeSymbol:
+          type: string
+        units:
+          type: integer
+      type: object
+    api.purchaseShipRequest:
+      properties:
+        shipType:
+          type: string
+        waypointSymbol:
+          type: string
+      type: object
+    db.Delivery:
+      properties:
+        contractId:
+          type: string
+        deliveredAt:
+          type: string
+        shipSymbol:
+          type: string
+        tradeSymbol:
+          type: string
+        units:
+          type: integer
+      type: object
+    db.Transaction:
+      properties:
+        agentCredits:
+          type: integer
+        occurredAt:
+          type: string
+        pricePerUnit:
+          type: integer
+        shipSymbol:
+          type: string
+        shipType:
+          type: string
+        totalPrice:
+          type: integer
+        tradeSymbol:
+          type: string
+        type:
+          $ref: '#/components/schemas/db.TransactionType'
+        units:
+          type: integer
+        waypointSymbol:
+          type: string
+      type: object
+    db.TransactionType:
+      enum:
+      - SHIP_PURCHASE
+      - PURCHASE
+      - SELL
+      type: string
+      x-enum-varnames:
+      - ShipPurchase
+      - CargoPurchase
+      - CargoSell
+    schema.Agent:
+      properties:
+        accountId:
+          type: string
+        credits:
+          type: integer
+        headquarters:
+          type: string
+        shipCount:
+          type: integer
+        startingFaction:
+          type: string
+        symbol:
+          type: string
+      type: object
+    schema.Cargo:
+      properties:
+        capacity:
+          type: integer
+        inventory:
+          items:
+            $ref: '#/components/schemas/schema.CargoItem'
+          type: array
+          uniqueItems: false
+        units:
+          type: integer
+      type: object
+    schema.CargoItem:
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        units:
+          type: integer
+      type: object
+    schema.Contract:
+      properties:
+        accepted:
+          type: boolean
+        deadlineToAccept:
+          type: string
+        expiration:
+          type: string
+        factionSymbol:
+          type: string
+        fulfilled:
+          type: boolean
+        id:
+          type: string
+        terms:
+          $ref: '#/components/schemas/schema.ContractTerms'
+        type:
+          type: string
+      type: object
+    schema.ContractAndAgent:
+      properties:
+        agent:
+          $ref: '#/components/schemas/schema.Agent'
+        contract:
+          $ref: '#/components/schemas/schema.Contract'
+      type: object
+    schema.ContractTerms:
+      properties:
+        deadline:
+          type: string
+        deliver:
+          items:
+            $ref: '#/components/schemas/schema.DeliveryInfo'
+          type: array
+          uniqueItems: false
+        payment:
+          $ref: '#/components/schemas/schema.Payment'
+      type: object
+    schema.Cooldown:
+      properties:
+        expiration:
+          type: string
+        remainingSeconds:
+          type: integer
+        shipSymbol:
+          type: string
+        totalSeconds:
+          type: integer
+      type: object
+    schema.Crew:
+      properties:
+        capacity:
+          type: integer
+        current:
+          type: integer
+        morale:
+          type: integer
+        required:
+          type: integer
+        rotation:
+          type: string
+        wages:
+          type: integer
+      type: object
+    schema.DeliveryInfo:
+      properties:
+        destinationSymbol:
+          type: string
+        tradeSymbol:
+          type: string
+        unitsFulfilled:
+          type: integer
+        unitsRequired:
+          type: integer
+      type: object
+    schema.Engine:
+      properties:
+        condition:
+          type: integer
+        description:
+          type: string
+        integrity:
+          type: integer
+        name:
+          type: string
+        requirements:
+          $ref: '#/components/schemas/schema.Requirements'
+        speed:
+          type: integer
+        symbol:
+          type: string
+      type: object
+    schema.Frame:
+      properties:
+        condition:
+          type: integer
+        description:
+          type: string
+        fuelCapacity:
+          type: integer
+        integrity:
+          type: integer
+        moduleSlots:
+          type: integer
+        mountingPoints:
+          type: integer
+        name:
+          type: string
+        requirements:
+          $ref: '#/components/schemas/schema.Requirements'
+        symbol:
+          type: string
+      type: object
+    schema.Fuel:
+      properties:
+        capacity:
+          type: integer
+        consumed:
+          properties:
+            amount:
+              type: integer
+            timestamp:
+              type: string
+          type: object
+        current:
+          type: integer
+      type: object
+    schema.MarketTransaction:
+      properties:
+        pricePerUnit:
+          type: integer
+        shipSymbol:
+          type: string
+        timestamp:
+          type: string
+        totalPrice:
+          type: integer
+        tradeSymbol:
+          type: string
+        type:
+          type: string
+        units:
+          type: integer
+        waypointSymbol:
+          type: string
+      type: object
+    schema.MarketTransactionResult:
+      properties:
+        agent:
+          $ref: '#/components/schemas/schema.Agent'
+        cargo:
+          $ref: '#/components/schemas/schema.Cargo'
+        transaction:
+          $ref: '#/components/schemas/schema.MarketTransaction'
+      type: object
+    schema.Module:
+      properties:
+        capacity:
+          description: Modules that provide capacity, such as cargo hold or crew quarters
+            will show this value to denote how much of a bonus the module grants.
+          type: integer
+        description:
+          type: string
+        name:
+          type: string
+        range:
+          description: Modules that have a range will such as a sensor array show
+            this value to denote how far can the module reach with its capabilities.
+          type: integer
+        requirements:
+          $ref: '#/components/schemas/schema.Requirements'
+        symbol:
+          type: string
+      type: object
+    schema.Mount:
+      properties:
+        deposits:
+          description: Mounts that have this value denote what goods can be produced
+            from using the mount.
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        description:
+          type: string
+        name:
+          type: string
+        requirements:
+          $ref: '#/components/schemas/schema.Requirements'
+        strength:
+          description: Mounts that have this value, such as mining lasers, denote
+            how powerful this mount's capabilities are.
+          type: integer
+        symbol:
+          type: string
+      type: object
+    schema.Nav:
+      properties:
+        flightMode:
+          type: string
+        route:
+          $ref: '#/components/schemas/schema.Route'
+        status:
+          type: string
+        systemSymbol:
+          type: string
+        waypointSymbol:
+          type: string
+      type: object
+    schema.Payment:
+      properties:
+        onAccepted:
+          type: integer
+        onFulfilled:
+          type: integer
+      type: object
+    schema.PurchaseShipResult:
+      properties:
+        agent:
+          $ref: '#/components/schemas/schema.Agent'
+        ship:
+          $ref: '#/components/schemas/schema.Ship'
+        transaction:
+          $ref: '#/components/schemas/schema.ShipyardTransaction'
+      type: object
+    schema.Reactor:
+      properties:
+        condition:
+          type: integer
+        description:
+          type: string
+        integrity:
+          type: integer
+        name:
+          type: string
+        powerOutput:
+          type: integer
+        requirements:
+          $ref: '#/components/schemas/schema.Requirements'
+        symbol:
+          type: string
+      type: object
+    schema.Registration:
+      properties:
+        factionSymbol:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+      type: object
+    schema.Requirements:
+      properties:
+        crew:
+          type: integer
+        power:
+          type: integer
+        slots:
+          type: integer
+      type: object
+    schema.Route:
+      properties:
+        arrival:
+          type: string
+        departureTime:
+          type: string
+        destination:
+          $ref: '#/components/schemas/schema.RouteWaypoint'
+        origin:
+          $ref: '#/components/schemas/schema.RouteWaypoint'
+      type: object
+    schema.RouteWaypoint:
+      properties:
+        symbol:
+          type: string
+        systemSymbol:
+          type: string
+        type:
+          type: string
+        x:
+          type: integer
+        "y":
+          type: integer
+      type: object
+    schema.Ship:
+      properties:
+        cargo:
+          $ref: '#/components/schemas/schema.Cargo'
+        cooldown:
+          $ref: '#/components/schemas/schema.Cooldown'
+        crew:
+          $ref: '#/components/schemas/schema.Crew'
+        engine:
+          $ref: '#/components/schemas/schema.Engine'
+        frame:
+          $ref: '#/components/schemas/schema.Frame'
+        fuel:
+          $ref: '#/components/schemas/schema.Fuel'
+        modules:
+          items:
+            $ref: '#/components/schemas/schema.Module'
+          type: array
+          uniqueItems: false
+        mounts:
+          items:
+            $ref: '#/components/schemas/schema.Mount'
+          type: array
+          uniqueItems: false
+        nav:
+          $ref: '#/components/schemas/schema.Nav'
+        reactor:
+          $ref: '#/components/schemas/schema.Reactor'
+        registration:
+          $ref: '#/components/schemas/schema.Registration'
+        symbol:
+          type: string
+      type: object
+    schema.ShipyardTransaction:
+      properties:
+        agentSymbol:
+          type: string
+        price:
+          type: integer
+        shipType:
+          type: string
+        timestamp:
+          type: string
+        waypointSymbol:
+          type: string
+      type: object
+  securitySchemes:
+    BearerAuth:
+      description: Clerk session token, as "Bearer <jwt>". Verified by auth-service,
+        not here.
+      in: header
+      name: Authorization
+      type: apiKey
+externalDocs:
+  description: ""
+  url: ""
 info:
-  contact: {}
   description: Service for accessing information about the agent - profile, fleet,
     contracts.
   title: Agent Info Service API
   version: "1.0"
+openapi: 3.1.0
 paths:
   /agent:
     get:
-      produces:
-      - application/json
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/schema.Agent'
           description: OK
-          schema:
-            $ref: '#/definitions/schema.Agent'
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Get the current agent's profile
@@ -492,31 +517,39 @@ paths:
       - agent
   /contracts:
     get:
-      produces:
-      - application/json
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/schema.Contract'
+                type: array
           description: OK
-          schema:
-            items:
-              $ref: '#/definitions/schema.Contract'
-            type: array
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: List the agent's contracts
@@ -529,34 +562,45 @@ paths:
         in: path
         name: contractId
         required: true
-        type: string
-      produces:
-      - application/json
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/schema.Contract'
           description: OK
-          schema:
-            $ref: '#/definitions/schema.Contract'
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "404":
+          content:
+            application/json:
+              schema:
+                type: string
           description: contract not found
-          schema:
-            type: string
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Get a single contract
@@ -571,34 +615,45 @@ paths:
         in: path
         name: contractId
         required: true
-        type: string
-      produces:
-      - application/json
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/schema.ContractAndAgent'
           description: OK
-          schema:
-            $ref: '#/definitions/schema.ContractAndAgent'
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: session lacks fleet:control
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Accept a contract
@@ -611,30 +666,33 @@ paths:
         in: path
         name: contractId
         required: true
-        type: string
-      produces:
-      - application/json
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/db.Delivery'
+                type: array
           description: OK
-          schema:
-            items:
-              $ref: '#/definitions/db.Delivery'
-            type: array
         "500":
+          content:
+            application/json:
+              schema:
+                type: string
           description: failed to load deliveries
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: a token was presented and auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
       summary: List recorded deliveries for a contract
       tags:
       - contracts
     post:
-      consumes:
-      - application/json
       description: Called by fleet-service after a successful deliver-contract action
         on SpaceTraders, forwarding its caller's session.
       parameters:
@@ -642,40 +700,54 @@ paths:
         in: path
         name: contractId
         required: true
-        type: string
-      - description: Delivery details
-        in: body
-        name: delivery
-        required: true
         schema:
-          $ref: '#/definitions/api.deliveryRequest'
-      produces:
-      - application/json
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/api.deliveryRequest'
+              description: Delivery details
+              summary: delivery
+        description: Delivery details
+        required: true
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/db.Delivery'
           description: OK
-          schema:
-            $ref: '#/definitions/db.Delivery'
         "400":
+          content:
+            application/json:
+              schema:
+                type: string
           description: invalid request body
-          schema:
-            type: string
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no verified session
-          schema:
-            $ref: '#/definitions/api.authError'
         "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: session lacks fleet:control
-          schema:
-            $ref: '#/definitions/api.authError'
         "500":
+          content:
+            application/json:
+              schema:
+                type: string
           description: failed to record delivery
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
       security:
       - BearerAuth: []
       summary: Record a contract delivery (internal)
@@ -690,34 +762,45 @@ paths:
         in: path
         name: contractId
         required: true
-        type: string
-      produces:
-      - application/json
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/schema.ContractAndAgent'
           description: OK
-          schema:
-            $ref: '#/definitions/schema.ContractAndAgent'
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: session lacks fleet:control
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Fulfill a contract
@@ -726,29 +809,37 @@ paths:
   /current-agent:
     get:
       description: Convenience bundle of GET /agent + GET /ships + GET /contracts.
-      produces:
-      - application/json
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.CurrentAgentResponse'
           description: OK
-          schema:
-            $ref: '#/definitions/api.CurrentAgentResponse'
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Get agent, ships and contracts in one call
@@ -756,31 +847,39 @@ paths:
       - agent
   /ships:
     get:
-      produces:
-      - application/json
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/schema.Ship'
+                type: array
           description: OK
-          schema:
-            items:
-              $ref: '#/definitions/schema.Ship'
-            type: array
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: List the agent's ships
@@ -793,34 +892,45 @@ paths:
         in: path
         name: shipSymbol
         required: true
-        type: string
-      produces:
-      - application/json
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/schema.Ship'
           description: OK
-          schema:
-            $ref: '#/definitions/schema.Ship'
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "404":
+          content:
+            application/json:
+              schema:
+                type: string
           description: ship not found
-          schema:
-            type: string
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Get a single ship
@@ -828,8 +938,6 @@ paths:
       - ships
   /ships/{shipSymbol}/purchase:
     post:
-      consumes:
-      - application/json
       description: Calls SpaceTraders' purchase-cargo, then records the transaction
         in agent-service's transaction history.
       parameters:
@@ -837,44 +945,60 @@ paths:
         in: path
         name: shipSymbol
         required: true
-        type: string
-      - description: Trade good symbol and units
-        in: body
-        name: body
-        required: true
         schema:
-          $ref: '#/definitions/api.cargoTransactionRequest'
-      produces:
-      - application/json
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/api.cargoTransactionRequest'
+              description: Trade good symbol and units
+              summary: body
+        description: Trade good symbol and units
+        required: true
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/schema.MarketTransactionResult'
           description: OK
-          schema:
-            $ref: '#/definitions/schema.MarketTransactionResult'
         "400":
+          content:
+            application/json:
+              schema:
+                type: string
           description: invalid request body
-          schema:
-            type: string
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: session lacks fleet:control
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Purchase cargo into a ship's hold
@@ -882,8 +1006,6 @@ paths:
       - ships
   /ships/{shipSymbol}/sell:
     post:
-      consumes:
-      - application/json
       description: Calls SpaceTraders' sell-cargo, then records the transaction in
         agent-service's transaction history.
       parameters:
@@ -891,44 +1013,60 @@ paths:
         in: path
         name: shipSymbol
         required: true
-        type: string
-      - description: Trade good symbol and units
-        in: body
-        name: body
-        required: true
         schema:
-          $ref: '#/definitions/api.cargoTransactionRequest'
-      produces:
-      - application/json
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/api.cargoTransactionRequest'
+              description: Trade good symbol and units
+              summary: body
+        description: Trade good symbol and units
+        required: true
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/schema.MarketTransactionResult'
           description: OK
-          schema:
-            $ref: '#/definitions/schema.MarketTransactionResult'
         "400":
+          content:
+            application/json:
+              schema:
+                type: string
           description: invalid request body
-          schema:
-            type: string
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: session lacks fleet:control
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Sell cargo from a ship's hold
@@ -936,48 +1074,60 @@ paths:
       - ships
   /ships/purchase:
     post:
-      consumes:
-      - application/json
       description: Calls SpaceTraders' purchase-ship, then records the transaction
         in agent-service's transaction history.
-      parameters:
-      - description: Ship type and shipyard waypoint
-        in: body
-        name: body
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/api.purchaseShipRequest'
+              description: Ship type and shipyard waypoint
+              summary: body
+        description: Ship type and shipyard waypoint
         required: true
-        schema:
-          $ref: '#/definitions/api.purchaseShipRequest'
-      produces:
-      - application/json
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/schema.PurchaseShipResult'
           description: OK
-          schema:
-            $ref: '#/definitions/schema.PurchaseShipResult'
         "400":
+          content:
+            application/json:
+              schema:
+                type: string
           description: invalid request body
-          schema:
-            type: string
         "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: no Clerk session, or no game token
-          schema:
-            $ref: '#/definitions/api.authError'
         "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: session lacks fleet:control
-          schema:
-            $ref: '#/definitions/api.authError'
         "502":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway answered with something unreadable
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
         "504":
+          content:
+            application/json:
+              schema:
+                type: string
           description: st-gateway did not answer
-          schema:
-            type: string
       security:
       - BearerAuth: []
       summary: Purchase a new ship
@@ -991,49 +1141,52 @@ paths:
       - description: Filter by ship symbol
         in: query
         name: shipSymbol
-        type: string
+        schema:
+          type: string
       - description: Filter by transaction type
-        enum:
-        - SHIP_PURCHASE
-        - PURCHASE
-        - SELL
         in: query
         name: type
-        type: string
-      - default: 100
-        description: Max results, 1-1000
+        schema:
+          enum:
+          - SHIP_PURCHASE
+          - PURCHASE
+          - SELL
+          type: string
+      - description: Max results, 1-1000
         in: query
         name: limit
-        type: integer
-      produces:
-      - application/json
+        schema:
+          default: 100
+          type: integer
       responses:
         "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/db.Transaction'
+                type: array
           description: OK
-          schema:
-            items:
-              $ref: '#/definitions/db.Transaction'
-            type: array
         "400":
+          content:
+            application/json:
+              schema:
+                type: string
           description: invalid query parameter
-          schema:
-            type: string
         "500":
+          content:
+            application/json:
+              schema:
+                type: string
           description: failed to load transactions
-          schema:
-            type: string
         "503":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/api.authError'
           description: a token was presented and auth-service could not be asked
-          schema:
-            $ref: '#/definitions/api.authError'
       summary: List recorded transactions
       tags:
       - ships
-securityDefinitions:
-  BearerAuth:
-    description: Clerk session token, as "Bearer <jwt>". Verified by auth-service,
-      not here.
-    in: header
-    name: Authorization
-    type: apiKey
-swagger: "2.0"
+servers:
+- url: /api/agent/v1
