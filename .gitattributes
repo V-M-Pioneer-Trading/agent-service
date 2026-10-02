@@ -8,3 +8,8 @@ src/introspection/testdata/introspection.json -text
 # The generated OpenAPI spec is synced byte-for-byte to meta and diffed in CI
 # after regeneration. swag writes LF; keep LF in the working tree on Windows too.
 src/docs/* text eol=lf
+
+# The contract suite's copy of the gateway-errors fixture is byte-identical to
+# src/spacetraders/testdata/gateway-errors.json and pinned by sha256 in
+# contract/fixtures/SOURCE.txt; keep LF on a Windows checkout so the pin holds.
+contract/fixtures/gateway-errors.json -text
