@@ -536,7 +536,7 @@ func (h *handlers) getTransactions(w http.ResponseWriter, r *http.Request) {
 	if raw := query.Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed <= 0 {
-			http.Error(w, "limit must be a positive integer", http.StatusUnprocessableEntity)
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
 			return
 		}
 		limit = min(parsed, maxTransactionLimit)
