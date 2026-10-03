@@ -204,8 +204,9 @@ Changing any of these breaks a known consumer.
   service owns the transaction history.
 * **auth-service verifies, this service asks (decision 21).** `POST` form `token=` to
   `AUTH_INTROSPECTION_URL` verbatim, `X-Introspection-Secret` header. The answer's `scope` is
-  one string, split on whitespace runs; it is ABSENT for a scopeless session (auth-service
-  encodes it `omitempty`), which is the empty list, not a malformed answer.
+  one string, split on runs of space, tab, CR and LF only (fixture v6); it is ABSENT for a
+  scopeless session (auth-service encodes it `omitempty`), which is the empty list, not a
+  malformed answer.
 * **Agent credits exceed `INT`.** Money columns are `BIGINT` for that reason.
 * **MySQL is `mysql:9`, in compose and in production alike** (`infrastructure/agent-service/main.tf`).
   Both track the latest 9.x on purpose — minor upgrades are safe in place, and the tag still
@@ -223,7 +224,7 @@ Five layers, none of which need a database, an external network, or a container:
 | Layer | Where | Harness |
 |---|---|---|
 | Router + handlers | `api/routes_test.go`, `api/auth_test.go` | `httptest` recorder against the real router, `sqlmock` for the DB, a stub gateway for upstream, a stub auth-service on loopback |
-| Introspection contract | `introspection/conformance_test.go`, `introspection/center_test.go` | All 41 calling-service cases of `introspection/testdata/introspection.json` — a **verbatim copy** of `meta/fixtures/introspection.json`, pinned by sha256 in `testdata/SOURCE.txt` and `-text` in `.gitattributes` — against a real `httptest` center; the 13 gateway cases are skipped by name with a count assertion. Unknown fixture keys fail |
+| Introspection contract | `introspection/conformance_test.go`, `introspection/center_test.go` | All 51 calling-service cases of `introspection/testdata/introspection.json` — a **verbatim copy** of `meta/fixtures/introspection.json`, pinned by sha256 in `testdata/SOURCE.txt` and `-text` in `.gitattributes` — against a real `httptest` center; the 14 gateway cases are skipped by name with a count assertion. Unknown fixture keys fail |
 | Gateway client | `spacetraders/client_test.go` | `httptest.NewServer` standing in for st-gateway |
 | Upstream-error contract | `api/gateway_errors_conformance_test.go` | A subtest per condition, driven from `spacetraders/testdata/gateway-errors.json` — a **verbatim copy** of `meta/fixtures/gateway-errors.json`. Change meta first, then re-copy, or the copy is just a local opinion. It runs through the router rather than the client, because the contract is about what a caller receives: a 2xx body this service cannot decode never becomes an `*UpstreamError` at all, and it is the handler that turns it into the 502 |
 | Queries and migrations | `db/db_test.go` | `sqlmock`; migration tests assert the statement *sequence*, not the SQL dialect |
