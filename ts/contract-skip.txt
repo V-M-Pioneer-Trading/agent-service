@@ -1,0 +1,66 @@
+# Contract cases the TypeScript service does not pass YET, because the route
+# they exercise is not ported. One JavaScript regular expression per line, handed
+# to `node --test --test-skip-pattern`; it is matched against the test's name
+# with its enclosing describe names in front, joined by single spaces. Blank
+# lines and lines starting with "#" are ignored.
+#
+# This list only ever shrinks. Each porting PR deletes the lines of the routes it
+# ports, and the last one (agent-service#37) leaves it empty. Never add a line
+# for a case that fails for any other reason: a red case must mean a defect.
+#
+# scripts/run-contract.js refuses a run whose number of tests does not match
+# contract-skip.expected, so a pattern that is too broad (or stale) cannot hide
+# anything: change both files in the same commit, and say why.
+
+# --- 4b (agent-service#36): the live read routes, and the auth tiers they carry
+^tiers, per route$
+^what counts as a credential$
+^public routes with a presented token$
+^fleet:control$
+^the center's answer$
+^the request to the center (?!is not made for anything that is refused)
+^what is forwarded to the gateway$
+^a center that refuses connections (?!health still answers 200)
+^every upstream route, answered normally
+^a single object is decoded and encoded again$
+^agent: number handling$
+^agent: string handling$
+^times are parsed and written back as RFC 3339$
+^lists$
+^/current-agent$
+^the gateway redirects$
+^gateway-errors\.json, on every route that calls the gateway$
+^pacing headers$
+^lifting the message out of an error body$
+^mapping the status$
+^a gateway that does not answer$
+^HEAD answers like GET without a body (GET /(agent|ships|contracts|current-agent|transactions)|a HEAD of |relays an upstream error|a validation error)
+^unknown paths and wrong methods GET /ships/purchase is the ship called
+^percent-decoding GET /ships/
+^percent-decoding GET /contracts/
+^percent-decoding routes on the decoded path: %61gent is agent
+^query strings
+^CORS headers on ordinary responses are on 
+^HEAD on a route that has no GET HEAD /ships/purchase is a HEAD
+
+# --- 4c (agent-service#37): write routes, MySQL persistence, DB-backed reads, Swagger UI
+^write routes, answered normally$
+^POST /contracts/\{id\}/deliveries$
+^POST /ships/purchase$
+^POST /ships/\{symbol\}/purchase$
+^POST /ships/\{symbol\}/sell$
+^other things about bodies$
+^history of cargo trades$
+^the time of a transaction$
+^selecting transactions$
+^rejected query parameters$
+^the cap on limit$
+^an empty answer from the gateway$
+^the history is best effort$
+^contract deliveries$
+^unknown paths and wrong methods POST /ships/purchase/purchase buys cargo
+^percent-decoding POST /contracts/
+^swagger$
+
+# --- both: ST_GATEWAY_URL is observable only through a route that calls the gateway
+^ST_GATEWAY_URL$

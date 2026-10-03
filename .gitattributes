@@ -13,3 +13,7 @@ src/docs/* text eol=lf
 # src/spacetraders/testdata/gateway-errors.json and pinned by sha256 in
 # contract/fixtures/SOURCE.txt; keep LF on a Windows checkout so the pin holds.
 contract/fixtures/gateway-errors.json -text
+
+# The TypeScript port. Its OpenAPI spec is regenerated and diffed byte for byte in CI;
+# keep LF in the working tree on Windows too.
+ts/openapi.json -text

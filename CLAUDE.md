@@ -21,6 +21,48 @@ All Go commands run from `src/`.
 CI runs format check, vet and the race/shuffle test suite on both pull requests and pushes to
 `main`; the image build and deploy is gated on that job passing.
 
+## The TypeScript port (`ts/`, meta#103 decision 23)
+
+The Go service above is what deploys until the cutover (agent-service#38). `ts/` is its
+strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 writes and MySQL).
+`.github/workflows/ts.yml` runs it; `container.yml` and `contract.yml` do not know it exists.
+
+| Task (from `ts/`) | Command |
+|---|---|
+| Install | `npm ci --ignore-scripts` (never plain `npm ci`, never `npm install` in CI) |
+| Typecheck / build / test | `npm run typecheck` / `npm run build` / `npm test` |
+| Regenerate the OpenAPI spec | `npm run openapi` (CI fails on drift in `ts/openapi.json`) |
+| Dependency allowlist | `npm run check:deps`; a new direct dependency needs a line in `allowed-dependencies.txt` |
+| Contract suite against the port | `npm run build` then, from the repo root, `node ts/scripts/run-contract.js` (runs `contract/` unchanged with `CONTRACT_COMMAND`; set `CONTRACT_IMAGE` to use an image) |
+
+* **Skip list.** `ts/contract-skip.txt` lists, as regexes, the contract cases of routes not
+  ported yet (matched like `--test-skip-pattern`: against the space-joined describe and test names,
+  or any ancestor's). `ts/scripts/run-contract.js` runs the whole suite unfiltered and judges it: a case
+  off the list must pass; a case on the list must not pass (bar the vacuous ones named in
+  `ts/contract-skip-passing.txt`), so a too-broad or stale pattern fails; a pattern that matches
+  nothing fails; and the measured numbers must equal `ts/contract-skip.expected`. Each porting PR
+  deletes its lines and updates the numbers; #37 leaves the list empty. Never add a line for a case
+  that fails for another reason, and never edit `contract/` to make the port pass.
+* **Auth.** Routes are declared in `ts/src/auth.ts` (`routePolicy`, the TS twin of
+  `SetUpRouter`); tsoa's generated routes are registered through `declaring()`, which puts the
+  clerk-client declaration first and refuses to start on a route with no entry. The app is also
+  `secured()`, so a route registered anywhere else without a declaration refuses startup too.
+  `AUTH_INTROSPECTION_*` are validated in `ts/src/config.ts` as Go does (Go 1.25.x's `TrimSpace`
+  and patched `url.Parse`; every verdict is recorded in `config.test.ts`) and, on purpose stricter
+  than Go, the URL must be fetch-identical: clerk-client calls `fetch(url)`, and WHATWG URL rewrites
+  or rejects URLs Go sends as written. clerk-client's own loader is not used.
+* **HTTP artefacts.** `ts/src/http/muxCompat.ts` reproduces gorilla/mux and net/http (400 on a
+  bad escape, 301 path cleaning, decoded-path routing, bare 405 / `404 page not found`), before
+  any Express default; `json.ts` writes Go's `application/json` (no charset), `cors.ts` Go's four
+  constant headers. Express runs case sensitive and strict (no trailing slash). No body parser is
+  mounted: the route PRs read bodies themselves with the Go decoder's semantics (contract README
+  notes 19-30: int64 beyond 2^53 kept exact, RFC 3339 normalisation, case-insensitive member names,
+  one JSON value then the rest ignored, Content-Type never checked, 1 MiB cap, validation before any
+  gateway call but after auth). `express.json()` and tsoa's own body validation would answer first.
+* **Gateway errors.** `ts/src/gateway/errors.ts` is the mapping for st-gateway's answers; the
+  fixture (`contract/fixtures/gateway-errors.json`, pinned) is driven through it by
+  `gatewayErrors.test.ts`.
+
 ## Module map
 
 | File | Owns | Depends on |
