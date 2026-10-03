@@ -119,6 +119,10 @@ export class GatewayClient {
       throw new UpstreamError(502, "st-gateway address is not a usable URL", `${method} ${endpoint}`);
     }
     const firstName = asciiHostname(hostnameOf(first.host));
+    // A single-label name ("st-gateway") or an IP literal has no subdomains worth the name: a DNS search domain
+    // would make "x.st-gateway" something else. Stricter than Go: only the exact host gets Authorization.
+    const exactOnly = !firstName.includes(".") || /^[\d.]+$/.test(firstName) || firstName.includes(":");
+    const sameDomain = (name: string, parent: string): boolean => (exactOnly ? name === parent : isDomainOrSubdomain(name, parent));
     let target = first;
     let verb = method;
     let payload = body;
@@ -144,9 +148,11 @@ export class GatewayClient {
       if (requests >= MAX_REQUESTS) throw noAnswer(new Error(`stopped after ${MAX_REQUESTS} redirects`));
       // Authorization stays only where BOTH views agree it may go: Go's (the host as written, compared byte for byte)
       // and the one of the URL that is actually fetched.
-      const goSame = next.host === first.host || isDomainOrSubdomain(asciiHostname(hostnameOf(next.host)), firstName);
-      const fetchedSame = isDomainOrSubdomain(next.url.hostname, first.url.hostname);
-      if (!goSame || !fetchedSame) stripped = true;
+      const goSame = next.host === first.host || sameDomain(asciiHostname(hostnameOf(next.host)), firstName);
+      const fetchedSame = sameDomain(next.url.hostname, first.url.hostname);
+      // Also stricter than Go: a hop from https to http is a downgrade, whichever host it names.
+      const downgrade = target.url.protocol === "https:" && next.url.protocol === "http:";
+      if (!goSame || !fetchedSame || downgrade) stripped = true;
       target = next;
       if (res.status <= 303 && verb !== "GET" && verb !== "HEAD") verb = "GET";
       if (res.status <= 303) payload = undefined;

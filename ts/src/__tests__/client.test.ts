@@ -31,7 +31,7 @@ const run = async (hops: Array<[number, string]>, base?: string) => {
 describe("Authorization on redirects (Go 1.24, CVE-2024-45336)", () => {
   it("travels to the same host, another port, and a subdomain", async () => {
     expect((await run([[302, "http://gw:9999/x"]])).seen[1]).toBe("GET http://gw:9999/x +auth");
-    expect((await run([[302, "http://sub.gw:3002/x"]])).seen[1]).toBe("GET http://sub.gw:3002/x +auth");
+    expect((await run([[302, "http://sub.gw.example:3002/x"]], "http://gw.example:3002/proxy")).seen[1]).toBe("GET http://sub.gw.example:3002/x +auth");
   });
 
   it("is dropped by a hop that leaves the domain, and stays dropped when a later hop comes back", async () => {
@@ -64,6 +64,39 @@ describe("Authorization on redirects (Go 1.24, CVE-2024-45336)", () => {
     expect(isDomainOrSubdomain("agw", "gw")).toBe(false);
     expect(isDomainOrSubdomain("gw", "a.gw")).toBe(false);
     expect([hostnameOf("gw:3002"), hostnameOf("[::1]:80"), hostnameOf("gw")]).toEqual(["gw", "::1", "gw"]);
+  });
+});
+
+describe("Authorization where the subdomain rule would be wrong, or the scheme gets weaker (stricter than Go)", () => {
+  it("a single-label gateway host gets no subdomains", async () => {
+    const base = "http://st-gateway:3002/proxy";
+    expect((await run([[302, "http://st-gateway:9999/x"]], base)).seen[1]).toBe("GET http://st-gateway:9999/x +auth");
+    expect((await run([[302, "http://x.st-gateway:3002/x"]], base)).seen[1]).toBe("GET http://x.st-gateway:3002/x");
+    expect((await run([[302, "http://x.st-gateway/x"]], "http://st-gateway/proxy")).seen[1]).toBe("GET http://x.st-gateway/x");
+  });
+
+  it("an IP gateway host gets no subdomains either, and is still itself", async () => {
+    const base = "http://10.0.0.5:3002/proxy";
+    expect((await run([[302, "http://10.0.0.5:9/x"]], base)).seen[1]).toBe("GET http://10.0.0.5:9/x +auth");
+    expect((await run([[302, "http://[::1]:9/x"]], "http://[::1]:3002/proxy")).seen[1]).toBe("GET http://[::1]:9/x +auth");
+  });
+
+  it("a name with dots keeps the subdomain rule", async () => {
+    expect((await run([[302, "http://www.gw.example/x"]], "http://gw.example/proxy")).seen[1]).toBe("GET http://www.gw.example/x +auth");
+  });
+
+  it("an https to http downgrade on the same host drops Authorization for good", async () => {
+    const hops = await run([[302, "http://gw:3002/a"]], "https://gw:3002/proxy");
+    expect(hops.seen).toEqual(["GET https://gw:3002/proxy/my/agent +auth", "GET http://gw:3002/a"]);
+    const back = await run(
+      [
+        [302, "http://gw:3002/a"],
+        [302, "https://gw:3002/b"],
+      ],
+      "https://gw:3002/proxy",
+    );
+    expect(back.seen[2]).toBe("GET https://gw:3002/b");
+    expect((await run([[302, "https://gw:3002/a"]], "http://gw:3002/proxy")).seen[1]).toBe("GET https://gw:3002/a +auth");
   });
 });
 

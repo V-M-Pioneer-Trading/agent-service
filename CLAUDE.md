@@ -85,6 +85,9 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
     before the fraction, a zone offset with minute 60 or hour 24 are read, and written back with the offset
     recomputed (`+00:60` is `+01:00`). An offset of a day or more is read but Go's encoder refuses it, so the
     answer is **200, `application/json`, empty body** (`UnencodableTime`, `hasUnencodable`).
+  * **Stricter than Go, on purpose:** when the gateway host is a single label (`st-gateway`) or an IP literal,
+    only that exact host gets Authorization (no `x.st-gateway`: a DNS search domain could resolve it
+    elsewhere); and a hop from https to http never carries it, on any host.
   * **Known deviations in following a redirect** (each is path-only on the same host, or refuses where Go
     requests; none can send Authorization anywhere Go would not): userinfo in a `Location` is refused (Go
     would send Basic credentials; nothing here forwards credentials to a redirect target); `%2e`/`%2E`
