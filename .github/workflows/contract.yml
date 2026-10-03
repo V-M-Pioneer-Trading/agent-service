@@ -1,0 +1,77 @@
+name: contract
+
+# The black-box HTTP contract suite in contract/, run against the image this
+# repository builds. It is the parity gate for the Go -> TypeScript port: the
+# TypeScript image has to pass the same suite unchanged. It is a separate
+# workflow from `container` so that it can never hold up, or be confused with,
+# the deploy path.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Superseded pull request runs are cancelled; a run on main never is.
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      # Same major as compose and production (see CLAUDE.md). The image under
+      # test reaches it through host.docker.internal on the published port.
+      mysql:
+        image: mysql:9
+        env:
+          MYSQL_ROOT_PASSWORD: example
+          MYSQL_DATABASE: vnm-agent-db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pexample"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: contract/package-lock.json
+
+      - name: Build the image
+        run: docker build -t agent-service:contract .
+
+      - name: Install the suite's dev dependencies
+        working-directory: contract
+        run: npm ci
+
+      - name: Typecheck the suite
+        working-directory: contract
+        run: npm run typecheck
+
+      - name: Run the contract suite
+        working-directory: contract
+        env:
+          CONTRACT_IMAGE: agent-service:contract
+          CONTRACT_MYSQL_HOST: host.docker.internal
+          CONTRACT_MYSQL_PORT: "3306"
+          CONTRACT_MYSQL_USER: root
+          CONTRACT_MYSQL_PASSWORD: example
+          CONTRACT_MYSQL_DATABASE: vnm-agent-db
+        run: node --test --test-timeout=60000 --test-reporter=spec contract.test.ts
+
+      # The service's own log, for a run that failed. The suite writes it on the
+      # way out, before it removes the container.
+      - name: Show the service log
+        if: failure()
+        working-directory: contract
+        run: cat .out/service.log || true
