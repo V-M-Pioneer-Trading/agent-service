@@ -1,1585 +1,1895 @@
 {
-    "swagger": "2.0",
+    "components": {
+        "schemas": {
+            "api.CurrentAgentResponse": {
+                "properties": {
+                    "agent": {
+                        "$ref": "#/components/schemas/schema.Agent"
+                    },
+                    "contracts": {
+                        "items": {
+                            "$ref": "#/components/schemas/schema.Contract"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "ships": {
+                        "items": {
+                            "$ref": "#/components/schemas/schema.Ship"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "api.authError": {
+                "properties": {
+                    "error": {
+                        "properties": {
+                            "message": {
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "type": "object"
+            },
+            "api.cargoTransactionRequest": {
+                "properties": {
+                    "symbol": {
+                        "type": "string"
+                    },
+                    "units": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "api.deliveryRequest": {
+                "properties": {
+                    "shipSymbol": {
+                        "type": "string"
+                    },
+                    "tradeSymbol": {
+                        "type": "string"
+                    },
+                    "units": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "api.purchaseShipRequest": {
+                "properties": {
+                    "shipType": {
+                        "type": "string"
+                    },
+                    "waypointSymbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "db.Delivery": {
+                "properties": {
+                    "contractId": {
+                        "type": "string"
+                    },
+                    "deliveredAt": {
+                        "type": "string"
+                    },
+                    "shipSymbol": {
+                        "type": "string"
+                    },
+                    "tradeSymbol": {
+                        "type": "string"
+                    },
+                    "units": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "db.Transaction": {
+                "properties": {
+                    "agentCredits": {
+                        "type": "integer"
+                    },
+                    "occurredAt": {
+                        "type": "string"
+                    },
+                    "pricePerUnit": {
+                        "type": "integer"
+                    },
+                    "shipSymbol": {
+                        "type": "string"
+                    },
+                    "shipType": {
+                        "type": "string"
+                    },
+                    "totalPrice": {
+                        "type": "integer"
+                    },
+                    "tradeSymbol": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "$ref": "#/components/schemas/db.TransactionType"
+                    },
+                    "units": {
+                        "type": "integer"
+                    },
+                    "waypointSymbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "db.TransactionType": {
+                "enum": [
+                    "SHIP_PURCHASE",
+                    "PURCHASE",
+                    "SELL"
+                ],
+                "type": "string",
+                "x-enum-varnames": [
+                    "ShipPurchase",
+                    "CargoPurchase",
+                    "CargoSell"
+                ]
+            },
+            "schema.Agent": {
+                "properties": {
+                    "accountId": {
+                        "type": "string"
+                    },
+                    "credits": {
+                        "type": "integer"
+                    },
+                    "headquarters": {
+                        "type": "string"
+                    },
+                    "shipCount": {
+                        "type": "integer"
+                    },
+                    "startingFaction": {
+                        "type": "string"
+                    },
+                    "symbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Cargo": {
+                "properties": {
+                    "capacity": {
+                        "type": "integer"
+                    },
+                    "inventory": {
+                        "items": {
+                            "$ref": "#/components/schemas/schema.CargoItem"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "units": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.CargoItem": {
+                "properties": {
+                    "description": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "symbol": {
+                        "type": "string"
+                    },
+                    "units": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Contract": {
+                "properties": {
+                    "accepted": {
+                        "type": "boolean"
+                    },
+                    "deadlineToAccept": {
+                        "type": "string"
+                    },
+                    "expiration": {
+                        "type": "string"
+                    },
+                    "factionSymbol": {
+                        "type": "string"
+                    },
+                    "fulfilled": {
+                        "type": "boolean"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "terms": {
+                        "$ref": "#/components/schemas/schema.ContractTerms"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.ContractAndAgent": {
+                "properties": {
+                    "agent": {
+                        "$ref": "#/components/schemas/schema.Agent"
+                    },
+                    "contract": {
+                        "$ref": "#/components/schemas/schema.Contract"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.ContractTerms": {
+                "properties": {
+                    "deadline": {
+                        "type": "string"
+                    },
+                    "deliver": {
+                        "items": {
+                            "$ref": "#/components/schemas/schema.DeliveryInfo"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "payment": {
+                        "$ref": "#/components/schemas/schema.Payment"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Cooldown": {
+                "properties": {
+                    "expiration": {
+                        "type": "string"
+                    },
+                    "remainingSeconds": {
+                        "type": "integer"
+                    },
+                    "shipSymbol": {
+                        "type": "string"
+                    },
+                    "totalSeconds": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Crew": {
+                "properties": {
+                    "capacity": {
+                        "type": "integer"
+                    },
+                    "current": {
+                        "type": "integer"
+                    },
+                    "morale": {
+                        "type": "integer"
+                    },
+                    "required": {
+                        "type": "integer"
+                    },
+                    "rotation": {
+                        "type": "string"
+                    },
+                    "wages": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.DeliveryInfo": {
+                "properties": {
+                    "destinationSymbol": {
+                        "type": "string"
+                    },
+                    "tradeSymbol": {
+                        "type": "string"
+                    },
+                    "unitsFulfilled": {
+                        "type": "integer"
+                    },
+                    "unitsRequired": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Engine": {
+                "properties": {
+                    "condition": {
+                        "type": "integer"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "integrity": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "requirements": {
+                        "$ref": "#/components/schemas/schema.Requirements"
+                    },
+                    "speed": {
+                        "type": "integer"
+                    },
+                    "symbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Frame": {
+                "properties": {
+                    "condition": {
+                        "type": "integer"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "fuelCapacity": {
+                        "type": "integer"
+                    },
+                    "integrity": {
+                        "type": "integer"
+                    },
+                    "moduleSlots": {
+                        "type": "integer"
+                    },
+                    "mountingPoints": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "requirements": {
+                        "$ref": "#/components/schemas/schema.Requirements"
+                    },
+                    "symbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Fuel": {
+                "properties": {
+                    "capacity": {
+                        "type": "integer"
+                    },
+                    "consumed": {
+                        "properties": {
+                            "amount": {
+                                "type": "integer"
+                            },
+                            "timestamp": {
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    },
+                    "current": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.MarketTransaction": {
+                "properties": {
+                    "pricePerUnit": {
+                        "type": "integer"
+                    },
+                    "shipSymbol": {
+                        "type": "string"
+                    },
+                    "timestamp": {
+                        "type": "string"
+                    },
+                    "totalPrice": {
+                        "type": "integer"
+                    },
+                    "tradeSymbol": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "units": {
+                        "type": "integer"
+                    },
+                    "waypointSymbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.MarketTransactionResult": {
+                "properties": {
+                    "agent": {
+                        "$ref": "#/components/schemas/schema.Agent"
+                    },
+                    "cargo": {
+                        "$ref": "#/components/schemas/schema.Cargo"
+                    },
+                    "transaction": {
+                        "$ref": "#/components/schemas/schema.MarketTransaction"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Module": {
+                "properties": {
+                    "capacity": {
+                        "description": "Modules that provide capacity, such as cargo hold or crew quarters will show this value to denote how much of a bonus the module grants.",
+                        "type": "integer"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "range": {
+                        "description": "Modules that have a range will such as a sensor array show this value to denote how far can the module reach with its capabilities.",
+                        "type": "integer"
+                    },
+                    "requirements": {
+                        "$ref": "#/components/schemas/schema.Requirements"
+                    },
+                    "symbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Mount": {
+                "properties": {
+                    "deposits": {
+                        "description": "Mounts that have this value denote what goods can be produced from using the mount.",
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "requirements": {
+                        "$ref": "#/components/schemas/schema.Requirements"
+                    },
+                    "strength": {
+                        "description": "Mounts that have this value, such as mining lasers, denote how powerful this mount's capabilities are.",
+                        "type": "integer"
+                    },
+                    "symbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Nav": {
+                "properties": {
+                    "flightMode": {
+                        "type": "string"
+                    },
+                    "route": {
+                        "$ref": "#/components/schemas/schema.Route"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "systemSymbol": {
+                        "type": "string"
+                    },
+                    "waypointSymbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Payment": {
+                "properties": {
+                    "onAccepted": {
+                        "type": "integer"
+                    },
+                    "onFulfilled": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.PurchaseShipResult": {
+                "properties": {
+                    "agent": {
+                        "$ref": "#/components/schemas/schema.Agent"
+                    },
+                    "ship": {
+                        "$ref": "#/components/schemas/schema.Ship"
+                    },
+                    "transaction": {
+                        "$ref": "#/components/schemas/schema.ShipyardTransaction"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Reactor": {
+                "properties": {
+                    "condition": {
+                        "type": "integer"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "integrity": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "powerOutput": {
+                        "type": "integer"
+                    },
+                    "requirements": {
+                        "$ref": "#/components/schemas/schema.Requirements"
+                    },
+                    "symbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Registration": {
+                "properties": {
+                    "factionSymbol": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "role": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Requirements": {
+                "properties": {
+                    "crew": {
+                        "type": "integer"
+                    },
+                    "power": {
+                        "type": "integer"
+                    },
+                    "slots": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Route": {
+                "properties": {
+                    "arrival": {
+                        "type": "string"
+                    },
+                    "departureTime": {
+                        "type": "string"
+                    },
+                    "destination": {
+                        "$ref": "#/components/schemas/schema.RouteWaypoint"
+                    },
+                    "origin": {
+                        "$ref": "#/components/schemas/schema.RouteWaypoint"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.RouteWaypoint": {
+                "properties": {
+                    "symbol": {
+                        "type": "string"
+                    },
+                    "systemSymbol": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "x": {
+                        "type": "integer"
+                    },
+                    "y": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.Ship": {
+                "properties": {
+                    "cargo": {
+                        "$ref": "#/components/schemas/schema.Cargo"
+                    },
+                    "cooldown": {
+                        "$ref": "#/components/schemas/schema.Cooldown"
+                    },
+                    "crew": {
+                        "$ref": "#/components/schemas/schema.Crew"
+                    },
+                    "engine": {
+                        "$ref": "#/components/schemas/schema.Engine"
+                    },
+                    "frame": {
+                        "$ref": "#/components/schemas/schema.Frame"
+                    },
+                    "fuel": {
+                        "$ref": "#/components/schemas/schema.Fuel"
+                    },
+                    "modules": {
+                        "items": {
+                            "$ref": "#/components/schemas/schema.Module"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "mounts": {
+                        "items": {
+                            "$ref": "#/components/schemas/schema.Mount"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nav": {
+                        "$ref": "#/components/schemas/schema.Nav"
+                    },
+                    "reactor": {
+                        "$ref": "#/components/schemas/schema.Reactor"
+                    },
+                    "registration": {
+                        "$ref": "#/components/schemas/schema.Registration"
+                    },
+                    "symbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "schema.ShipyardTransaction": {
+                "properties": {
+                    "agentSymbol": {
+                        "type": "string"
+                    },
+                    "price": {
+                        "type": "integer"
+                    },
+                    "shipType": {
+                        "type": "string"
+                    },
+                    "timestamp": {
+                        "type": "string"
+                    },
+                    "waypointSymbol": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "BearerAuth": {
+                "description": "Clerk session token, as \"Bearer \u003cjwt\u003e\". Verified by auth-service, not here.",
+                "in": "header",
+                "name": "Authorization",
+                "type": "apiKey"
+            }
+        }
+    },
     "info": {
         "description": "Service for accessing information about the agent - profile, fleet, contracts.",
         "title": "Agent Info Service API",
-        "contact": {},
         "version": "1.0"
     },
-    "basePath": "/api/agent/v1",
+    "externalDocs": {
+        "description": "",
+        "url": ""
+    },
     "paths": {
         "/agent": {
             "get": {
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/schema.Agent"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Get the current agent's profile",
                 "tags": [
                     "agent"
-                ],
-                "summary": "Get the current agent's profile",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/schema.Agent"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/contracts": {
             "get": {
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/schema.Contract"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "List the agent's contracts",
                 "tags": [
                     "contracts"
-                ],
-                "summary": "List the agent's contracts",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/schema.Contract"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/contracts/{contractId}": {
             "get": {
+                "parameters": [
+                    {
+                        "description": "Contract ID",
+                        "in": "path",
+                        "name": "contractId",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/schema.Contract"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "contract not found"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Get a single contract",
                 "tags": [
                     "contracts"
-                ],
-                "summary": "Get a single contract",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Contract ID",
-                        "name": "contractId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/schema.Contract"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "404": {
-                        "description": "contract not found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/contracts/{contractId}/accept": {
             "post": {
+                "description": "Calls SpaceTraders' accept-contract, then persists the resulting contract state.",
+                "parameters": [
+                    {
+                        "description": "Contract ID",
+                        "in": "path",
+                        "name": "contractId",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/schema.ContractAndAgent"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "session lacks fleet:control"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Calls SpaceTraders' accept-contract, then persists the resulting contract state.",
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Accept a contract",
                 "tags": [
                     "contracts"
-                ],
-                "summary": "Accept a contract",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Contract ID",
-                        "name": "contractId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/schema.ContractAndAgent"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "403": {
-                        "description": "session lacks fleet:control",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/contracts/{contractId}/deliveries": {
             "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "contracts"
-                ],
-                "summary": "List recorded deliveries for a contract",
                 "parameters": [
                     {
-                        "type": "string",
                         "description": "Contract ID",
-                        "name": "contractId",
                         "in": "path",
-                        "required": true
+                        "name": "contractId",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/db.Delivery"
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/db.Delivery"
+                                    },
+                                    "type": "array"
+                                }
                             }
-                        }
+                        },
+                        "description": "OK"
                     },
                     "500": {
-                        "description": "failed to load deliveries",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "failed to load deliveries"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "a token was presented and auth-service could not be asked"
+                    }
+                },
+                "summary": "List recorded deliveries for a contract",
+                "tags": [
+                    "contracts"
+                ]
+            },
+            "post": {
+                "description": "Called by fleet-service after a successful deliver-contract action on SpaceTraders, forwarding its caller's session.",
+                "parameters": [
+                    {
+                        "description": "Contract ID",
+                        "in": "path",
+                        "name": "contractId",
+                        "required": true,
                         "schema": {
                             "type": "string"
                         }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.deliveryRequest",
+                                "summary": "delivery",
+                                "description": "Delivery details"
+                            }
+                        }
+                    },
+                    "description": "Delivery details",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/db.Delivery"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "invalid request body"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no verified session"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "session lacks fleet:control"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "failed to record delivery"
                     },
                     "503": {
-                        "description": "a token was presented and auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
                     }
-                }
-            },
-            "post": {
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Called by fleet-service after a successful deliver-contract action on SpaceTraders, forwarding its caller's session.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Record a contract delivery (internal)",
                 "tags": [
                     "contracts"
-                ],
-                "summary": "Record a contract delivery (internal)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Contract ID",
-                        "name": "contractId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Delivery details",
-                        "name": "delivery",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.deliveryRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/db.Delivery"
-                        }
-                    },
-                    "400": {
-                        "description": "invalid request body",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "401": {
-                        "description": "no verified session",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "403": {
-                        "description": "session lacks fleet:control",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "500": {
-                        "description": "failed to record delivery",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/contracts/{contractId}/fulfill": {
             "post": {
+                "description": "Calls SpaceTraders' fulfill-contract, then persists the resulting contract state.",
+                "parameters": [
+                    {
+                        "description": "Contract ID",
+                        "in": "path",
+                        "name": "contractId",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/schema.ContractAndAgent"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "session lacks fleet:control"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Calls SpaceTraders' fulfill-contract, then persists the resulting contract state.",
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Fulfill a contract",
                 "tags": [
                     "contracts"
-                ],
-                "summary": "Fulfill a contract",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Contract ID",
-                        "name": "contractId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/schema.ContractAndAgent"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "403": {
-                        "description": "session lacks fleet:control",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/current-agent": {
             "get": {
+                "description": "Convenience bundle of GET /agent + GET /ships + GET /contracts.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.CurrentAgentResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Convenience bundle of GET /agent + GET /ships + GET /contracts.",
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Get agent, ships and contracts in one call",
                 "tags": [
                     "agent"
-                ],
-                "summary": "Get agent, ships and contracts in one call",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/api.CurrentAgentResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/ships": {
             "get": {
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/schema.Ship"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "List the agent's ships",
                 "tags": [
                     "ships"
-                ],
-                "summary": "List the agent's ships",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/schema.Ship"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/ships/purchase": {
             "post": {
+                "description": "Calls SpaceTraders' purchase-ship, then records the transaction in agent-service's transaction history.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.purchaseShipRequest",
+                                "summary": "body",
+                                "description": "Ship type and shipyard waypoint"
+                            }
+                        }
+                    },
+                    "description": "Ship type and shipyard waypoint",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/schema.PurchaseShipResult"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "invalid request body"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "session lacks fleet:control"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Calls SpaceTraders' purchase-ship, then records the transaction in agent-service's transaction history.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Purchase a new ship",
                 "tags": [
                     "ships"
-                ],
-                "summary": "Purchase a new ship",
-                "parameters": [
-                    {
-                        "description": "Ship type and shipyard waypoint",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.purchaseShipRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/schema.PurchaseShipResult"
-                        }
-                    },
-                    "400": {
-                        "description": "invalid request body",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "403": {
-                        "description": "session lacks fleet:control",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/ships/{shipSymbol}": {
             "get": {
+                "parameters": [
+                    {
+                        "description": "Ship symbol",
+                        "in": "path",
+                        "name": "shipSymbol",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/schema.Ship"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "ship not found"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Get a single ship",
                 "tags": [
                     "ships"
-                ],
-                "summary": "Get a single ship",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Ship symbol",
-                        "name": "shipSymbol",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/schema.Ship"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "404": {
-                        "description": "ship not found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/ships/{shipSymbol}/purchase": {
             "post": {
+                "description": "Calls SpaceTraders' purchase-cargo, then records the transaction in agent-service's transaction history.",
+                "parameters": [
+                    {
+                        "description": "Ship symbol",
+                        "in": "path",
+                        "name": "shipSymbol",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.cargoTransactionRequest",
+                                "summary": "body",
+                                "description": "Trade good symbol and units"
+                            }
+                        }
+                    },
+                    "description": "Trade good symbol and units",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/schema.MarketTransactionResult"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "invalid request body"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "session lacks fleet:control"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Calls SpaceTraders' purchase-cargo, then records the transaction in agent-service's transaction history.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Purchase cargo into a ship's hold",
                 "tags": [
                     "ships"
-                ],
-                "summary": "Purchase cargo into a ship's hold",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Ship symbol",
-                        "name": "shipSymbol",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Trade good symbol and units",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.cargoTransactionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/schema.MarketTransactionResult"
-                        }
-                    },
-                    "400": {
-                        "description": "invalid request body",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "403": {
-                        "description": "session lacks fleet:control",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/ships/{shipSymbol}/sell": {
             "post": {
+                "description": "Calls SpaceTraders' sell-cargo, then records the transaction in agent-service's transaction history.",
+                "parameters": [
+                    {
+                        "description": "Ship symbol",
+                        "in": "path",
+                        "name": "shipSymbol",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/api.cargoTransactionRequest",
+                                "summary": "body",
+                                "description": "Trade good symbol and units"
+                            }
+                        }
+                    },
+                    "description": "Trade good symbol and units",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/schema.MarketTransactionResult"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "invalid request body"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "no Clerk session, or no game token"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "session lacks fleet:control"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway answered with something unreadable"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
+                        },
+                        "description": "auth-service could not be asked"
+                    },
+                    "504": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "st-gateway did not answer"
+                    }
+                },
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Calls SpaceTraders' sell-cargo, then records the transaction in agent-service's transaction history.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Sell cargo from a ship's hold",
                 "tags": [
                     "ships"
-                ],
-                "summary": "Sell cargo from a ship's hold",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Ship symbol",
-                        "name": "shipSymbol",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Trade good symbol and units",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.cargoTransactionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/schema.MarketTransactionResult"
-                        }
-                    },
-                    "400": {
-                        "description": "invalid request body",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "401": {
-                        "description": "no Clerk session, or no game token",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "403": {
-                        "description": "session lacks fleet:control",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "502": {
-                        "description": "st-gateway answered with something unreadable",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    },
-                    "504": {
-                        "description": "st-gateway did not answer",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
+                ]
             }
         },
         "/transactions": {
             "get": {
                 "description": "Ship/cargo purchases and cargo sells, newest first. Optionally filtered by shipSymbol and/or type.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ships"
-                ],
-                "summary": "List recorded transactions",
                 "parameters": [
                     {
-                        "type": "string",
                         "description": "Filter by ship symbol",
+                        "in": "query",
                         "name": "shipSymbol",
-                        "in": "query"
+                        "schema": {
+                            "type": "string"
+                        }
                     },
                     {
-                        "enum": [
-                            "SHIP_PURCHASE",
-                            "PURCHASE",
-                            "SELL"
-                        ],
-                        "type": "string",
                         "description": "Filter by transaction type",
+                        "in": "query",
                         "name": "type",
-                        "in": "query"
+                        "schema": {
+                            "enum": [
+                                "SHIP_PURCHASE",
+                                "PURCHASE",
+                                "SELL"
+                            ],
+                            "type": "string"
+                        }
                     },
                     {
-                        "type": "integer",
-                        "default": 100,
                         "description": "Max results, 1-1000",
+                        "in": "query",
                         "name": "limit",
-                        "in": "query"
+                        "schema": {
+                            "default": 100,
+                            "type": "integer"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/db.Transaction"
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/db.Transaction"
+                                    },
+                                    "type": "array"
+                                }
                             }
-                        }
+                        },
+                        "description": "OK"
                     },
                     "400": {
-                        "description": "invalid query parameter",
-                        "schema": {
-                            "type": "string"
-                        }
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "invalid query parameter"
                     },
                     "500": {
-                        "description": "failed to load transactions",
-                        "schema": {
-                            "type": "string"
-                        }
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "failed to load transactions"
                     },
                     "503": {
-                        "description": "a token was presented and auth-service could not be asked",
-                        "schema": {
-                            "$ref": "#/definitions/api.authError"
-                        }
-                    }
-                }
-            }
-        }
-    },
-    "definitions": {
-        "api.CurrentAgentResponse": {
-            "type": "object",
-            "properties": {
-                "agent": {
-                    "$ref": "#/definitions/schema.Agent"
-                },
-                "contracts": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/schema.Contract"
-                    }
-                },
-                "ships": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/schema.Ship"
-                    }
-                }
-            }
-        },
-        "api.authError": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "type": "object",
-                    "properties": {
-                        "message": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "api.cargoTransactionRequest": {
-            "type": "object",
-            "properties": {
-                "symbol": {
-                    "type": "string"
-                },
-                "units": {
-                    "type": "integer"
-                }
-            }
-        },
-        "api.deliveryRequest": {
-            "type": "object",
-            "properties": {
-                "shipSymbol": {
-                    "type": "string"
-                },
-                "tradeSymbol": {
-                    "type": "string"
-                },
-                "units": {
-                    "type": "integer"
-                }
-            }
-        },
-        "api.purchaseShipRequest": {
-            "type": "object",
-            "properties": {
-                "shipType": {
-                    "type": "string"
-                },
-                "waypointSymbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "db.Delivery": {
-            "type": "object",
-            "properties": {
-                "contractId": {
-                    "type": "string"
-                },
-                "deliveredAt": {
-                    "type": "string"
-                },
-                "shipSymbol": {
-                    "type": "string"
-                },
-                "tradeSymbol": {
-                    "type": "string"
-                },
-                "units": {
-                    "type": "integer"
-                }
-            }
-        },
-        "db.Transaction": {
-            "type": "object",
-            "properties": {
-                "agentCredits": {
-                    "type": "integer"
-                },
-                "occurredAt": {
-                    "type": "string"
-                },
-                "pricePerUnit": {
-                    "type": "integer"
-                },
-                "shipSymbol": {
-                    "type": "string"
-                },
-                "shipType": {
-                    "type": "string"
-                },
-                "totalPrice": {
-                    "type": "integer"
-                },
-                "tradeSymbol": {
-                    "type": "string"
-                },
-                "type": {
-                    "$ref": "#/definitions/db.TransactionType"
-                },
-                "units": {
-                    "type": "integer"
-                },
-                "waypointSymbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "db.TransactionType": {
-            "type": "string",
-            "enum": [
-                "SHIP_PURCHASE",
-                "PURCHASE",
-                "SELL"
-            ],
-            "x-enum-varnames": [
-                "ShipPurchase",
-                "CargoPurchase",
-                "CargoSell"
-            ]
-        },
-        "schema.Agent": {
-            "type": "object",
-            "properties": {
-                "accountId": {
-                    "type": "string"
-                },
-                "credits": {
-                    "type": "integer"
-                },
-                "headquarters": {
-                    "type": "string"
-                },
-                "shipCount": {
-                    "type": "integer"
-                },
-                "startingFaction": {
-                    "type": "string"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.Cargo": {
-            "type": "object",
-            "properties": {
-                "capacity": {
-                    "type": "integer"
-                },
-                "inventory": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/schema.CargoItem"
-                    }
-                },
-                "units": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.CargoItem": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "symbol": {
-                    "type": "string"
-                },
-                "units": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.Contract": {
-            "type": "object",
-            "properties": {
-                "accepted": {
-                    "type": "boolean"
-                },
-                "deadlineToAccept": {
-                    "type": "string"
-                },
-                "expiration": {
-                    "type": "string"
-                },
-                "factionSymbol": {
-                    "type": "string"
-                },
-                "fulfilled": {
-                    "type": "boolean"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "terms": {
-                    "$ref": "#/definitions/schema.ContractTerms"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.ContractAndAgent": {
-            "type": "object",
-            "properties": {
-                "agent": {
-                    "$ref": "#/definitions/schema.Agent"
-                },
-                "contract": {
-                    "$ref": "#/definitions/schema.Contract"
-                }
-            }
-        },
-        "schema.ContractTerms": {
-            "type": "object",
-            "properties": {
-                "deadline": {
-                    "type": "string"
-                },
-                "deliver": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/schema.DeliveryInfo"
-                    }
-                },
-                "payment": {
-                    "$ref": "#/definitions/schema.Payment"
-                }
-            }
-        },
-        "schema.Cooldown": {
-            "type": "object",
-            "properties": {
-                "expiration": {
-                    "type": "string"
-                },
-                "remainingSeconds": {
-                    "type": "integer"
-                },
-                "shipSymbol": {
-                    "type": "string"
-                },
-                "totalSeconds": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.Crew": {
-            "type": "object",
-            "properties": {
-                "capacity": {
-                    "type": "integer"
-                },
-                "current": {
-                    "type": "integer"
-                },
-                "morale": {
-                    "type": "integer"
-                },
-                "required": {
-                    "type": "integer"
-                },
-                "rotation": {
-                    "type": "string"
-                },
-                "wages": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.DeliveryInfo": {
-            "type": "object",
-            "properties": {
-                "destinationSymbol": {
-                    "type": "string"
-                },
-                "tradeSymbol": {
-                    "type": "string"
-                },
-                "unitsFulfilled": {
-                    "type": "integer"
-                },
-                "unitsRequired": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.Engine": {
-            "type": "object",
-            "properties": {
-                "condition": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "integrity": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "requirements": {
-                    "$ref": "#/definitions/schema.Requirements"
-                },
-                "speed": {
-                    "type": "integer"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.Frame": {
-            "type": "object",
-            "properties": {
-                "condition": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "fuelCapacity": {
-                    "type": "integer"
-                },
-                "integrity": {
-                    "type": "integer"
-                },
-                "moduleSlots": {
-                    "type": "integer"
-                },
-                "mountingPoints": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "requirements": {
-                    "$ref": "#/definitions/schema.Requirements"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.Fuel": {
-            "type": "object",
-            "properties": {
-                "capacity": {
-                    "type": "integer"
-                },
-                "consumed": {
-                    "type": "object",
-                    "properties": {
-                        "amount": {
-                            "type": "integer"
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/api.authError"
+                                }
+                            }
                         },
-                        "timestamp": {
-                            "type": "string"
-                        }
+                        "description": "a token was presented and auth-service could not be asked"
                     }
                 },
-                "current": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.MarketTransaction": {
-            "type": "object",
-            "properties": {
-                "pricePerUnit": {
-                    "type": "integer"
-                },
-                "shipSymbol": {
-                    "type": "string"
-                },
-                "timestamp": {
-                    "type": "string"
-                },
-                "totalPrice": {
-                    "type": "integer"
-                },
-                "tradeSymbol": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "units": {
-                    "type": "integer"
-                },
-                "waypointSymbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.MarketTransactionResult": {
-            "type": "object",
-            "properties": {
-                "agent": {
-                    "$ref": "#/definitions/schema.Agent"
-                },
-                "cargo": {
-                    "$ref": "#/definitions/schema.Cargo"
-                },
-                "transaction": {
-                    "$ref": "#/definitions/schema.MarketTransaction"
-                }
-            }
-        },
-        "schema.Module": {
-            "type": "object",
-            "properties": {
-                "capacity": {
-                    "description": "Modules that provide capacity, such as cargo hold or crew quarters will show this value to denote how much of a bonus the module grants.",
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "range": {
-                    "description": "Modules that have a range will such as a sensor array show this value to denote how far can the module reach with its capabilities.",
-                    "type": "integer"
-                },
-                "requirements": {
-                    "$ref": "#/definitions/schema.Requirements"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.Mount": {
-            "type": "object",
-            "properties": {
-                "deposits": {
-                    "description": "Mounts that have this value denote what goods can be produced from using the mount.",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "description": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "requirements": {
-                    "$ref": "#/definitions/schema.Requirements"
-                },
-                "strength": {
-                    "description": "Mounts that have this value, such as mining lasers, denote how powerful this mount's capabilities are.",
-                    "type": "integer"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.Nav": {
-            "type": "object",
-            "properties": {
-                "flightMode": {
-                    "type": "string"
-                },
-                "route": {
-                    "$ref": "#/definitions/schema.Route"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "systemSymbol": {
-                    "type": "string"
-                },
-                "waypointSymbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.Payment": {
-            "type": "object",
-            "properties": {
-                "onAccepted": {
-                    "type": "integer"
-                },
-                "onFulfilled": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.PurchaseShipResult": {
-            "type": "object",
-            "properties": {
-                "agent": {
-                    "$ref": "#/definitions/schema.Agent"
-                },
-                "ship": {
-                    "$ref": "#/definitions/schema.Ship"
-                },
-                "transaction": {
-                    "$ref": "#/definitions/schema.ShipyardTransaction"
-                }
-            }
-        },
-        "schema.Reactor": {
-            "type": "object",
-            "properties": {
-                "condition": {
-                    "type": "integer"
-                },
-                "description": {
-                    "type": "string"
-                },
-                "integrity": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "powerOutput": {
-                    "type": "integer"
-                },
-                "requirements": {
-                    "$ref": "#/definitions/schema.Requirements"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.Registration": {
-            "type": "object",
-            "properties": {
-                "factionSymbol": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "role": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.Requirements": {
-            "type": "object",
-            "properties": {
-                "crew": {
-                    "type": "integer"
-                },
-                "power": {
-                    "type": "integer"
-                },
-                "slots": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.Route": {
-            "type": "object",
-            "properties": {
-                "arrival": {
-                    "type": "string"
-                },
-                "departureTime": {
-                    "type": "string"
-                },
-                "destination": {
-                    "$ref": "#/definitions/schema.RouteWaypoint"
-                },
-                "origin": {
-                    "$ref": "#/definitions/schema.RouteWaypoint"
-                }
-            }
-        },
-        "schema.RouteWaypoint": {
-            "type": "object",
-            "properties": {
-                "symbol": {
-                    "type": "string"
-                },
-                "systemSymbol": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "x": {
-                    "type": "integer"
-                },
-                "y": {
-                    "type": "integer"
-                }
-            }
-        },
-        "schema.Ship": {
-            "type": "object",
-            "properties": {
-                "cargo": {
-                    "$ref": "#/definitions/schema.Cargo"
-                },
-                "cooldown": {
-                    "$ref": "#/definitions/schema.Cooldown"
-                },
-                "crew": {
-                    "$ref": "#/definitions/schema.Crew"
-                },
-                "engine": {
-                    "$ref": "#/definitions/schema.Engine"
-                },
-                "frame": {
-                    "$ref": "#/definitions/schema.Frame"
-                },
-                "fuel": {
-                    "$ref": "#/definitions/schema.Fuel"
-                },
-                "modules": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/schema.Module"
-                    }
-                },
-                "mounts": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/schema.Mount"
-                    }
-                },
-                "nav": {
-                    "$ref": "#/definitions/schema.Nav"
-                },
-                "reactor": {
-                    "$ref": "#/definitions/schema.Reactor"
-                },
-                "registration": {
-                    "$ref": "#/definitions/schema.Registration"
-                },
-                "symbol": {
-                    "type": "string"
-                }
-            }
-        },
-        "schema.ShipyardTransaction": {
-            "type": "object",
-            "properties": {
-                "agentSymbol": {
-                    "type": "string"
-                },
-                "price": {
-                    "type": "integer"
-                },
-                "shipType": {
-                    "type": "string"
-                },
-                "timestamp": {
-                    "type": "string"
-                },
-                "waypointSymbol": {
-                    "type": "string"
-                }
+                "summary": "List recorded transactions",
+                "tags": [
+                    "ships"
+                ]
             }
         }
     },
-    "securityDefinitions": {
-        "BearerAuth": {
-            "description": "Clerk session token, as \"Bearer \u003cjwt\u003e\". Verified by auth-service, not here.",
-            "type": "apiKey",
-            "name": "Authorization",
-            "in": "header"
+    "openapi": "3.1.0",
+    "servers": [
+        {
+            "url": "/api/agent/v1"
         }
-    }
+    ]
 }

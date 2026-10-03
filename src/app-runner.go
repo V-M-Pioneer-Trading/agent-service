@@ -23,12 +23,12 @@ const (
 	idleTimeout       = 120 * time.Second
 )
 
-//go:generate go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g app-runner.go --parseInternal --output ./docs
+//go:generate go run github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc6 init --v3.1 -g app-runner.go --parseInternal --output ./docs
 
 // @title                       Agent Info Service API
 // @version                     1.0
 // @description                 Service for accessing information about the agent - profile, fleet, contracts.
-// @BasePath                    /api/agent/v1
+// @servers.url                 /api/agent/v1
 // @securityDefinitions.apikey  BearerAuth
 // @in                          header
 // @name                        Authorization

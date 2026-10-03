@@ -15,7 +15,7 @@ All Go commands run from `src/`.
 | Vet | `go vet ./...` |
 | Format check | `test -z "$(gofmt -l .)"` |
 | Run locally | `PORT=8080 AUTH_INTROSPECTION_URL=http://localhost:8082/auth/v1/introspect AUTH_INTROSPECTION_SECRET=local-dev-introspection-secret go run .` |
-| Regenerate OpenAPI spec | `go generate ./...` (pinned swag, see `//go:generate` in `app-runner.go`; CI fails on drift) |
+| Regenerate OpenAPI spec | `go generate ./...` (swag v2.0.0-rc6 `--v3.1`, pinned in the `//go:generate` in `app-runner.go`; emits OpenAPI 3.1.0; CI fails on drift) |
 | Start MySQL only | `docker compose up -d mysql` (from repo root) |
 
 CI runs format check, vet and the race/shuffle test suite on both pull requests and pushes to
@@ -26,7 +26,8 @@ CI runs format check, vet and the race/shuffle test suite on both pull requests 
 | File | Owns | Depends on |
 |---|---|---|
 | `src/app-runner.go` | Process lifecycle: config read, dependency construction, HTTP server, Swagger's top-level annotations | `api`, `db`, `introspection`, `spacetraders` |
-| `src/api/routes.go` | Route table, access tiers, handlers, request/response shaping, `forwardCallerSession` | `db`, `introspection`, `spacetraders`, `spacetraders/schema`, `docs` (blank) |
+| `src/api/routes.go` | Route table, access tiers, handlers, request/response shaping, `forwardCallerSession` | `db`, `introspection`, `spacetraders`, `spacetraders/schema` |
+| `src/api/swagger.go` | Bridges the swag v2 spec into the swag v1 registry http-swagger reads, minus rc6's stray root `schemes` key. Delete when http-swagger reads swag/v2 and swag drops `schemes` under `--v3.1` | `docs`, `swaggo/swag` (v1) |
 | `src/api/auth.go` | The mux adapter: `secureRouter` (startup walk + request-time `refuseUndeclared`), `getRoute`/`postRoute`, the `authError` Swagger type | `introspection`, `gorilla/mux` |
 | `src/introspection/policy.go` | The decision 21 policy: `Requirement` (`None`/`Session`/`Scope`, zero value = undeclared), `BearerFrom`, `IsSafeMethod`, `Authorizer`, the five messages | stdlib |
 | `src/introspection/center.go` | The one call to auth-service (`Client`), answer parsing, `LoadConfig` for `AUTH_INTROSPECTION_*` | stdlib |
@@ -43,6 +44,7 @@ CI runs format check, vet and the race/shuffle test suite on both pull requests 
 
 * `db`, `spacetraders` and `introspection` never import `api`. `introspection` imports nothing from this module.
 * `db` never imports `spacetraders` and vice versa. They are joined only in `api` handlers.
+* `docs` is imported only by `api/swagger.go`.
 * `spacetraders/schema` imports nothing from this module — it is pure wire types.
 * Only `spacetraders/client.go` and `introspection/center.go` make outbound HTTP calls. If you
   need a new upstream call, add a method on `spacetraders.Client` rather than a `http.Get` in a
