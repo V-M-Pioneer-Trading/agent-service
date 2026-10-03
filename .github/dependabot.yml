@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # The TypeScript port (meta#103). Express stays on 4 (clerk-client's adapter
+  # targets it); a major bump of anything else is a reviewed decision.
+  - package-ecosystem: npm
+    directory: /ts
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: express
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5

@@ -5,3 +5,5 @@ docker-compose.yml
 Dockerfile
 .dockerignore
 contract
+
+ts

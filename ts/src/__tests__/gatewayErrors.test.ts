@@ -1,0 +1,174 @@
+/**
+ * @file The shared upstream-error contract (meta/fixtures/gateway-errors.json),
+ * driven through the TypeScript mapping.
+ *
+ * The fixture is read from the contract suite's pinned copy (contract/fixtures,
+ * sha256 in SOURCE.txt, verified by the suite itself): one copy in the
+ * repository, not two. Each case runs a real HTTP stub gateway, `callGateway`
+ * against it, and `writeUpstreamError` into a real Express response, so what is
+ * asserted is what a caller receives: status, sentence, pacing headers.
+ * An assertion key this test cannot check fails the case instead of being
+ * skipped, so a fixture that grows a key cannot quietly become a status-only test.
+ */
+
+import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
+import path from "node:path";
+import express from "express";
+import request from "supertest";
+import {
+  callGateway,
+  gatewayDidNotAnswer,
+  NO_ANSWER,
+  pacingHeaders,
+  UnreadableAnswer,
+  upstreamMessage,
+  writeUpstreamError,
+} from "../gateway/errors";
+
+interface Case {
+  name: string;
+  gateway: { transport?: string; status?: number; body?: string; headers?: Record<string, string>; bodyRepeat?: { chunk: string; times: number } };
+  expect: { status?: number; message?: string; messageContains?: string; messageNotEmpty?: boolean; messageMaxLength?: number; headers?: Record<string, string> };
+}
+
+const KNOWN = new Set(["status", "message", "messageContains", "messageNotEmpty", "messageMaxLength", "headers"]);
+const fixture = path.join(__dirname, "..", "..", "..", "contract", "fixtures", "gateway-errors.json");
+const cases = (JSON.parse(fs.readFileSync(fixture, "utf8")) as { cases: Case[] }).cases;
+
+const servers: http.Server[] = [];
+afterAll(async () => {
+  await Promise.all(servers.map((s) => new Promise((r) => s.close(r))));
+});
+
+async function stub(handler: http.RequestListener): Promise<string> {
+  const server = http.createServer(handler);
+  servers.push(server);
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+/** The smallest route that does what a route PR's handler will: call the gateway, relay the verdict. */
+function appFor(url: string) {
+  const app = express();
+  app.get("/probe", async (_req, res) => {
+    try {
+      const data = await callGateway("GET", `${url}/proxy/my/agent`, "/my/agent", { authorization: "Bearer t" });
+      res.status(200).json(data ?? {});
+    } catch (err) {
+      writeUpstreamError(res, err, () => undefined);
+    }
+  });
+  return app;
+}
+
+describe("the shared upstream-error contract", () => {
+  it("drives the whole contract, not a subset of it", () => {
+    expect(cases.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it.each(cases.map((c) => [c.name, c] as const))("%s", async (_name, c) => {
+    expect(Object.keys(c.expect).filter((k) => !KNOWN.has(k))).toEqual([]);
+    expect(c.expect.status).toBeDefined();
+
+    let url: string;
+    if (c.gateway.transport === "no-response") {
+      // A server that is already gone: connection refused.
+      const dead = await stub(() => undefined);
+      const server = servers.pop() as http.Server;
+      await new Promise((r) => server.close(r));
+      url = dead;
+    } else {
+      expect(c.gateway.transport).toBeUndefined();
+      const body = c.gateway.bodyRepeat ? c.gateway.bodyRepeat.chunk.repeat(c.gateway.bodyRepeat.times) : (c.gateway.body ?? "");
+      url = await stub((_req, res) => {
+        for (const [k, v] of Object.entries(c.gateway.headers ?? {})) res.setHeader(k, v);
+        res.setHeader("Content-Type", "application/json");
+        res.statusCode = c.gateway.status ?? 200;
+        res.end(body);
+      });
+    }
+
+    const res = await request(appFor(url)).get("/probe");
+    expect(res.status).toBe(c.expect.status);
+    const message = res.text.replace(/\n+$/, "");
+    if (c.expect.message !== undefined) expect(message).toBe(c.expect.message);
+    if (c.expect.messageContains !== undefined) expect(message).toContain(c.expect.messageContains);
+    if (c.expect.messageNotEmpty === true) expect(message.trim()).not.toBe("");
+    if (c.expect.messageMaxLength !== undefined) expect([...message].length).toBeLessThanOrEqual(c.expect.messageMaxLength);
+    for (const [name, value] of Object.entries(c.expect.headers ?? {})) expect(res.headers[name.toLowerCase()]).toBe(value);
+    expect(res.headers["content-type"]).toBe("text/plain; charset=utf-8");
+  });
+});
+
+describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins it end to end)", () => {
+  it("lifts error.message exactly as the Go decoder does", () => {
+    const m = (body: string) => upstreamMessage(body);
+    expect(m('{"error":{"message":"m","code":4214},"other":2}')).toBe("m");
+    expect(m('{"error":{"message":"  m  "}}')).toBe("  m  ");
+    expect(m('{"error":{"message":"first","message":"last"}}')).toBe("last");
+    expect(m('{"ERROR":{"Message":"shouting"}}')).toBe("shouting");
+    for (const raw of ['{"error":{"message":"   "}}', '{"error":{"message":""}}', '{"error":"text"}', '{"error":{"message":5}}', '{"error":null}', '{"message":"top"}', '[{"error":{"message":"x"}}]', "plain text"]) {
+      expect(m(raw)).toBe(raw);
+    }
+    expect(m("   \n")).toBe("st-gateway returned an error with no message");
+    expect(m("")).toBe("st-gateway returned an error with no message");
+  });
+
+  it("cuts a raw body at 500 characters, not bytes, and never cuts an envelope's message", () => {
+    expect(upstreamMessage("x".repeat(600))).toBe("x".repeat(500));
+    expect(upstreamMessage("\u{1F600}".repeat(600))).toBe("\u{1F600}".repeat(500));
+    const long = "m".repeat(5000);
+    expect(upstreamMessage(JSON.stringify({ error: { message: long } }))).toBe(long);
+  });
+
+  it("relays only the non-empty pacing headers, on any error status", async () => {
+    expect(pacingHeaders(new Headers({ "retry-after": "9", "x-ratelimit-limit": "", "set-cookie": "a=b", "x-request-id": "1" }))).toEqual({ "Retry-After": "9" });
+    const url = await stub((_req, res) => {
+      res.statusCode = 500;
+      res.setHeader("Retry-After", "5");
+      res.setHeader("X-Request-Id", "abc");
+      res.end('{"error":{"message":"x"}}');
+    });
+    const res = await request(appFor(url)).get("/probe");
+    expect(res.status).toBe(500);
+    expect(res.headers["retry-after"]).toBe("5");
+    expect(res.headers["x-request-id"]).toBeUndefined();
+  });
+
+  it("a status outside 400-599 is a 502 with the gateway's sentence", async () => {
+    const url = await stub((_req, res) => {
+      res.statusCode = 600;
+      res.end('{"error":{"message":"gateway says 600"}}');
+    });
+    const res = await request(appFor(url)).get("/probe");
+    expect([res.status, res.text]).toEqual([502, "gateway says 600\n"]);
+  });
+
+  it("a 2xx body that dies half way is 'did not answer', and never names the address", async () => {
+    const url = await stub((req) => {
+      req.socket.write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n{\"data\":");
+      req.socket.destroy();
+    });
+    const res = await request(appFor(url)).get("/probe");
+    expect([res.status, res.text]).toEqual([504, `${NO_ANSWER}\n`]);
+    expect(res.text).not.toContain("127.0.0.1");
+  });
+
+  it("an empty 2xx body is not an error; a 2xx that is not JSON is a 502", async () => {
+    const ok = await stub((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    await expect(callGateway("GET", `${ok}/x`, "/x")).resolves.toBeUndefined();
+    const bad = await stub((_req, res) => res.end("   "));
+    await expect(callGateway("GET", `${bad}/x`, "/x")).rejects.toBeInstanceOf(UnreadableAnswer);
+  });
+
+  it("the transport error stays in the chain for logs but not in the message", () => {
+    const err = gatewayDidNotAnswer("GET", "/my/agent", new Error("connect ECONNREFUSED 10.0.0.7:3002"));
+    expect(err.message).toBe(NO_ANSWER);
+    expect(String((err.cause as Error).message)).toContain("10.0.0.7");
+  });
+});

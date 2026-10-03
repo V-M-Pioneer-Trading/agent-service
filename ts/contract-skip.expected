@@ -1,0 +1,9 @@
+# Written next to contract-skip.txt; see scripts/run-contract.js.
+# suite   = every test of the contract suite (contract/)
+# skipped = how many the skip list removes (suite - tests)
+# tests   = how many run; pass = how many of those pass; dynamic-skips = t.skip() calls inside the suite itself
+suite=1342
+skipped=1031
+tests=311
+pass=311
+dynamic-skips=0
