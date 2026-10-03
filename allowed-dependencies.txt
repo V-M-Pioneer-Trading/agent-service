@@ -1,4 +1,4 @@
-# Direct dependencies of ts/, per package.json section, and nothing else.
+# Direct dependencies of package.json, per package.json section, and nothing else.
 # scripts/check-dependencies.js fails CI on any difference, on a name in the
 # wrong section, on a spec that is not a plain semver range (the clerk-client
 # release tarball excepted), and on a lockfile entry not resolved from

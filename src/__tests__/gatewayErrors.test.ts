@@ -34,7 +34,7 @@ interface Case {
 }
 
 const KNOWN = new Set(["status", "message", "messageContains", "messageNotEmpty", "messageMaxLength", "headers"]);
-const fixture = path.join(__dirname, "..", "..", "..", "contract", "fixtures", "gateway-errors.json");
+const fixture = path.join(__dirname, "..", "..", "contract", "fixtures", "gateway-errors.json");
 const cases = (JSON.parse(fs.readFileSync(fixture, "utf8")) as { cases: Case[] }).cases;
 
 const servers: http.Server[] = [];

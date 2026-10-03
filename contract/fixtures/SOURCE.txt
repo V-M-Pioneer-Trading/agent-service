@@ -1,14 +1,11 @@
 gateway-errors.json in this directory is a VERBATIM copy. Do not edit it here.
 
-  original: src/spacetraders/testdata/gateway-errors.json (this repository)
-            itself a vendored copy of meta/fixtures/gateway-errors.json
+  original: meta/fixtures/gateway-errors.json
             (V-M-Pioneer-Trading/meta, repo root `fixtures/gateway-errors.json`)
   sha256: 23307100109455e0fa20f976e3aebf2550b5bfbbeeee114682b0097ae1545196
 
-The sha256 above is the hash of the LF bytes. suites/upstream-errors.ts asserts it
-against this copy, and, when the original is present next to it (a checkout of
-this repository), against the original too, so the copy cannot drift from the
-original in either direction. When the Go service is deleted the original goes
-with it; keep this copy and its pin, and re-copy from meta/fixtures/ instead.
+The sha256 above is the hash of the LF bytes. suites/pins.ts asserts it against
+this copy. (Until the Go service was deleted, agent-service#38, the suite also
+compared the copy with the Go tree's own vendored copy; that second copy is gone.)
 
-Change meta first, then re-copy both files and update the sha256 above.
+Change meta first, then re-copy this file and update the sha256 above.

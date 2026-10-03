@@ -1,7 +1,7 @@
-// Runs the contract suite (../contract) against the TypeScript service, whole and
+// Runs the contract suite (contract/) against the TypeScript service, whole and
 // unfiltered, and judges it against contract-skip.txt.
 //
-//   node ts/scripts/run-contract.js     (from the repository root, after `npm run build` in ts/)
+//   node scripts/run-contract.js     (from the repository root, after `npm run build`)
 //
 // The suite is not modified and no case is removed from the run. Every leaf test's
 // full name (describe names and test name, joined by single spaces, which is what
@@ -28,7 +28,7 @@ const os = require("os");
 const path = require("path");
 const { pathToFileURL } = require("url");
 
-const ts = path.join(__dirname, "..");
+const ts = path.join(__dirname, ".."); // the repository root
 
 const readLines = (file) =>
   fs
@@ -134,7 +134,7 @@ if (require.main === module) {
 
   const env = { ...process.env };
   if (!env.CONTRACT_IMAGE && !env.CONTRACT_COMMAND) env.CONTRACT_COMMAND = `node ${JSON.stringify(path.join(ts, "dist", "server.js"))}`;
-  const { status, output, events } = runSuite(path.join(ts, "..", "contract"), env);
+  const { status, output, events } = runSuite(path.join(ts, "contract"), env);
   // The whole spec output is long and mostly the listed failures; keep the tail.
   process.stdout.write(output.split("\n").slice(-60).join("\n") + "\n");
 

@@ -1,4 +1,4 @@
-// The route table of src/api/routes.go, restated for black-box use: for each
+// The route table of the original Go service (src/api/routes.go, deleted at the cutover), restated for black-box use: for each
 // route, a valid request, the upstream calls it makes, and the 200 answer a
 // caller must receive when the gateway answers as scripted.
 

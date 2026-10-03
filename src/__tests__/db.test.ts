@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { HistoryStore, INSERT_DELIVERY_SQL, INSERT_TRANSACTION_SQL, UPSERT_CONTRACT_SQL } from "../db/history";
 import { COLUMN_TYPE_SQL, INDEX_EXISTS_SQL, INDEXES, migrate, SCHEMA, WIDENED_COLUMNS } from "../db/migrate";
 import { PING_ATTEMPTS, PING_DELAY_MS, setUpDatabase, waitForDatabase } from "../db/setup";
@@ -9,28 +7,7 @@ import { FakeSql } from "../testSupport/fakeSql";
 
 const flat = (s: string): string => s.replace(/\s+/g, " ").trim();
 
-describe("the schema is the Go service's", () => {
-  // src/db/db.go is the source of truth until the cutover (agent-service#38) deletes it, and this block with it.
-  const goFile = path.join(__dirname, "..", "..", "..", "src", "db", "db.go");
-  const goSource = fs.existsSync(goFile) ? fs.readFileSync(goFile, "utf8") : null;
-
-  (goSource === null ? it.skip : it)("every statement of src/db/db.go, word for word (whitespace aside)", () => {
-    const block = /var schema = \[\]string\{([\s\S]*?)\r?\n\}/.exec(goSource as string);
-    const statements = [...(block?.[1] ?? "").matchAll(/`([^`]*)`/g)].map((m) => flat(m[1] as string));
-    expect(statements).toHaveLength(3);
-    expect(SCHEMA.map(flat)).toEqual(statements);
-  });
-
-  (goSource === null ? it.skip : it)("the widened columns and the indexes of src/db/db.go", () => {
-    const block = (name: string): string => new RegExp(`var ${name} = [^\\r\\n]*\\{\\r?\\n([\\s\\S]*?)\\r?\\n\\}`).exec(goSource as string)?.[1] ?? "";
-    const widened = [...block("widenedColumns").matchAll(/\{"(\w+)", "(\w+)", "([^"]+)"\}/g)].map((m) => ({ table: m[1], column: m[2], definition: m[3] }));
-    expect(widened).toHaveLength(2);
-    expect(WIDENED_COLUMNS).toEqual(widened);
-    const indexes = [...block("indexes").matchAll(/\{"(\w+)", "(\w+)", "(\([^"]+\))"\}/g)].map((m) => ({ table: m[1], name: m[2], columns: m[3] }));
-    expect(indexes).toHaveLength(3);
-    expect(INDEXES).toEqual(indexes);
-  });
-
+describe("the schema", () => {
   it("has the three tables, with money in BIGINT and the key columns Go has", () => {
     expect(SCHEMA).toHaveLength(3);
     const all = SCHEMA.map(flat).join("\n");

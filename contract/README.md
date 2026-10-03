@@ -2,8 +2,9 @@
 
 A black-box HTTP suite for agent-service. It knows nothing about the language the
 service is written in: it starts an image (or a process), talks HTTP to it, and
-plays st-gateway and auth-service itself. It is green against the Go image today,
-and the TypeScript port has to pass the same suite unchanged.
+plays st-gateway and auth-service itself. It was written against the Go image and is the parity record
+of the port: the TypeScript service, which replaced Go at the cutover (agent-service#38),
+passes it unchanged.
 
 It is step 3 of the Go to TypeScript migration (the epic in `meta`; link to follow).
 
@@ -27,7 +28,7 @@ It is step 3 of the Go to TypeScript migration (the epic in `meta`; link to foll
 
 ## Running it
 
-In CI: `.github/workflows/contract.yml` builds the image, starts `mysql:9` as a
+In CI: the `contract` job of `.github/workflows/container.yml` builds the image, starts `mysql:9` as a
 service container and runs the suite on every pull request and push to `main`.
 
 Locally, with Docker and a MySQL the container can reach:
@@ -85,8 +86,7 @@ st-gateway with nothing scripted for it.
 * `harness/expect.ts`: the assertions that encode the parity rules above.
 * `fixtures/`: gateway payloads and the route table; `gateway-errors.json` is the
   shared upstream-error contract, a verbatim copy pinned by sha256 (see
-  `fixtures/SOURCE.txt`). `suites/pins.ts` fails if either the copy or, while it
-  still exists, the original in `src/` drifts.
+  `fixtures/SOURCE.txt`). `suites/pins.ts` fails if the copy drifts.
 * `suites/`: operational (health, swagger), routing, cors, auth, proxy,
   upstream-errors, validation, persistence, head, startup.
 

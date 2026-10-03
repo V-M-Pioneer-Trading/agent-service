@@ -75,7 +75,7 @@ describe("the direct-dependency check", () => {
     }
   });
 
-  it("refuses a ts/.npmrc", () => {
+  it("refuses an .npmrc", () => {
     const { pkg, lock } = fresh();
     expect(problems(pkg, lock, { npmrc: true })).toMatch(/\.npmrc exists/);
     expect(check(pkg, lock, allow, { npmrc: false })).toEqual([]);

@@ -9,7 +9,7 @@
 // visible diff in allowed-dependencies.txt, never a side effect of `npm install`.
 //
 // Also refused: `overrides` / `resolutions` (they rewrite what a name resolves to),
-// a ts/.npmrc, bundled dependencies in any form, a lockfile entry installed under
+// a .npmrc, bundled dependencies in any form, a lockfile entry installed under
 // another name than its path (bar five pinned aliases npm writes for jest), a
 // resolved URL of another package than the entry, and any entry without sha512 integrity.
 // Transitive packages are covered by `npm audit` and `npm ci --ignore-scripts`.
@@ -66,7 +66,7 @@ function check(pkg, lock, allowlistText, opts = {}) {
   for (const key of ["overrides", "resolutions"]) {
     if (key in pkg) problems.push(`package.json has ${key}; a name must resolve to itself`);
   }
-  if (opts.npmrc) problems.push("ts/.npmrc exists; it can redirect the registry or alias packages. Configure nothing there");
+  if (opts.npmrc) problems.push(".npmrc exists; it can redirect the registry or alias packages. Configure nothing there");
   const lockRoot = lock.packages?.[""] ?? {};
   for (const section of SECTIONS) {
     const declared = pkg[section] ?? {};
@@ -123,7 +123,7 @@ if (require.main === module) {
   const pkg = JSON.parse(read("package.json"));
   const problems = check(pkg, JSON.parse(read("package-lock.json")), read("allowed-dependencies.txt"), { npmrc: fs.existsSync(path.join(root, ".npmrc")) });
   if (problems.length > 0) {
-    for (const p of problems) console.error(`::error file=ts/allowed-dependencies.txt::${p}`);
+    for (const p of problems) console.error(`::error file=allowed-dependencies.txt::${p}`);
     process.exit(1);
   }
   console.log(`${Object.keys(pkg.dependencies ?? {}).length + Object.keys(pkg.devDependencies ?? {}).length} direct dependencies, all on the allowlist.`);

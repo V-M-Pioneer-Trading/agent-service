@@ -3,7 +3,7 @@
 # skipped = cases covered by contract-skip.txt (none)
 # pass    = cases outside the list, all of which pass
 # dynamic-skips = t.skip() calls inside the suite itself
-suite=1342
+suite=1341
 skipped=0
-pass=1341
+pass=1340
 dynamic-skips=1
