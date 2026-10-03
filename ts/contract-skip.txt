@@ -1,54 +1,9 @@
-# Contract cases the TypeScript service does not pass YET, because the route
-# they exercise is not ported. One JavaScript regular expression per line, handed
-# to `node --test --test-skip-pattern`; it is matched against the test's name
-# with its enclosing describe names in front, joined by single spaces. Blank
-# lines and lines starting with "#" are ignored.
+# Contract cases the TypeScript service does not pass: none. Every route is ported (agent-service#37),
+# so the whole contract suite runs and has to pass, bar the one case the suite skips itself.
 #
-# This list only ever shrinks. Each porting PR deletes the lines of the routes it
-# ports, and the last one (agent-service#37) leaves it empty. Never add a line
-# for a case that fails for any other reason: a red case must mean a defect.
+# One JavaScript regular expression per line, handed to `node --test --test-skip-pattern`, matched against the
+# test's name with its enclosing describe names in front, joined by single spaces; blank lines and lines
+# starting with "#" are ignored. This file stays empty: never add a line for a case that fails (a red case
+# must mean a defect), and never edit contract/ to make the port pass.
 #
-# scripts/run-contract.js refuses a run whose number of tests does not match
-# contract-skip.expected, so a pattern that is too broad (or stale) cannot hide
-# anything: change both files in the same commit, and say why.
-
-# --- 4c (agent-service#37), inside describes that 4b otherwise passes: every case
-# below needs a write route, the DB-backed reads, or the write routes' validation
-^tiers, per route POST 
-^what counts as a credential on a (public|write) route
-^public routes with a presented token
-# All of fleet:control is judged on a write route, so it stays whole until 4c. That
-# includes the two scope cases clerk-client 2.0.1 now gets right (joined by a
-# non-breaking space, followed by an em space): they pass the day POST routes exist.
-^fleet:control$
-^the center's answer the same failures are 503 on a write route
-^the request to the center asks once for a write
-^what is forwarded to the gateway$
-^a center that refuses connections (a write route|a public route)
-^every upstream route, answered normally (POST |accept and fulfill )
-^the gateway redirects a 307 redirect of a POST
-^gateway-errors\.json, on every route that calls the gateway \S+ POST /
-^pacing headers are relayed by every route
-^a gateway that does not answer (a refused connection is a 504 on every route|no history is written)
-^HEAD answers like GET without a body (GET /(transactions|contracts/\{contractId\}/deliveries) |a validation error)
-^percent-decoding GET /contracts/\{id\}/deliveries
-^CORS headers on ordinary responses are on (the answer of every route|a 403|a validation error|a public read)
-
-# --- 4c (agent-service#37): whole describes: write routes, MySQL persistence, DB-backed reads, Swagger UI
-^write routes, answered normally$
-^POST /contracts/\{id\}/deliveries$
-^POST /ships/purchase$
-^POST /ships/\{symbol\}/purchase$
-^POST /ships/\{symbol\}/sell$
-^other things about bodies$
-^history of cargo trades$
-^the time of a transaction$
-^selecting transactions$
-^rejected query parameters$
-^the cap on limit$
-^an empty answer from the gateway$
-^the history is best effort$
-^contract deliveries$
-^unknown paths and wrong methods POST /ships/purchase/purchase buys cargo
-^percent-decoding POST /contracts/
-^swagger$
+# scripts/run-contract.js refuses a run whose number of tests does not match contract-skip.expected.

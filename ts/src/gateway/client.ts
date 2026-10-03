@@ -30,8 +30,25 @@
 import { decode, DecodeError, type Decoded, type Schema } from "./decode";
 import { gatewayDidNotAnswer, REQUEST_TIMEOUT_MS, UnreadableAnswer, UpstreamError, upstreamErrorFrom } from "./errors";
 import { asciiHostname, fromHeaderValue, hostnameOf, isDomainOrSubdomain, resolveReference } from "./location";
-import { getMyAgentResponse, getMyContractResponse, getMyContractsResponse, getMyShipResponse, getMyShipsResponse, type Agent, type Contract, type Ship } from "./schema";
+import {
+  acceptContractResponse,
+  fulfillContractResponse,
+  getMyAgentResponse,
+  getMyContractResponse,
+  getMyContractsResponse,
+  getMyShipResponse,
+  getMyShipsResponse,
+  marketTransactionResponse,
+  purchaseShipResponse,
+  type Agent,
+  type Contract,
+  type ContractAndAgent,
+  type MarketTransactionResult,
+  type PurchaseShipResult,
+  type Ship,
+} from "./schema";
 import { pathEscape } from "../http/muxCompat";
+import { stringifyJson } from "./json";
 
 /** Go's http.Client stops after ten requests. */
 export const MAX_REQUESTS = 10;
@@ -82,6 +99,38 @@ export class GatewayClient {
     return (await this.request("GET", `/my/contracts/${pathEscape(id)}`, caller, getMyContractResponse)).data;
   }
 
+  /** accept-contract: no body. `id` is the path segment as the router decoded it. */
+  async acceptContract(caller: Caller, id: Uint8Array): Promise<ContractAndAgent> {
+    return (await this.request("POST", `/my/contracts/${pathEscape(id)}/accept`, caller, acceptContractResponse)).data;
+  }
+
+  /** fulfill-contract: no body. */
+  async fulfillContract(caller: Caller, id: Uint8Array): Promise<ContractAndAgent> {
+    return (await this.request("POST", `/my/contracts/${pathEscape(id)}/fulfill`, caller, fulfillContractResponse)).data;
+  }
+
+  /** purchase-ship: the body carries the two known members and nothing else of the caller's. */
+  async purchaseShip(caller: Caller, shipType: string, waypointSymbol: string): Promise<PurchaseShipResult> {
+    const body = stringifyJson({ shipType, waypointSymbol });
+    return (await this.request("POST", "/my/ships", caller, purchaseShipResponse, body)).data;
+  }
+
+  /** purchase-cargo. `units` is an int64, written exactly. */
+  async purchaseCargo(caller: Caller, shipSymbol: Uint8Array, tradeSymbol: string, units: bigint): Promise<MarketTransactionResult> {
+    return await this.tradeCargo(caller, shipSymbol, "purchase", tradeSymbol, units);
+  }
+
+  /** sell-cargo. */
+  async sellCargo(caller: Caller, shipSymbol: Uint8Array, tradeSymbol: string, units: bigint): Promise<MarketTransactionResult> {
+    return await this.tradeCargo(caller, shipSymbol, "sell", tradeSymbol, units);
+  }
+
+  /** purchase-cargo and sell-cargo: same body and answer, a different last path segment. */
+  private async tradeCargo(caller: Caller, shipSymbol: Uint8Array, action: "purchase" | "sell", tradeSymbol: string, units: bigint): Promise<MarketTransactionResult> {
+    const body = stringifyJson({ symbol: tradeSymbol, units });
+    return (await this.request("POST", `/my/ships/${pathEscape(shipSymbol)}/${action}`, caller, marketTransactionResponse, body)).data;
+  }
+
   /** One call through st-gateway, its 2xx body decoded into `schema`. */
   private async request<S extends Schema>(method: string, endpoint: string, caller: Caller, schema: S, body?: string): Promise<Decoded<S>> {
     const answer = await this.send(method, endpoint, caller.authorization, body, caller.signal);
@@ -126,6 +175,9 @@ export class GatewayClient {
     let target = first;
     let verb = method;
     let payload = body;
+    // Go sets Content-Type once, on the request that has a body, and copies every header to the requests a redirect
+    // makes: so a GET that follows a 301/302/303 of a POST still carries it, although the body is gone.
+    const contentType = body !== undefined;
     // Once a hop has left the original host's domain Authorization stays off, also if a later hop comes back (Go 1.24).
     let stripped = false;
     let res: globalThis.Response;
@@ -133,7 +185,7 @@ export class GatewayClient {
       const headers: Record<string, string> = {};
       // Go sends the header when the caller's is non-empty, and only then.
       if (authorization !== "" && !stripped) headers["Authorization"] = authorization;
-      if (payload !== undefined) headers["Content-Type"] = "application/json";
+      if (contentType) headers["Content-Type"] = "application/json";
       try {
         res = await this.fetchImpl(target.url, { method: verb, headers, ...(payload !== undefined ? { body: payload } : {}), redirect: "manual", signal });
       } catch (err) {

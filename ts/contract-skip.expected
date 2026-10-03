@@ -1,9 +1,9 @@
 # See scripts/run-contract.js.
 # suite   = every test of contract/, measured with nothing filtered
-# skipped = cases covered by contract-skip.txt (they may fail; they may not pass, bar contract-skip-passing.txt)
+# skipped = cases covered by contract-skip.txt (none)
 # pass    = cases outside the list, all of which pass
 # dynamic-skips = t.skip() calls inside the suite itself
 suite=1342
-skipped=595
-pass=746
+skipped=0
+pass=1341
 dynamic-skips=1

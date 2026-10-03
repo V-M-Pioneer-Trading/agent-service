@@ -202,7 +202,7 @@ export interface Config {
   readonly gatewayProxyUrl: string;
   readonly corsAllowedOrigin: string;
   readonly introspection: IntrospectionConfig;
-  /** Read here so the variables and defaults are pinned; connected to from the persistence PR. */
+  /** MYSQL_*: the pool is opened from these before any port is bound (db/setup.ts). */
   readonly mysql: MySqlConfig;
 }
 

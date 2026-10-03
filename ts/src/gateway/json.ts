@@ -18,9 +18,12 @@
  */
 
 export class JsonSyntaxError extends Error {
-  constructor(message: string) {
+  /** True when the input ended where more was needed (Go: io.ErrUnexpectedEOF for a stream, "unexpected end of JSON input" for a buffer). */
+  readonly eof: boolean;
+  constructor(message: string, eof = false) {
     super(message);
     this.name = "JsonSyntaxError";
+    this.eof = eof;
   }
 }
 
@@ -72,12 +75,25 @@ interface Frame {
 
 /** Parses exactly one JSON value; anything but whitespace after it is an error. */
 export function parseJson(bytes: Uint8Array): JsonNode {
+  return parse(bytes, false);
+}
+
+/**
+ * Parses the first JSON value and ignores whatever follows it, unread and unchecked: what
+ * `json.NewDecoder(r).Decode(v)` does with a request body. The value itself is checked whole
+ * (the decoder scans it to its end before it binds anything).
+ */
+export function parseFirstJson(bytes: Uint8Array): JsonNode {
+  return parse(bytes, true);
+}
+
+function parse(bytes: Uint8Array, ignoreRest: boolean): JsonNode {
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const n = buf.length;
   let i = 0;
 
   const fail = (what: string): never => {
-    throw new JsonSyntaxError(i >= n ? "unexpected end of JSON input" : `invalid character 0x${(buf[i] as number).toString(16)} ${what}`);
+    throw new JsonSyntaxError(i >= n ? "unexpected end of JSON input" : `invalid character 0x${(buf[i] as number).toString(16)} ${what}`, i >= n);
   };
   const ws = (): void => {
     while (isWs(buf[i])) i++;
@@ -237,6 +253,7 @@ export function parseJson(bytes: Uint8Array): JsonNode {
     }
     const top = stack[stack.length - 1];
     if (top === undefined) {
+      if (ignoreRest) return value;
       ws();
       if (i < n) fail("after top-level value");
       return value;

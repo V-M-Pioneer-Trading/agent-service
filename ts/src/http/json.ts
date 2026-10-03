@@ -17,6 +17,20 @@ export const goJson: RequestHandler = (_req: Request, res: Response, next: NextF
   next();
 };
 
+/**
+ * An answer that is a status and a sentence, `http.Error`: thrown from a handler (a 400 for a body
+ * the decoder refuses, the route's own required-member sentence, a 500 from the database) and
+ * written by the app's error handler.
+ */
+export class TextAnswer extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "TextAnswer";
+    this.status = status;
+  }
+}
+
 /** net/http's http.Error: text/plain, the message and one newline. */
 export function sendText(res: Response, status: number, message: string | Buffer): void {
   res.statusCode = status;

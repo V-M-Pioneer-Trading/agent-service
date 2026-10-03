@@ -6,21 +6,28 @@ import {
   type ExpressAuth,
 } from "@v-m-pioneer-trading/clerk-client";
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
-import { GATEWAY_LOCAL } from "./controllers/support";
+import { ERROR_LOG_LOCAL, GATEWAY_LOCAL, HISTORY_LOCAL } from "./controllers/support";
+import { HistoryStore } from "./db/history";
+import { setUpDatabase } from "./db/setup";
 import { CallerGone, GatewayClient } from "./gateway/client";
 import { UnreadableAnswer, UpstreamError, writeUpstreamError } from "./gateway/errors";
 import { declaring, routePolicy, type Policy, type Registrar } from "./auth";
 import { ConfigError, loadConfig, type Config } from "./config";
 import { RegisterRoutes } from "./generated/routes";
 import { corsHeaders } from "./http/cors";
-import { goJson, sendText } from "./http/json";
+import { goJson, sendText, TextAnswer } from "./http/json";
 import { muxCompat, terminalAnswer } from "./http/muxCompat";
+import { mountSwagger } from "./swagger";
 
 export interface AppDeps {
   readonly corsAllowedOrigin: string;
   readonly auth: ExpressAuth;
   /** The only way out of the service: st-gateway. */
   readonly gateway: GatewayClient;
+  /** The history tables: what the writes record and the public reads serve. */
+  readonly history: HistoryStore;
+  /** Where a failed best-effort write is logged; the console's error stream if not given. */
+  readonly errorLog?: (line: string) => void;
   /** Replaces the policy table (tests). */
   readonly policy?: Policy;
   /** Replaces tsoa's RegisterRoutes (tests); receives the declaring registrar and the secured app itself (for the routes tsoa cannot register, e.g. Swagger UI). */
@@ -41,17 +48,23 @@ export interface AppDeps {
  *  5. notFound(): 404 / 405 exactly as the Go router answers them.
  *  6. the error handler.
  *
- * No body parser is mounted: request bodies are read by the handlers that
- * need them, with the Go decoder's semantics (route PRs).
+ * No body parser is mounted and Express' query parser is off: request bodies and
+ * query strings are read by the handlers that need them, with the Go decoder's
+ * and net/url's semantics (http/body.ts, http/query.ts).
  */
 export function createApp(deps: AppDeps) {
   const app = secured(express());
   app.locals[GATEWAY_LOCAL] = deps.gateway;
+  app.locals[HISTORY_LOCAL] = deps.history;
+  app.locals[ERROR_LOG_LOCAL] = deps.errorLog ?? ((line: string) => console.error(line));
   app.disable("x-powered-by");
   app.set("etag", false);
   // mux is case sensitive and tolerates no trailing slash.
   app.set("case sensitive routing", true);
   app.set("strict routing", true);
+  // The query string is read by the handlers with Go's rules (http/query.ts); Express' own parser (qs) reads it
+  // differently, and tsoa would validate what it produced before the handler could.
+  app.set("query parser", false);
 
   if (deps.log !== undefined) {
     const log = deps.log;
@@ -64,7 +77,12 @@ export function createApp(deps: AppDeps) {
   app.use(passthrough(muxCompat, "mirrors gorilla/mux path cleaning and net/http's URL refusals; serves no resource"));
   app.use(passthrough(corsHeaders(deps.corsAllowedOrigin), "answers CORS preflights; never serves a resource"));
 
-  const register = deps.registerRoutes ?? ((r: Registrar) => RegisterRoutes(r as never));
+  const register =
+    deps.registerRoutes ??
+    ((r: Registrar, a: express.Express) => {
+      RegisterRoutes(r as never);
+      mountSwagger(a, deps.auth);
+    });
   register(declaring(app as unknown as Registrar, deps.auth, deps.policy ?? routePolicy), app);
 
   app.use(notFound(terminalAnswer));
@@ -76,6 +94,10 @@ export function createApp(deps: AppDeps) {
     }
     // The caller left; nobody is there to answer, and the gateway did nothing wrong.
     if (err instanceof CallerGone) return;
+    if (err instanceof TextAnswer) {
+      sendText(res, err.status, err.message);
+      return;
+    }
     if (err instanceof UpstreamError || err instanceof UnreadableAnswer) {
       writeUpstreamError(res, err);
       return;
@@ -88,19 +110,38 @@ export function createApp(deps: AppDeps) {
 }
 
 /** Startup. Every refusal exits 1 before a port is bound, like log.Fatal in Go. */
-export function main(env: NodeJS.ProcessEnv = process.env): void {
+export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   let config: Config;
+  try {
+    // Introspection first, before the database wait: it is instant, and a missing AUTH_INTROSPECTION_*
+    // must crash the container within the bootstrap script's liveness window rather than after a slow MySQL ping loop.
+    config = loadConfig(env);
+  } catch (err) {
+    console.error(err instanceof ConfigError ? err.message : err);
+    process.exit(1);
+  }
+
+  // Open the pool, wait for MySQL (15 pings, 2 s apart), migrate. All of it before any port is bound.
+  let sql: Awaited<ReturnType<typeof setUpDatabase>>;
+  try {
+    sql = await setUpDatabase(config.mysql);
+  } catch (err) {
+    // One line, like log.Fatal: the pool's error says what it could not reach or run.
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
+
   let app: ReturnType<typeof createApp>;
   try {
-    config = loadConfig(env);
     app = createApp({
       corsAllowedOrigin: config.corsAllowedOrigin,
       auth: createExpressAuth(config.introspection),
       gateway: new GatewayClient(config.gatewayProxyUrl),
+      history: new HistoryStore(sql),
       log: (line) => console.log(line),
     });
   } catch (err) {
-    console.error(err instanceof ConfigError ? err.message : err);
+    console.error(err);
     process.exit(1);
   }
 
@@ -116,11 +157,18 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
 
   const shutdown = (signal: string) => {
     console.log(`received ${signal}, shutting down`);
-    server.close(() => process.exit(0));
+    server.close(() => {
+      void sql.close().finally(() => process.exit(0));
+    });
     server.closeIdleConnections();
     setTimeout(() => process.exit(1), 10_000).unref();
   };
   for (const signal of ["SIGTERM", "SIGINT"] as const) process.once(signal, () => shutdown(signal));
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  main().catch((err: unknown) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

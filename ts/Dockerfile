@@ -27,6 +27,8 @@ ENV NODE_ENV=production
 COPY package.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+# The spec Swagger UI serves (src/swagger.ts reads ../openapi.json relative to dist/).
+COPY openapi.json ./
 # The container keeps listening on 80 like the Go image; PORT overrides it.
 EXPOSE 80
 CMD ["dist/server.js"]

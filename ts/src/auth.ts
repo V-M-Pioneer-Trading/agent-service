@@ -28,6 +28,18 @@ export const routePolicy: Policy = {
   "GET /api/agent/v1/ships/:shipSymbol": "session",
   "GET /api/agent/v1/contracts": "session",
   "GET /api/agent/v1/contracts/:contractId": "session",
+  // The writes: they additionally need fleet:control, same as fleet-service. Recording a delivery
+  // included (meta#71).
+  "POST /api/agent/v1/contracts/:contractId/accept": SCOPE_FLEET_CONTROL,
+  "POST /api/agent/v1/contracts/:contractId/fulfill": SCOPE_FLEET_CONTROL,
+  "POST /api/agent/v1/ships/purchase": SCOPE_FLEET_CONTROL,
+  "POST /api/agent/v1/ships/:shipSymbol/purchase": SCOPE_FLEET_CONTROL,
+  "POST /api/agent/v1/ships/:shipSymbol/sell": SCOPE_FLEET_CONTROL,
+  "POST /api/agent/v1/contracts/:contractId/deliveries": SCOPE_FLEET_CONTROL,
+  // The reads served entirely from this service's own MySQL history: a visitor with no header is
+  // served; a presented token is still verified, and a bad one is a 401, never a visitor.
+  "GET /api/agent/v1/contracts/:contractId/deliveries": "none",
+  "GET /api/agent/v1/transactions": "none",
 };
 
 export type Registrar = Record<string, unknown>;

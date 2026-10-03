@@ -20,7 +20,9 @@
   "dependencies": {
     "@tsoa/runtime": "^6.6.0",
     "@v-m-pioneer-trading/clerk-client": "https://github.com/V-M-Pioneer-Trading/clerk-client/releases/download/v2.0.1/v-m-pioneer-trading-clerk-client-2.0.1.tgz",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "mysql2": "^3.24.5",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

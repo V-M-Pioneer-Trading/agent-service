@@ -4,13 +4,22 @@
  */
 
 import type { Request, Response } from "express";
+import type { HistoryStore } from "../db/history";
 import type { Caller, GatewayClient } from "../gateway/client";
 import { sendJson } from "../http/json";
 
 export const GATEWAY_LOCAL = "gateway";
+export const HISTORY_LOCAL = "history";
+export const ERROR_LOG_LOCAL = "errorLog";
 
 /** The client the app was built with (server.ts puts it in app.locals). */
 export const gatewayOf = (req: Request): GatewayClient => req.app.locals[GATEWAY_LOCAL] as GatewayClient;
+
+/** The history tables (the app was built with them). */
+export const historyOf = (req: Request): HistoryStore => req.app.locals[HISTORY_LOCAL] as HistoryStore;
+
+/** Where a failed best-effort write is logged (Go's log.Printf). */
+export const errorLogOf = (req: Request): ((line: string) => void) => req.app.locals[ERROR_LOG_LOCAL] as (line: string) => void;
 
 /**
  * The caller as the gateway client wants to know them: their Authorization header, verbatim (the one
