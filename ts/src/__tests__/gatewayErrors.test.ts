@@ -17,8 +17,8 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import express from "express";
 import request from "supertest";
+import { GatewayClient } from "../gateway/client";
 import {
-  callGateway,
   gatewayDidNotAnswer,
   NO_ANSWER,
   pacingHeaders,
@@ -54,8 +54,7 @@ function appFor(url: string) {
   const app = express();
   app.get("/probe", async (_req, res) => {
     try {
-      const data = await callGateway("GET", `${url}/proxy/my/agent`, "/my/agent", { authorization: "Bearer t" });
-      res.status(200).json(data ?? {});
+      res.status(200).json(await new GatewayClient(`${url}/proxy`).getMyAgent({ authorization: "Bearer t" }).then(() => ({})));
     } catch (err) {
       writeUpstreamError(res, err, () => undefined);
     }
@@ -165,9 +164,9 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
       res.statusCode = 204;
       res.end();
     });
-    await expect(callGateway("GET", `${ok}/x`, "/x")).resolves.toBeUndefined();
+    await expect(new GatewayClient(`${ok}/proxy`).getMyAgent({ authorization: "" })).resolves.toMatchObject({ symbol: "" });
     const bad = await stub((_req, res) => res.end("   "));
-    await expect(callGateway("GET", `${bad}/x`, "/x")).rejects.toBeInstanceOf(UnreadableAnswer);
+    await expect(new GatewayClient(`${bad}/proxy`).getMyAgent({ authorization: "" })).rejects.toBeInstanceOf(UnreadableAnswer);
   });
 
   it("forwards the caller's Authorization byte for byte, and nothing else of the caller", async () => {
@@ -176,12 +175,11 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
       seen.push(req.headers);
       res.end("{}");
     });
-    await callGateway("GET", `${url}/x`, "/x", { authorization: "Bearer   tok" });
-    await callGateway("GET", `${url}/x`, "/x");
-    await callGateway("GET", `${url}/x`, "/x", { authorization: "" });
+    const client = new GatewayClient(`${url}/proxy`);
+    await client.getMyAgent({ authorization: "Bearer   tok" });
+    await client.getMyAgent({ authorization: "" });
     expect(seen[0]?.["authorization"]).toBe("Bearer   tok");
     expect(seen[1]?.["authorization"]).toBeUndefined();
-    expect(seen[2]?.["authorization"]).toBeUndefined();
   });
 
   it("reads at most 64 KiB of an error body: an envelope cut in half is raw text", async () => {
@@ -212,5 +210,40 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
     const err = gatewayDidNotAnswer("GET", "/my/agent", new Error("connect ECONNREFUSED 10.0.0.7:3002"));
     expect(err.message).toBe(NO_ANSWER);
     expect(String((err.cause as Error).message)).toContain("10.0.0.7");
+  });
+});
+
+describe("a raw body that is not UTF-8 goes out as it came, like Go's string(body)", () => {
+  it("keeps the bytes of a short one, counts each bad byte as one rune, and writes U+FFFD once it cuts", async () => {
+    const { upstreamMessageOf } = await import("../gateway/errors");
+    const short = Buffer.from([0x61, 0xff, 0xe2, 0x82, 0x62]);
+    expect(upstreamMessageOf(short)).toEqual({ message: "a���b", raw: short });
+    // 250 truncated three-byte sequences are 500 runes in Go (two bad bytes each) and 250 in a decoder that merges them.
+    expect(upstreamMessageOf(Buffer.alloc(500, 0xff)).raw).toBeDefined();
+    const cut = upstreamMessageOf(Buffer.concat([Buffer.alloc(300, 0xff), Buffer.alloc(300, 0x41)]));
+    expect(cut.raw).toBeUndefined();
+    expect(cut.message).toBe("�".repeat(300) + "A".repeat(200));
+    expect(upstreamMessageOf(Buffer.from([0xe2, 0x82]).toString("latin1").repeat(0) + "ok").raw).toBeUndefined();
+  });
+
+  it("is relayed byte for byte, with the newline", async () => {
+    const url = await stub((_req, res) => {
+      res.statusCode = 502;
+      res.end(Buffer.from([0x62, 0x61, 0x64, 0xff, 0xfe]));
+    });
+    const res = await request(appFor(url)).get("/probe").buffer(true).parse((r, cb) => {
+      const parts: Buffer[] = [];
+      r.on("data", (c: Buffer) => parts.push(c));
+      r.on("end", () => cb(null, Buffer.concat(parts)));
+    });
+    expect(Buffer.from(res.body as Buffer).equals(Buffer.from([0x62, 0x61, 0x64, 0xff, 0xfe, 0x0a]))).toBe(true);
+  });
+
+  it("trims with Go's TrimSpace: U+FEFF is not a space, U+0085 and U+3000 are", async () => {
+    const { upstreamMessage } = await import("../gateway/errors");
+    expect(upstreamMessage('{"error":{"message":"﻿"}}')).toBe("﻿");
+    expect(upstreamMessage('{"error":{"message":"\u0085　"}}')).toBe('{"error":{"message":"\u0085　"}}');
+    expect(upstreamMessage("\u0085 　")).toBe("st-gateway returned an error with no message");
+    expect(upstreamMessage("﻿")).toBe("﻿");
   });
 });

@@ -21,6 +21,13 @@ export type Policy = Readonly<Record<string, Tier>>;
 export const routePolicy: Policy = {
   "GET /health": "ignore",
   "GET /api/agent/health": "ignore",
+  // The live reads: a verified session, no particular scope (decision 18).
+  "GET /api/agent/v1/current-agent": "session",
+  "GET /api/agent/v1/agent": "session",
+  "GET /api/agent/v1/ships": "session",
+  "GET /api/agent/v1/ships/:shipSymbol": "session",
+  "GET /api/agent/v1/contracts": "session",
+  "GET /api/agent/v1/contracts/:contractId": "session",
 };
 
 export type Registrar = Record<string, unknown>;

@@ -22,6 +22,726 @@
         ],
         "type": "object",
         "additionalProperties": false
+      },
+      "Agent": {
+        "description": "The agent's profile.",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "headquarters": {
+            "type": "string"
+          },
+          "credits": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "startingFaction": {
+            "type": "string"
+          },
+          "shipCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "accountId",
+          "symbol",
+          "headquarters",
+          "credits",
+          "startingFaction",
+          "shipCount"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipRegistration": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "factionSymbol": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "factionSymbol",
+          "role"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "RouteWaypoint": {
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "systemSymbol": {
+            "type": "string"
+          },
+          "x": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "y": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "symbol",
+          "type",
+          "systemSymbol",
+          "x",
+          "y"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipRoute": {
+        "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/RouteWaypoint"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/RouteWaypoint"
+          },
+          "departureTime": {
+            "type": "string",
+            "description": "RFC 3339"
+          },
+          "arrival": {
+            "type": "string",
+            "description": "RFC 3339"
+          }
+        },
+        "required": [
+          "destination",
+          "origin",
+          "departureTime",
+          "arrival"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipNav": {
+        "properties": {
+          "systemSymbol": {
+            "type": "string"
+          },
+          "waypointSymbol": {
+            "type": "string"
+          },
+          "route": {
+            "$ref": "#/components/schemas/ShipRoute"
+          },
+          "status": {
+            "type": "string"
+          },
+          "flightMode": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "systemSymbol",
+          "waypointSymbol",
+          "route",
+          "status",
+          "flightMode"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipCrew": {
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "required": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "capacity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rotation": {
+            "type": "string"
+          },
+          "morale": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "wages": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "current",
+          "required",
+          "capacity",
+          "rotation",
+          "morale",
+          "wages"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "Requirements": {
+        "properties": {
+          "power": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "crew": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "slots": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "power",
+          "crew",
+          "slots"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipFrame": {
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "integrity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "moduleSlots": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "mountingPoints": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fuelCapacity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements"
+          }
+        },
+        "required": [
+          "symbol",
+          "name",
+          "description",
+          "condition",
+          "integrity",
+          "moduleSlots",
+          "mountingPoints",
+          "fuelCapacity",
+          "requirements"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipReactor": {
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "integrity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "powerOutput": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements"
+          }
+        },
+        "required": [
+          "symbol",
+          "name",
+          "description",
+          "condition",
+          "integrity",
+          "powerOutput",
+          "requirements"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipEngine": {
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "condition": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "integrity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "speed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements"
+          }
+        },
+        "required": [
+          "symbol",
+          "name",
+          "description",
+          "condition",
+          "integrity",
+          "speed",
+          "requirements"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipCooldown": {
+        "properties": {
+          "shipSymbol": {
+            "type": "string"
+          },
+          "totalSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "remainingSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expiration": {
+            "type": "string",
+            "description": "RFC 3339"
+          }
+        },
+        "required": [
+          "shipSymbol",
+          "totalSeconds",
+          "remainingSeconds",
+          "expiration"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipModule": {
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "capacity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "range": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements"
+          }
+        },
+        "required": [
+          "symbol",
+          "capacity",
+          "range",
+          "name",
+          "description",
+          "requirements"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipMount": {
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "strength": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deposits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "nullable": true
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/Requirements"
+          }
+        },
+        "required": [
+          "symbol",
+          "name",
+          "description",
+          "strength",
+          "deposits",
+          "requirements"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "CargoItem": {
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "units": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "symbol",
+          "name",
+          "description",
+          "units"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipCargo": {
+        "properties": {
+          "capacity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "units": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "inventory": {
+            "items": {
+              "$ref": "#/components/schemas/CargoItem"
+            },
+            "type": "array",
+            "nullable": true
+          }
+        },
+        "required": [
+          "capacity",
+          "units",
+          "inventory"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipFuelConsumed": {
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "RFC 3339"
+          }
+        },
+        "required": [
+          "amount",
+          "timestamp"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ShipFuel": {
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "capacity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "consumed": {
+            "$ref": "#/components/schemas/ShipFuelConsumed"
+          }
+        },
+        "required": [
+          "current",
+          "capacity",
+          "consumed"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "Ship": {
+        "description": "A ship. A list the gateway did not send is null.",
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "registration": {
+            "$ref": "#/components/schemas/ShipRegistration"
+          },
+          "nav": {
+            "$ref": "#/components/schemas/ShipNav"
+          },
+          "crew": {
+            "$ref": "#/components/schemas/ShipCrew"
+          },
+          "frame": {
+            "$ref": "#/components/schemas/ShipFrame"
+          },
+          "reactor": {
+            "$ref": "#/components/schemas/ShipReactor"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/ShipEngine"
+          },
+          "cooldown": {
+            "$ref": "#/components/schemas/ShipCooldown"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/ShipModule"
+            },
+            "type": "array",
+            "nullable": true
+          },
+          "mounts": {
+            "items": {
+              "$ref": "#/components/schemas/ShipMount"
+            },
+            "type": "array",
+            "nullable": true
+          },
+          "cargo": {
+            "$ref": "#/components/schemas/ShipCargo"
+          },
+          "fuel": {
+            "$ref": "#/components/schemas/ShipFuel"
+          }
+        },
+        "required": [
+          "symbol",
+          "registration",
+          "nav",
+          "crew",
+          "frame",
+          "reactor",
+          "engine",
+          "cooldown",
+          "modules",
+          "mounts",
+          "cargo",
+          "fuel"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ContractPayment": {
+        "properties": {
+          "onAccepted": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "onFulfilled": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "onAccepted",
+          "onFulfilled"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ContractDeliverGood": {
+        "properties": {
+          "tradeSymbol": {
+            "type": "string"
+          },
+          "destinationSymbol": {
+            "type": "string"
+          },
+          "unitsRequired": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unitsFulfilled": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "tradeSymbol",
+          "destinationSymbol",
+          "unitsRequired",
+          "unitsFulfilled"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "ContractTerms": {
+        "properties": {
+          "deadline": {
+            "type": "string",
+            "description": "RFC 3339"
+          },
+          "payment": {
+            "$ref": "#/components/schemas/ContractPayment"
+          },
+          "deliver": {
+            "items": {
+              "$ref": "#/components/schemas/ContractDeliverGood"
+            },
+            "type": "array",
+            "nullable": true
+          }
+        },
+        "required": [
+          "deadline",
+          "payment",
+          "deliver"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "Contract": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "factionSymbol": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "terms": {
+            "$ref": "#/components/schemas/ContractTerms"
+          },
+          "accepted": {
+            "type": "boolean"
+          },
+          "fulfilled": {
+            "type": "boolean"
+          },
+          "expiration": {
+            "type": "string",
+            "description": "RFC 3339"
+          },
+          "deadlineToAccept": {
+            "type": "string",
+            "description": "RFC 3339"
+          }
+        },
+        "required": [
+          "id",
+          "factionSymbol",
+          "type",
+          "terms",
+          "accepted",
+          "fulfilled",
+          "expiration",
+          "deadlineToAccept"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "CurrentAgent": {
+        "description": "Agent, ships and contracts in one answer.",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/Agent"
+          },
+          "ships": {
+            "items": {
+              "$ref": "#/components/schemas/Ship"
+            },
+            "type": "array",
+            "nullable": true
+          },
+          "contracts": {
+            "items": {
+              "$ref": "#/components/schemas/Contract"
+            },
+            "type": "array",
+            "nullable": true
+          }
+        },
+        "required": [
+          "agent",
+          "ships",
+          "contracts"
+        ],
+        "type": "object",
+        "additionalProperties": false
       }
     },
     "securitySchemes": {}
@@ -77,6 +797,432 @@
         ],
         "security": [],
         "parameters": []
+      }
+    },
+    "/api/agent/v1/current-agent": {
+      "get": {
+        "operationId": "GetCurrentAgent",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentAgent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "The three reads below in one call, made one after the other; the first failure is the answer.",
+        "tags": [
+          "agent"
+        ],
+        "security": [],
+        "parameters": []
+      }
+    },
+    "/api/agent/v1/agent": {
+      "get": {
+        "operationId": "GetAgent",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "The current agent's profile.",
+        "tags": [
+          "agent"
+        ],
+        "security": [],
+        "parameters": []
+      }
+    },
+    "/api/agent/v1/ships": {
+      "get": {
+        "operationId": "GetShips",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Ship"
+                  },
+                  "type": "array",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "The agent's ships; null when the gateway sent none.",
+        "tags": [
+          "ships"
+        ],
+        "security": [],
+        "parameters": []
+      }
+    },
+    "/api/agent/v1/ships/{shipSymbol}": {
+      "get": {
+        "operationId": "GetShip",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ship"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ship not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "A single ship.",
+        "tags": [
+          "ships"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Ship symbol",
+            "in": "path",
+            "name": "shipSymbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/agent/v1/contracts": {
+      "get": {
+        "operationId": "GetContracts",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Contract"
+                  },
+                  "type": "array",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "The agent's contracts; null when the gateway sent none.",
+        "tags": [
+          "contracts"
+        ],
+        "security": [],
+        "parameters": []
+      }
+    },
+    "/api/agent/v1/contracts/{contractId}": {
+      "get": {
+        "operationId": "GetContract",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contract"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "contract not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "A single contract.",
+        "tags": [
+          "contracts"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Contract ID",
+            "in": "path",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     }
   },
