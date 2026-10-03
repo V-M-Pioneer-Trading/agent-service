@@ -5,7 +5,7 @@
 # `npm ci --ignore-scripts` everywhere: no dependency's install script runs.
 
 # Build: full dependencies, tsoa codegen, tsc.
-FROM node:24-slim AS build
+FROM node:26-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -15,7 +15,7 @@ COPY src ./src
 RUN npm run build
 
 # Production dependencies only.
-FROM node:24-slim AS deps
+FROM node:26-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --omit=dev
