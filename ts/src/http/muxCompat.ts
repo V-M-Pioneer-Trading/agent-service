@@ -11,11 +11,17 @@
  *  - the terminal answers: `404 page not found` under the string prefix
  *    `/api/agent`, a bare `405` elsewhere.
  *
- * All of it comes before any Express default or route. Known gap for the
- * route PRs: a path parameter holding invalid UTF-8 (`%FF`) is routed by mux
- * but Express' own param decoding refuses it.
+ * All of it comes before any Express default or route.
+ *
+ * A path parameter may hold bytes that are not UTF-8 (`%FF`): mux routes it
+ * and hands the handler the raw bytes, but Express decodes its own params with
+ * decodeURIComponent, which throws. So the URL Express routes on carries the
+ * lossy UTF-8 reading of the path (a bad byte is U+FFFD, which no route
+ * mentions), and the exact decoded bytes are kept for the handlers:
+ * `decodedPathOf(req)`, `lastSegmentOf(req)`.
  */
 
+import type { IncomingMessage } from "node:http";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 const AGENT_PREFIX = "/api/agent";
@@ -69,6 +75,18 @@ export const escapeForLocation = (bytes: Buffer): string => escapeWith(bytes, "$
 /** What Express routes on: the decoded path, escaped again except "/" and the sub-delimiters that cannot change the parse. */
 const escapeForRouting = (bytes: Buffer): string => escapeWith(bytes, "/!$&'()*+,;=:@");
 
+/** Go's url.PathEscape: what a path segment is sent as, whatever its bytes. */
+export const pathEscape = (bytes: Uint8Array): string => escapeWith(Buffer.from(bytes), "$&+=:@");
+
+const decodedPaths = new WeakMap<IncomingMessage, Buffer>();
+/** The request path after percent-decoding, as mux sees it: raw bytes. */
+export const decodedPathOf = (req: IncomingMessage): Buffer => decodedPaths.get(req) ?? Buffer.alloc(0);
+/** What follows the last "/" of the decoded path: `mux.Vars` of a route that ends in a variable. */
+export function lastSegmentOf(req: IncomingMessage): Buffer {
+  const path = decodedPathOf(req);
+  return path.subarray(path.lastIndexOf(0x2f) + 1);
+}
+
 const CORS_HEADER_NAMES = [
   "Access-Control-Allow-Origin",
   "Access-Control-Allow-Methods",
@@ -112,7 +130,8 @@ export const muxCompat: RequestHandler = (req: Request, res: Response, next: Nex
     res.end();
     return;
   }
-  req.url = escapeForRouting(decoded) + query;
+  decodedPaths.set(req, decoded);
+  req.url = escapeForRouting(Buffer.from(decoded.toString("utf8"), "utf8")) + query;
   next();
 };
 

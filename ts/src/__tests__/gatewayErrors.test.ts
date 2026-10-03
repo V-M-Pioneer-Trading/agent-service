@@ -17,8 +17,8 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import express from "express";
 import request from "supertest";
+import { GatewayClient } from "../gateway/client";
 import {
-  callGateway,
   gatewayDidNotAnswer,
   NO_ANSWER,
   pacingHeaders,
@@ -54,8 +54,7 @@ function appFor(url: string) {
   const app = express();
   app.get("/probe", async (_req, res) => {
     try {
-      const data = await callGateway("GET", `${url}/proxy/my/agent`, "/my/agent", { authorization: "Bearer t" });
-      res.status(200).json(data ?? {});
+      res.status(200).json(await new GatewayClient(`${url}/proxy`).getMyAgent({ authorization: "Bearer t" }).then(() => ({})));
     } catch (err) {
       writeUpstreamError(res, err, () => undefined);
     }
@@ -165,9 +164,9 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
       res.statusCode = 204;
       res.end();
     });
-    await expect(callGateway("GET", `${ok}/x`, "/x")).resolves.toBeUndefined();
+    await expect(new GatewayClient(`${ok}/proxy`).getMyAgent({ authorization: "" })).resolves.toMatchObject({ symbol: "" });
     const bad = await stub((_req, res) => res.end("   "));
-    await expect(callGateway("GET", `${bad}/x`, "/x")).rejects.toBeInstanceOf(UnreadableAnswer);
+    await expect(new GatewayClient(`${bad}/proxy`).getMyAgent({ authorization: "" })).rejects.toBeInstanceOf(UnreadableAnswer);
   });
 
   it("forwards the caller's Authorization byte for byte, and nothing else of the caller", async () => {
@@ -176,12 +175,11 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
       seen.push(req.headers);
       res.end("{}");
     });
-    await callGateway("GET", `${url}/x`, "/x", { authorization: "Bearer   tok" });
-    await callGateway("GET", `${url}/x`, "/x");
-    await callGateway("GET", `${url}/x`, "/x", { authorization: "" });
+    const client = new GatewayClient(`${url}/proxy`);
+    await client.getMyAgent({ authorization: "Bearer   tok" });
+    await client.getMyAgent({ authorization: "" });
     expect(seen[0]?.["authorization"]).toBe("Bearer   tok");
     expect(seen[1]?.["authorization"]).toBeUndefined();
-    expect(seen[2]?.["authorization"]).toBeUndefined();
   });
 
   it("reads at most 64 KiB of an error body: an envelope cut in half is raw text", async () => {

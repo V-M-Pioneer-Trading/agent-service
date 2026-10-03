@@ -61,7 +61,35 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
   gateway call but after auth). `express.json()` and tsoa's own body validation would answer first.
 * **Gateway errors.** `ts/src/gateway/errors.ts` is the mapping for st-gateway's answers; the
   fixture (`contract/fixtures/gateway-errors.json`, pinned) is driven through it by
-  `gatewayErrors.test.ts`.
+  `gatewayErrors.test.ts`. Failures are thrown (`UpstreamError`, `UnreadableAnswer`) and relayed by
+  the app error handler in `server.ts`.
+* **Live reads (#36).** `ts/src/gateway/client.ts` is the only outbound HTTP: `GatewayClient`, redirects
+  followed by hand like Go (10 requests, then 504; `fetch`'s own follow would stop at 20 and strip
+  Authorization on any origin change). Authorization goes only to the original host or a subdomain, and
+  once a hop has left that domain it stays off, also if a later hop comes back (Go 1.24, CVE-2024-45336);
+  hosts compare as written, case included. `gateway/location.ts` reads a `Location` like `url.Parse`
+  (bad `%`, control characters, a colon in the first segment of a scheme-less reference, a bad port are
+  refused, so the call is a 504; a backslash is a path character, `%5C`). A caller who hangs up cancels the
+  call (`CallerGone`, nothing is answered or logged as a gateway failure) and `/current-agent` makes no
+  further calls. Answers are decoded by `gateway/decode.ts` (schemas in `gateway/schema.ts`, member for
+  member like `src/spacetraders/schema`) on top of the lossless parser `gateway/json.ts`: int64 is bigint, a
+  missing list is null (a JSON null resets a list, and nothing else), names fold like Go's, and the same
+  schema decodes gateway error envelopes. No dependency was added for any of this.
+  * **Times** follow Go 1.25's lenient `time.Parse`, not the strict RFC 3339 check: a one-digit hour, a comma
+    before the fraction, a zone offset with minute 60 or hour 24 are read, and written back with the offset
+    recomputed (`+00:60` is `+01:00`). An offset of a day or more is read but Go's encoder refuses it, so the
+    answer is **200, `application/json`, empty body** (`UnencodableTime`, `hasUnencodable`).
+  * **Writing** is in pieces (`http/json.ts` `sendJson`), so an answer too big for one string still goes out.
+  * **Known deviation (stale slice).** Go decodes a repeated key into the earlier slice, and a slice that was
+    shrunk by an earlier repeat leaks old elements when a third repeat grows it again
+    (`"modules":[a,b],"modules":[c],"modules":[{},{}]` keeps `b` in Go). Here the third repeat starts from the
+    second. Only three or more repeats of one list key, with the middle one shorter, can tell. Not
+    reproduced on purpose.
+  * The controllers write their answers themselves (`controllers/support.ts`): tsoa would 204 a null list and
+    cannot print a bigint. `controllers/models.ts` is the spec's view of the same shapes, and a type
+    assertion there fails the build if it drifts from the decoder. Path symbols are read from
+    `lastSegmentOf(req)` (the exact decoded bytes, kept by muxCompat) and re-escaped with `pathEscape`, so
+    bytes that are not UTF-8 survive.
 
 ## Module map
 

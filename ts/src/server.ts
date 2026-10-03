@@ -6,6 +6,9 @@ import {
   type ExpressAuth,
 } from "@v-m-pioneer-trading/clerk-client";
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
+import { GATEWAY_LOCAL } from "./controllers/support";
+import { CallerGone, GatewayClient } from "./gateway/client";
+import { UnreadableAnswer, UpstreamError, writeUpstreamError } from "./gateway/errors";
 import { declaring, routePolicy, type Policy, type Registrar } from "./auth";
 import { ConfigError, loadConfig, type Config } from "./config";
 import { RegisterRoutes } from "./generated/routes";
@@ -16,6 +19,8 @@ import { muxCompat, terminalAnswer } from "./http/muxCompat";
 export interface AppDeps {
   readonly corsAllowedOrigin: string;
   readonly auth: ExpressAuth;
+  /** The only way out of the service: st-gateway. */
+  readonly gateway: GatewayClient;
   /** Replaces the policy table (tests). */
   readonly policy?: Policy;
   /** Replaces tsoa's RegisterRoutes (tests); receives the declaring registrar and the secured app itself (for the routes tsoa cannot register, e.g. Swagger UI). */
@@ -41,6 +46,7 @@ export interface AppDeps {
  */
 export function createApp(deps: AppDeps) {
   const app = secured(express());
+  app.locals[GATEWAY_LOCAL] = deps.gateway;
   app.disable("x-powered-by");
   app.set("etag", false);
   // mux is case sensitive and tolerates no trailing slash.
@@ -68,6 +74,12 @@ export function createApp(deps: AppDeps) {
       next(err);
       return;
     }
+    // The caller left; nobody is there to answer, and the gateway did nothing wrong.
+    if (err instanceof CallerGone) return;
+    if (err instanceof UpstreamError || err instanceof UnreadableAnswer) {
+      writeUpstreamError(res, err);
+      return;
+    }
     console.error(err);
     sendText(res, 500, "Internal Server Error");
   };
@@ -84,6 +96,7 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
     app = createApp({
       corsAllowedOrigin: config.corsAllowedOrigin,
       auth: createExpressAuth(config.introspection),
+      gateway: new GatewayClient(config.gatewayProxyUrl),
       log: (line) => console.log(line),
     });
   } catch (err) {
