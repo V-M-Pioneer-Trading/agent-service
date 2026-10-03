@@ -407,7 +407,7 @@
         "identity": {
           "sub": "user_31qP8k2cQeXampleOperator",
           "kind": "operator",
-          "scopes": ["fleet:control\u000bx1\u000cx2\u0085x3 x4 x5 x6 x7 x8　x9﻿x10", "agent:reset"]
+          "scopes": ["fleet:control\u000bx1\u000cx2\u0085x3\u00a0x4\u2000x5\u200ax6\u2003x7\u2028x8\u3000x9\ufeffx10", "agent:reset"]
         },
         "centerCalls": 1
       }
