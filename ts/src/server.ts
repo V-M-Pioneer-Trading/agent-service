@@ -60,6 +60,12 @@ export const closeWhenBodyUnread: express.RequestHandler = (req, res, next) => {
   next();
 };
 
+/** What Node answers a request it cannot parse, written with explicit CRLFs. */
+export function clientErrorAnswer(err: NodeJS.ErrnoException): string {
+  const status = err.code === "HPE_HEADER_OVERFLOW" ? "431 Request Header Fields Too Large" : "400 Bad Request";
+  return "HTTP/1.1 " + status + "\r\nConnection: close\r\n\r\n";
+}
+
 /**
  * The server the process runs: reads are bounded like Go's, and a check every second makes the header timeout 10 s, not
  * 10 to 40. Like Go it closes a connection that is too slow without a word (Node would answer 408), and it never sends
@@ -70,13 +76,14 @@ export function createHttpServer(app: express.Express): http.Server {
   const server = http.createServer({ connectionsCheckingInterval: 1000, headersTimeout: 10_000, requestTimeout: 30_000, keepAliveTimeout: 120_000 }, app);
   server.on("checkContinue", (req, res) => app(req as never, res as never));
   server.on("clientError", (err: NodeJS.ErrnoException, socket) => {
-    if (!socket.writable || socket.destroyed) return;
+    // Node's default: a socket that cannot be written to is closed.
+    if (!socket.writable || socket.destroyed) {
+      socket.destroy();
+      return;
+    }
     // net/http closes on a slow client; for the rest, what Node answers without a listener.
     if (err.code === "ERR_HTTP_REQUEST_TIMEOUT") socket.destroy();
-    else socket.end(`HTTP/1.1 ${err.code === "HPE_HEADER_OVERFLOW" ? "431 Request Header Fields Too Large" : "400 Bad Request"}
-Connection: close
-
-`);
+    else socket.end(clientErrorAnswer(err));
   });
   return server;
 }

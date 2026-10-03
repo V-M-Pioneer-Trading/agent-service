@@ -31,7 +31,9 @@ export interface BodyRead {
 export function readBody(req: IncomingMessage, limit: number = MAX_BODY_BYTES): Promise<BodyRead> {
   // The body is wanted: a caller who asked to be told when to send it (Expect: 100-continue) is told now, not before auth.
   const res = (req as { res?: ServerResponse }).res;
-  if (/100-continue/i.test(req.headers.expect ?? "") && res !== undefined && !res.headersSent) res.writeContinue();
+  // HTTP/1.0 has no 100 (RFC 9110 10.1.1), and Go sends none.
+  const http11 = req.httpVersionMajor > 1 || (req.httpVersionMajor === 1 && req.httpVersionMinor >= 1);
+  if (http11 && /100-continue/i.test(req.headers.expect ?? "") && res !== undefined && !res.headersSent) res.writeContinue();
   return new Promise<BodyRead>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;

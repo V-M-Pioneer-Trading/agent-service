@@ -10,6 +10,8 @@ import { hasUnencodable, jsonPieces } from "../gateway/json";
 
 export const goJson: RequestHandler = (_req: Request, res: Response, next: NextFunction) => {
   res.json = ((body: unknown) => {
+    // The caller is gone, or the answer is out already: nothing to write (and a bigint in `body` would throw).
+    if (res.writableEnded || res.destroyed) return res;
     res.setHeader("Content-Type", "application/json");
     res.end(`${JSON.stringify(body)}\n`);
     return res;

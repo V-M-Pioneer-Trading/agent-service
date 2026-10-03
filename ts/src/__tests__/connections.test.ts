@@ -2,7 +2,7 @@ import net from "node:net";
 import type { AddressInfo } from "node:net";
 import { createExpressAuth } from "@v-m-pioneer-trading/clerk-client";
 import { HistoryStore } from "../db/history";
-import { createHttpServer } from "../server";
+import { clientErrorAnswer, createHttpServer } from "../server";
 import { FakeSql } from "../testSupport/fakeSql";
 import { createTestApp, stubCentre } from "../testSupport/createTestApp";
 
@@ -205,11 +205,52 @@ describe("Expect: 100-continue", () => {
   });
 });
 
-describe("a client that is too slow is closed, not answered", () => {
-  it("a malformed request still gets a 400, and an oversized header a 431", async () => {
+describe("a request Node cannot parse", () => {
+  it("is answered with exactly these bytes, CRLFs and no body, and the socket is closed afterwards", async () => {
     const { server, port } = await listenSlowCentre(WRITER);
-    expect((await exchange(port, ["GARBAGE\r\n\r\n"], (g) => g.includes("\r\n\r\n"), 2000)).got).toMatch(/^HTTP\/1.1 400 Bad Request/);
-    expect((await exchange(port, [`GET /health HTTP/1.1\r\nHost: x\r\nX: ${"a".repeat(100_000)}\r\n\r\n`], (g) => g.includes("\r\n\r\n"), 2000)).got).toMatch(/^HTTP\/1.1 431/);
+    const bad = await exchange(port, ["GARBAGE\r\n\r\n"], () => false, 3000);
+    expect(bad.got).toBe("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    expect(bad.closed).toBe(true);
+    const big = await exchange(port, ["GET /health HTTP/1.1\r\nHost: x\r\nX: " + "a".repeat(100_000) + "\r\n\r\n"], () => false, 3000);
+    expect(big.got).toBe("HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n");
+    expect(big.closed).toBe(true);
+    server.close();
+  });
+
+  it("clientErrorAnswer is written with explicit CRLFs", () => {
+    expect(clientErrorAnswer(Object.assign(new Error("x"), { code: "HPE_INVALID_METHOD" }))).toBe("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    expect(clientErrorAnswer(Object.assign(new Error("x"), { code: "HPE_HEADER_OVERFLOW" }))).toBe("HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n");
+  });
+});
+
+describe("100 Continue", () => {
+  it("is not sent to an HTTP/1.0 client, which has no such thing", async () => {
+    const { server, port } = await listenSlowCentre(WRITER);
+    const head = "POST /api/agent/v1/ships/purchase HTTP/1.0\r\nAuthorization: Bearer t\r\nExpect: 100-continue\r\nContent-Length: 2\r\n\r\n";
+    const r = await exchange(port, [head, 200, "{}"], (g) => g.includes("are required"), 2000);
+    expect(r.got).not.toContain("100 Continue");
+    expect(r.got).toContain("shipType and waypointSymbol are required");
+    server.close();
+  });
+});
+
+describe("a caller who leaves before a history read answers", () => {
+  it("leaves nothing in the error log (no bigint serialisation error from a second answer)", async () => {
+    const logged: unknown[][] = [];
+    const spy = jest.spyOn(console, "error").mockImplementation((...a: unknown[]) => void logged.push(a));
+    const slow = async () => (await new Promise((r) => setTimeout(r, 150)), [["SELL", "S", "W", null, "T", 1, 1, "9007199254740993", "1", "2026-03-04 05:06:07"]]);
+    const sql = new FakeSql().on(/FROM transactions/, slow as never);
+    const { app } = createTestApp({ history: new HistoryStore(sql) }, stubCentre(WRITER));
+    const server = createHttpServer(app);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => {
+      const s = net.connect(port, "127.0.0.1", () => s.write("GET /api/agent/v1/transactions HTTP/1.1\r\nHost: x\r\n\r\n", () => setTimeout(() => (s.destroy(), resolve()), 30)));
+      s.on("error", () => undefined);
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(logged).toEqual([]);
+    spy.mockRestore();
     server.close();
   });
 });
