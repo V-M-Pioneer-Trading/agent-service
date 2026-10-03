@@ -36,7 +36,7 @@ describe('health', () => {
     });
 
     for (const method of ['POST', 'PUT', 'DELETE', 'PATCH']) {
-      it(`${method} ${path} is a 404: under /api/agent a wrong method is never a 405`, async () => {
+      it(`${method} ${path} is a 404: under /api/agent a wrong method is never a 405 [go-text]`, async () => {
         const res = await call({ method, path, body: method === 'POST' ? '{}' : undefined });
         if (path === '/health') expectNoBody(res, 405, { cors: false });
         else expectNotFound(res);
@@ -99,7 +99,7 @@ describe('swagger', () => {
     assert.deepEqual(center.calls, []);
   });
 
-  it('is only the prefix with its trailing slash', async () => {
+  it('is only the prefix with its trailing slash [go-text]', async () => {
     expectNotFound(await call({ path: '/api/agent/swagger' }));
   });
 });

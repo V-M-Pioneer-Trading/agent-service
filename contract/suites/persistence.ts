@@ -308,7 +308,6 @@ describe('selecting transactions', () => {
   it('a ship that has no history is an empty list, not null', async () => {
     const res = await call({ path: `${API}/transactions?shipSymbol=${uid('Q')}` });
     expectJson(res, 200, []);
-    assert.equal(res.text.trim(), '[]');
   });
 
   it('limit keeps the newest rows', async () => {
@@ -348,7 +347,8 @@ describe('selecting transactions', () => {
   it('parameter names are case-sensitive and unknown ones are ignored', async () => {
     const ship = await seed();
     assert.equal((await history(`shipSymbol=${ship}&Limit=1&TYPE=SELL&other=1`)).length, 6);
-    assert.ok((await history(`shipsymbol=${ship}&limit=1`)).length === 1, 'shipsymbol is not shipSymbol: no filter');
+    // shipsymbol is not shipSymbol: no filter. A ship with no rows would give [] if it filtered.
+    assert.equal((await history(`shipsymbol=${uid('Q')}&limit=1`)).length, 1);
   });
 
   it('parameters are percent-decoded; a plus is a space', async () => {
@@ -454,6 +454,57 @@ describe('the cap on limit', () => {
     assert.equal(units(dflt)[99], 902);
     assert.equal((await history(`shipSymbol=${ship}&limit=1`)).length, 1);
   });
+});
+
+describe('an empty answer from the gateway', () => {
+  // An empty 2xx is a zero result, not an error, so the history records a zero
+  // row: nothing in the answer says otherwise. The row still takes its ship from
+  // the path (cargo) and its time from the request.
+  for (const [name, status] of [['200', 200], ['204', 204]] as const) {
+    for (const action of ['purchase', 'sell'] as const) {
+      it(`${action} with an empty ${name} records a zero row for the ship in the path`, async () => {
+        const ship = uid('EM');
+        gateway.on('POST', `/proxy/my/ships/${ship}/${action}`, { status, raw: '' });
+        const before = Date.now();
+        const res = await call({
+          method: 'POST',
+          path: `${API}/ships/${ship}/${action}`,
+          headers: { Authorization: bearer(writerToken()) },
+          body: '{"symbol":"X","units":1}',
+        });
+        assert.equal(res.status, 200, res.text);
+        const rows = await history(`shipSymbol=${ship}`);
+        assert.equal(rows.length, 1);
+        const { occurredAt, ...rest } = rows[0]!;
+        assert.deepEqual(rest, {
+          type: action === 'sell' ? 'SELL' : 'PURCHASE',
+          shipSymbol: ship,
+          waypointSymbol: '',
+          tradeSymbol: '',
+          units: 0,
+          pricePerUnit: 0,
+          totalPrice: 0,
+          agentCredits: 0,
+        });
+        assert.ok(Math.abs(Date.parse(occurredAt as string) - before) < 60_000);
+      });
+    }
+
+    it(`purchase-ship with an empty ${name} records a zero SHIP_PURCHASE row with no ship symbol`, async () => {
+      const blank = async () =>
+        (await history('type=SHIP_PURCHASE&limit=1000')).filter((r) => r['shipSymbol'] === '' && r['shipType'] === '').length;
+      const before = await blank();
+      gateway.on('POST', '/proxy/my/ships', { status, raw: '' });
+      const res = await call({
+        method: 'POST',
+        path: `${API}/ships/purchase`,
+        headers: { Authorization: bearer(writerToken()) },
+        body: '{"shipType":"A","waypointSymbol":"B"}',
+      });
+      assert.equal(res.status, 200, res.text);
+      assert.equal(await blank(), before + 1);
+    });
+  }
 });
 
 describe('the history is best effort', () => {
@@ -621,8 +672,7 @@ describe('contract deliveries', () => {
   });
 
   it('an unknown contract has an empty list, not null', async () => {
-    const res = await call({ path: `${API}/contracts/${uid('D')}/deliveries` });
-    assert.equal(res.text.trim(), '[]');
+    expectJson(await call({ path: `${API}/contracts/${uid('D')}/deliveries` }), 200, []);
   });
 
   it('the contract id is matched the way the database matches strings: without regard to case', async () => {

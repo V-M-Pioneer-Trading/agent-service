@@ -142,7 +142,7 @@ describe('CORS headers on ordinary responses', () => {
     expectJson(res, 200, []);
   });
 
-  it('are not on a 404, a 405, a redirect or a malformed-URL 400: the middleware never ran', async () => {
+  it('are not on a 404, a 405, a redirect or a malformed-URL 400: the middleware never ran [go-text]', async () => {
     expectNotFound(await call({ method: 'DELETE', path: `${API}/agent` }));
     expectNoBody(await call({ method: 'DELETE', path: '/health' }), 405, { cors: false });
     expectNoBody(await call({ path: '/api//agent' }), 301, { cors: false, headers: { location: '/api/agent' } });

@@ -127,7 +127,7 @@ describe('pacing headers', () => {
 
   it('are relayed on any error status, not only 429', async () => {
     for (const status of [400, 404, 409, 500, 502, 503]) {
-      gateway.reset();
+      gateway.clearScripts();
       const route = upstreamRoutes(uid('PH'))[0]!;
       expectText(await drive(route, { status, json: { error: { message: `s${status}` } }, headers: all }), status, `s${status}`, { headers: relayed });
     }
@@ -135,7 +135,7 @@ describe('pacing headers', () => {
 
   it('are relayed by every route', async () => {
     for (const route of upstreamRoutes(uid('PH'))) {
-      gateway.reset();
+      gateway.clearScripts();
       expectText(await read(route), 429, 'slow', { headers: relayed });
     }
   });
@@ -183,7 +183,7 @@ describe('pacing headers', () => {
 
 describe('lifting the message out of an error body', () => {
   async function relayedBody(raw: string, status = 500) {
-    gateway.reset();
+    gateway.clearScripts();
     const route = upstreamRoutes(uid('MSG'))[0]!;
     const res = await drive(route, { status, raw });
     assert.equal(res.status, status);
@@ -308,8 +308,8 @@ describe('a gateway that does not answer', () => {
     const sym = uid('NOHIST');
     const route = upstreamRoutes(sym).find((r) => r.id === 'POST /ships/{shipSymbol}/sell')!;
     expectText(await drive(route, { status: 400, json: { error: { message: 'no' } } }), 400, 'no');
-    gateway.reset();
+    gateway.clearScripts();
     const history = await call({ path: `/api/agent/v1/transactions?shipSymbol=${sym}` });
-    assert.equal(history.text.trim(), '[]');
+    assert.deepEqual(JSON.parse(history.text), []);
   });
 });

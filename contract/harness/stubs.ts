@@ -62,6 +62,33 @@ abstract class Stub {
     this.port = (this.server.address() as AddressInfo).port;
   }
 
+  /**
+   * Make the next connection attempt fail with ECONNREFUSED: stop listening and
+   * drop what is open. restore() listens on the same port again.
+   */
+  async refuse(): Promise<void> {
+    this.server.closeAllConnections();
+    await new Promise<void>((resolve) => this.server.close(() => resolve()));
+  }
+
+  async restore(): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          this.server.once('error', reject);
+          this.server.listen(this.port, '0.0.0.0', () => {
+            this.server.off('error', reject);
+            resolve();
+          });
+        });
+        return;
+      } catch (err) {
+        if (attempt >= 20) throw err;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+  }
+
   async stop(): Promise<void> {
     this.server.closeAllConnections();
     for (const s of this.sockets) s.destroy();
@@ -98,6 +125,15 @@ export class GatewayStub extends Stub {
   reset(): void {
     this.requests = [];
     this.unscripted = [];
+    this.scripts = new Map();
+  }
+
+  /**
+   * Start a test over mid-test: forget what was scripted and recorded, but keep
+   * `unscripted`, which the root afterEach checks. reset() would hide a stray call.
+   */
+  clearScripts(): void {
+    this.requests = [];
     this.scripts = new Map();
   }
 
@@ -145,33 +181,6 @@ export class GatewayStub extends Stub {
     const body = reply.raw !== undefined ? reply.raw : reply.json !== undefined ? JSON.stringify(reply.json) : '';
     res.writeHead(reply.status ?? 200, { 'Content-Type': 'application/json', ...(reply.headers ?? {}) });
     res.end(body);
-  }
-
-  /**
-   * Make the next connection attempt fail with ECONNREFUSED: stop listening and
-   * drop what is open. restore() listens on the same port again.
-   */
-  async refuse(): Promise<void> {
-    this.server.closeAllConnections();
-    await new Promise<void>((resolve) => this.server.close(() => resolve()));
-  }
-
-  async restore(): Promise<void> {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          this.server.once('error', reject);
-          this.server.listen(this.port, '0.0.0.0', () => {
-            this.server.off('error', reject);
-            resolve();
-          });
-        });
-        return;
-      } catch (err) {
-        if (attempt >= 20) throw err;
-        await new Promise((r) => setTimeout(r, 100));
-      }
-    }
   }
 }
 

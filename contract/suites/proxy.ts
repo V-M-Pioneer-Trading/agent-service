@@ -51,7 +51,7 @@ describe('every upstream route, answered normally', () => {
 
   it('GET routes send no body and no Content-Type to the gateway', async () => {
     for (const route of upstreamRoutes(uid('PX')).filter((r) => r.method === 'GET')) {
-      gateway.reset();
+      gateway.clearScripts();
       scriptUpstream(gateway, route);
       await send(route);
       for (const seen of gateway.requests) {
@@ -63,7 +63,7 @@ describe('every upstream route, answered normally', () => {
 
   it('accept and fulfill send no body and no Content-Type to the gateway', async () => {
     for (const route of upstreamRoutes(uid('PX')).filter((r) => /\/(accept|fulfill)$/.test(r.id))) {
-      gateway.reset();
+      gateway.clearScripts();
       scriptUpstream(gateway, route);
       await send(route);
       assert.equal(gateway.requests[0]?.body, '', route.id);
@@ -73,7 +73,7 @@ describe('every upstream route, answered normally', () => {
 
   it('accept and fulfill ignore whatever body they are sent', async () => {
     for (const route of upstreamRoutes(uid('PX')).filter((r) => /\/(accept|fulfill)$/.test(r.id))) {
-      gateway.reset();
+      gateway.clearScripts();
       scriptUpstream(gateway, route);
       const res = await call({ method: 'POST', path: route.path, headers: authFor(route), body: 'not json at all' });
       assert.equal(res.status, 200, route.id);
@@ -190,7 +190,7 @@ describe('a single object is decoded and encoded again', () => {
 
       it('a missing data member is the same as an empty one', async () => {
         expectJson(await fetchKind(kind, { json: {} }), 200, kind.zero);
-        gateway.reset();
+        gateway.clearScripts();
         expectJson(await fetchKind(kind, { json: { data: null } }), 200, kind.zero);
       });
 
@@ -253,7 +253,7 @@ describe('a single object is decoded and encoded again', () => {
           ['{"data":{}} trailing', "invalid character 't' after top-level value"],
           ['{"data":{}}{}', "invalid character '{' after top-level value"],
         ] as Array<[string, string]>) {
-          gateway.reset();
+          gateway.clearScripts();
           expectText(await fetchKind(kind, { raw }), 502, message);
         }
       });
@@ -266,7 +266,7 @@ describe('agent: number handling', () => {
   const reply = (members: string): GatewayReply => ({ raw: `{"data":{${members}}}` });
 
   async function agent(members: string) {
-    gateway.reset();
+    gateway.clearScripts();
     gateway.on('GET', '/proxy/my/agent', reply(members));
     return call({ path: agentPath, headers: authed() });
   }
@@ -456,7 +456,7 @@ describe('lists', () => {
   for (const list of lists) {
     describe(list.name, () => {
       async function get(reply: GatewayReply) {
-        gateway.reset();
+        gateway.clearScripts();
         gateway.on('GET', list.target, reply);
         return call({ path: list.path, headers: authed() });
       }

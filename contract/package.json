@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test"
+    "test": "node --test --test-timeout=60000 contract.test.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

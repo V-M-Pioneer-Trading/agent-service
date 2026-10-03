@@ -91,7 +91,7 @@ for (const t of targets) {
 
   describe(t.name, () => {
     const reject = async (body: string | undefined, message: string, headers?: Record<string, string>) => {
-      gateway.reset();
+      gateway.clearScripts();
       const res = await post(t.open(uid('VAL')), body, headers);
       expectText(res, 400, message);
       assert.deepEqual(
@@ -102,7 +102,7 @@ for (const t of targets) {
     };
 
     const accept = async (body: string, headers?: Record<string, string>) => {
-      gateway.reset();
+      gateway.clearScripts();
       const res = await post(t.open(uid('VAL')), body, headers);
       assert.equal(res.status, 200, res.text);
       return res;
@@ -238,7 +238,7 @@ for (const t of targets) {
       }
 
       it('a 900 000 character string is read whole', async () => {
-        gateway.reset();
+        gateway.clearScripts();
         const key = t.stringKeys[0]!;
         const sym = uid('VAL');
         const res = await post(t.open(sym), bodyWith(t.valid, { [key]: JSON.stringify('k'.repeat(900_000)) }));

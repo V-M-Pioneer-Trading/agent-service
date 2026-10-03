@@ -456,7 +456,7 @@ describe('what is forwarded to the gateway', () => {
   for (const form of forwardedForm) {
     it(`Authorization ${JSON.stringify(form)} is forwarded verbatim by every upstream route`, async () => {
       for (const r of upstreamRoutes(uid('FWD'))) {
-        gateway.reset();
+        gateway.clearScripts();
         scriptUpstream(gateway, r);
         const token = writerToken();
         const header = form.replace('{t}', token);
@@ -473,7 +473,7 @@ describe('what is forwarded to the gateway', () => {
 
   it('nothing else of the caller\'s is forwarded', async () => {
     for (const r of upstreamRoutes(uid('FWD'))) {
-      gateway.reset();
+      gateway.clearScripts();
       scriptUpstream(gateway, r);
       const res = await call({
         method: r.method,
@@ -496,5 +496,58 @@ describe('what is forwarded to the gateway', () => {
         }
       }
     }
+  });
+});
+
+describe('a center that refuses connections', () => {
+  // Not a status code and not a hang: nothing is listening at all. Same single
+  // 503 wherever a token has to be judged; routes that never ask are unaffected.
+  async function refusing(fn: () => Promise<void>): Promise<void> {
+    await center.refuse();
+    try {
+      await fn();
+    } finally {
+      await center.restore();
+    }
+  }
+
+  it('a read route with a token is a 503', () =>
+    refusing(async () => {
+      const res = await call({ path: `${API}/agent`, headers: { Authorization: bearer(readerToken()) } });
+      expectAuthError(res, 503, MSG.centerUnavailable);
+      assert.deepEqual(gateway.requests, []);
+    }));
+
+  it('a write route with a token is a 503', () =>
+    refusing(async () => {
+      const res = await call({ method: 'POST', path: `${API}/contracts/X/accept`, headers: { Authorization: bearer(writerToken()) } });
+      expectAuthError(res, 503, MSG.centerUnavailable);
+    }));
+
+  it('a public route with a token is a 503', () =>
+    refusing(async () => {
+      const res = await call({ path: `${API}/transactions?shipSymbol=${uid('RF')}`, headers: { Authorization: bearer(readerToken()) } });
+      expectAuthError(res, 503, MSG.centerUnavailable);
+    }));
+
+  it('a public route without a token is still served', () =>
+    refusing(async () => {
+      expectJson(await call({ path: `${API}/transactions?shipSymbol=${uid('RF')}` }), 200, []);
+    }));
+
+  it('a read route without a token is a 401: nobody needs to be asked', () =>
+    refusing(async () => {
+      expectAuthError(await call({ path: `${API}/agent` }), 401, MSG.missingToken);
+    }));
+
+  it('health still answers 200', () =>
+    refusing(async () => {
+      for (const path of ['/health', '/api/agent/health']) expectJson(await call({ path }), 200, { status: 'ok' });
+    }));
+
+  it('and the center is used again once it is back', async () => {
+    gateway.on('GET', '/proxy/my/agent', { json: p.data(p.agent()) });
+    const res = await call({ path: `${API}/agent`, headers: { Authorization: bearer(readerToken()) } });
+    expectJson(res, 200, p.agent());
   });
 });

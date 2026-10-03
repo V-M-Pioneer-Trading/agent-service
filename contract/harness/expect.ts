@@ -47,6 +47,21 @@ export function relevantHeaders(res: Res): Record<string, string> {
   return out;
 }
 
+/**
+ * JSON.parse that does not lose integers beyond 2^53: a number whose source text
+ * is an integer literal that a double cannot hold exactly comes back as a BigInt
+ * (Node 24 passes the source text to the reviver). Expected values may therefore
+ * contain BigInts, e.g. 9007199254740993n.
+ */
+export function parseExact(text: string): unknown {
+  return JSON.parse(text, function (_key: string, value: unknown, context?: { source?: string }) {
+    if (typeof value === 'number' && context?.source !== undefined && /^-?d+$/.test(context.source) && !Number.isSafeInteger(value)) {
+      return BigInt(context.source);
+    }
+    return value;
+  });
+}
+
 export interface Expectation {
   /** CORS headers expected (default true). false: none at all. */
   cors?: boolean;
@@ -67,7 +82,7 @@ function expectHeaders(res: Res, contentType: string | null, opts: Expectation):
 export function expectJson(res: Res, status: number, body: unknown, opts: Expectation = {}): void {
   assert.equal(res.status, status, `status (body: ${res.text.slice(0, 300)})`);
   expectHeaders(res, JSON_TYPE, opts);
-  assert.deepEqual(JSON.parse(res.text), body);
+  assert.deepEqual(parseExact(res.text), body);
 }
 
 /** The text/plain answer of Go's http.Error: the message plus one newline. */

@@ -211,7 +211,7 @@ export interface Exited {
  * Start the service in a configuration it is expected to refuse, and report how
  * it ended. Rejects if it is still running after timeoutMs.
  */
-export async function runToExit(stubs: StubPorts, opts: ServiceOptions, timeoutMs = 60_000): Promise<Exited> {
+export async function runToExit(stubs: StubPorts, opts: ServiceOptions, timeoutMs = 15_000): Promise<Exited> {
   const env = mergeEnv(defaultEnv(stubs), opts);
   if (isProcessMode()) {
     return new Promise((resolve, reject) => {

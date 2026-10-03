@@ -68,7 +68,7 @@ describe('unknown paths and wrong methods', () => {
 
   for (const path of notFound) {
     for (const method of methods) {
-      it(`${method} ${path} is a 404`, async () => {
+      it(`${method} ${path} is a 404 [go-text]`, async () => {
         const res = await call({ method, path, headers: { Authorization: bearer(readerToken()) }, body: bodyFor(method) });
         if (method === 'HEAD') {
           assert.equal(res.status, 404);
@@ -82,12 +82,12 @@ describe('unknown paths and wrong methods', () => {
     }
   }
 
-  it('a wrong method on /health is a bare 405, on /api/agent/health a 404', async () => {
+  it('a wrong method on /health is a bare 405, on /api/agent/health a 404 [go-text]', async () => {
     expectNoBody(await call({ method: 'DELETE', path: '/health' }), 405, { cors: false });
     expectNotFound(await call({ method: 'DELETE', path: '/api/agent/health' }));
   });
 
-  it('a wrong method on any route under /api/agent is a 404', async () => {
+  it('a wrong method on any route under /api/agent is a 404 [go-text]', async () => {
     const token = writerToken();
     for (const r of allRoutes('SYM')) {
       const path = r.path.split('?')[0] as string;
@@ -142,7 +142,7 @@ describe('trailing slashes', () => {
     '/api/agent/v1/ships/purchase/',
   ];
   for (const path of withSlash) {
-    it(`GET ${path} is not the route without the slash`, async () => {
+    it(`GET ${path} is not the route without the slash [go-text]`, async () => {
       const res = await call({ path, headers: { Authorization: bearer(readerToken()) } });
       if (path.startsWith('/api/agent')) expectNotFound(res);
       else expectNoBody(res, 405, { cors: false });
@@ -150,7 +150,7 @@ describe('trailing slashes', () => {
     });
   }
 
-  it('the swagger prefix is the one path that wants its trailing slash', async () => {
+  it('the swagger prefix is the one path that wants its trailing slash [go-text]', async () => {
     assert.equal((await call({ path: '/api/agent/swagger/' })).status, 301);
     expectNotFound(await call({ path: '/api/agent/swagger' }));
   });
@@ -192,7 +192,7 @@ describe('percent-decoding', () => {
     expectJson(res, 200, p.agent());
   });
 
-  it('routes on the decoded path once: %2561gent is the path /%61gent, which no route has', async () => {
+  it('routes on the decoded path once: %2561gent is the path /%61gent, which no route has [go-text]', async () => {
     const res = await call({ path: `${API}/%2561gent`, headers: { Authorization: bearer(readerToken()) } });
     expectNotFound(res);
   });
@@ -202,14 +202,14 @@ describe('percent-decoding', () => {
     expectJson(await call({ path: '/api/agent/%68ealth' }), 200, { status: 'ok' });
   });
 
-  it('an encoded slash is a slash: the segment splits and no route matches', async () => {
+  it('an encoded slash is a slash: the segment splits and no route matches [go-text]', async () => {
     for (const path of [`${API}/ships/A%2FB`, `${API}/ships/A%2fB`, `${API}/contracts/A%2FB`, `${API}/ships/A%2FB/sell`]) {
       const res = await call({ method: path.endsWith('/sell') ? 'POST' : 'GET', path, headers: { Authorization: bearer(writerToken()) } });
       expectNotFound(res);
     }
   });
 
-  it('a malformed percent escape is rejected by the HTTP layer itself', async () => {
+  it('a malformed percent escape is rejected by the HTTP layer itself [go-text]', async () => {
     for (const path of [`${API}/ships/%zz`, `${API}/ships/%`, `${API}/ships/%4`, '/%gg', `${API}/ships/A%2`]) {
       const res = await call({ path, headers: { Authorization: bearer(readerToken()) } });
       assert.equal(res.status, 400, path);

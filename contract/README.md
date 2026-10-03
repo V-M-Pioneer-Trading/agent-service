@@ -35,7 +35,7 @@ Locally, with Docker and a MySQL the container can reach:
 docker build -t agent-service:contract ..            # from this directory
 docker compose -f ../docker-compose.yml up -d mysql  # root / example / vnm-agent-db
 npm ci
-CONTRACT_IMAGE=agent-service:contract npm test       # same as: node --test
+CONTRACT_IMAGE=agent-service:contract npm test       # node --test --test-timeout=60000 contract.test.ts
 ```
 
 `npm run typecheck` checks the suite itself. Node 24 runs the `.ts` files directly
@@ -56,6 +56,8 @@ The service is started with `ST_GATEWAY_URL`, `AUTH_INTROSPECTION_URL`,
 `MYSQL_*` and `PORT`, with `--add-host=host.docker.internal:host-gateway` and its
 port published on 127.0.0.1. The container is removed at the end of the run, also
 after a failure or an interrupt. The service's log is written to `.out/service.log`.
+
+**Use a fresh database for a port.** The service creates its tables with `CREATE TABLE IF NOT EXISTS` and widens or indexes them only if they differ, so pointing a port at a database the Go service has already used makes it inherit Go's schema and hides any difference in its own migrations. Give each implementation an empty database (or a per-run `CONTRACT_MYSQL_DATABASE`); CI gets a new one with every `mysql:9` service container.
 
 The whole run takes well under a minute plus the image build. The database does not
 have to be empty and is never cleaned: every test uses symbols nobody else uses, and
@@ -88,7 +90,7 @@ st-gateway with nothing scripted for it.
   upstream-errors, validation, persistence, head, startup.
 
 Tests tagged `[go-text]` pin the wording of Go's `encoding/json` (and `strconv`,
-`time`) errors, which the Go service puts verbatim into a 400 or 502 body. If the
+`time`) errors, and the fixed texts of Go's `net/http` (`404 page not found`, `400 Bad Request`), which the Go service puts verbatim into a 400 or 502 body. If the
 porters decide that text is not worth reproducing, those are the tests to relax,
 and `node --test --test-name-pattern='\[go-text\]'` runs exactly them.
 
