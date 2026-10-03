@@ -112,6 +112,10 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
     for (const raw of ['{"error":{"message":"   "}}', '{"error":{"message":""}}', '{"error":"text"}', '{"error":{"message":5}}', '{"error":null}', '{"message":"top"}', '[{"error":{"message":"x"}}]', "plain text"]) {
       expect(m(raw)).toBe(raw);
     }
+    // A wrongly typed member fails the whole decode in Go, whichever spelling or order: raw body.
+    for (const raw of ['{"error":{"message":5,"MESSAGE":"x"}}', '{"error":{"MESSAGE":"x","message":5}}', '{"error":{"message":"x"},"Error":"text"}']) {
+      expect(m(raw)).toBe(raw);
+    }
     expect(m("   \n")).toBe("st-gateway returned an error with no message");
     expect(m("")).toBe("st-gateway returned an error with no message");
   });
@@ -164,6 +168,44 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
     await expect(callGateway("GET", `${ok}/x`, "/x")).resolves.toBeUndefined();
     const bad = await stub((_req, res) => res.end("   "));
     await expect(callGateway("GET", `${bad}/x`, "/x")).rejects.toBeInstanceOf(UnreadableAnswer);
+  });
+
+  it("forwards the caller's Authorization byte for byte, and nothing else of the caller", async () => {
+    const seen: http.IncomingHttpHeaders[] = [];
+    const url = await stub((req, res) => {
+      seen.push(req.headers);
+      res.end("{}");
+    });
+    await callGateway("GET", `${url}/x`, "/x", { authorization: "Bearer   tok" });
+    await callGateway("GET", `${url}/x`, "/x");
+    await callGateway("GET", `${url}/x`, "/x", { authorization: "" });
+    expect(seen[0]?.["authorization"]).toBe("Bearer   tok");
+    expect(seen[1]?.["authorization"]).toBeUndefined();
+    expect(seen[2]?.["authorization"]).toBeUndefined();
+  });
+
+  it("reads at most 64 KiB of an error body: an envelope cut in half is raw text", async () => {
+    const body = `{"error":{"message":"${"y".repeat(100_000)}"}}`;
+    const url = await stub((_req, res) => {
+      res.statusCode = 500;
+      res.end(body);
+    });
+    const res = await request(appFor(url)).get("/probe");
+    expect([res.status, res.text]).toEqual([500, body.slice(0, 500) + "\n"]);
+    const plain = await stub((_req, res) => {
+      res.statusCode = 500;
+      res.end("z".repeat(200_000));
+    });
+    expect((await request(appFor(plain)).get("/probe")).text).toBe("z".repeat(500) + "\n");
+  });
+
+  it("an error body that is cut short is used as far as it came", async () => {
+    const url = await stub((req) => {
+      req.socket.write('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 100\r\n\r\n{"data":');
+      req.socket.destroy();
+    });
+    const res = await request(appFor(url)).get("/probe");
+    expect([res.status, res.text]).toEqual([500, '{"data":\n']);
   });
 
   it("the transport error stays in the chain for logs but not in the message", () => {

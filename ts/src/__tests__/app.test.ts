@@ -1,3 +1,4 @@
+import net from "node:net";
 import request from "supertest";
 import { createExpressAuth } from "@v-m-pioneer-trading/clerk-client";
 import express from "express";
@@ -133,6 +134,34 @@ describe("the router answers like gorilla/mux", () => {
   });
 });
 
+describe("request targets in absolute form", () => {
+  // supertest cannot send "GET http://host/path", so this speaks HTTP over a socket.
+  async function raw(target: string): Promise<string> {
+    const { app } = createTestApp();
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise((r) => server.once("listening", r));
+    const { port } = server.address() as import("node:net").AddressInfo;
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        const socket = net.connect(port, "127.0.0.1", () => socket.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`));
+        let data = "";
+        socket.on("data", (c) => (data += c));
+        socket.on("end", () => resolve(data));
+        socket.on("error", reject);
+      });
+    } finally {
+      server.close();
+    }
+  }
+
+  it("are routed on their path, as Go does", async () => {
+    expect(await raw("http://example.test:81/health")).toMatch(/^HTTP\/1\.1 200 /);
+    expect(await raw("http://example.test/api/agent//health")).toMatch(/^HTTP\/1\.1 301 [\s\S]*\r\nLocation: \/api\/agent\/health\r\n/i);
+    expect(await raw("http://example.test/api/agent/nope")).toMatch(/^HTTP\/1\.1 404 /);
+    expect(await raw("http://example.test")).toMatch(/^HTTP\/1\.1 301 [\s\S]*\r\nLocation: \/\r\n/i);
+  });
+});
+
 describe("every route is declared, or the service refuses to start", () => {
   const auth = () => createExpressAuth(stubCentre().introspector);
 
@@ -186,6 +215,52 @@ describe("every route is declared, or the service refuses to start", () => {
     expect(res.body).toEqual({ error: { message: "a bearer token is required" } });
     expect(res.headers["content-type"]).toBe("application/json");
     expect(res.headers).toMatchObject(CORS);
+  });
+
+  describe("a scope tier is enforced", () => {
+    const route = (scopes: string[] | null) => {
+      const centre = stubCentre(scopes === null ? { state: "inactive" } : { state: "active", identity: { sub: "u", kind: "operator", scopes } });
+      let reached = 0;
+      const { app } = createTestApp(
+        {
+          policy: { ...routePolicy, "POST /api/agent/v1/probe": "fleet:control" },
+          registerRoutes: (r) =>
+            (r["post"] as (p: string, h: unknown) => void)("/api/agent/v1/probe", (_q: unknown, s: express.Response) => {
+              reached++;
+              s.json({ reached: true });
+            }),
+        },
+        centre,
+      );
+      return { app, centre, reached: () => reached };
+    };
+
+    it("no credential: 401, the handler is not reached, the centre is not asked", async () => {
+      const { app, centre, reached } = route(["fleet:control"]);
+      const res = await request(app).post("/api/agent/v1/probe");
+      expect([res.status, res.body]).toEqual([401, { error: { message: "a bearer token is required" } }]);
+      expect([reached(), centre.asked]).toEqual([0, []]);
+    });
+
+    it("a session without the scope: 403 in the envelope, handler not reached", async () => {
+      const { app, reached } = route(["other"]);
+      const res = await request(app).post("/api/agent/v1/probe").set("Authorization", "Bearer t");
+      expect([res.status, res.body]).toEqual([403, { error: { message: "this action requires a scope this session does not carry" } }]);
+      expect(res.headers["content-type"]).toBe("application/json");
+      expect(reached()).toBe(0);
+    });
+
+    it("an inactive token: 401 invalid or expired session", async () => {
+      const { app } = route(null);
+      const res = await request(app).post("/api/agent/v1/probe").set("Authorization", "Bearer t");
+      expect([res.status, res.body]).toEqual([401, { error: { message: "invalid or expired session" } }]);
+    });
+
+    it("a session with the scope reaches the handler, and the centre is asked once", async () => {
+      const { app, centre, reached } = route(["x", "fleet:control"]);
+      const res = await request(app).post("/api/agent/v1/probe").set("Authorization", "Bearer t");
+      expect([res.status, res.body, reached(), centre.asked]).toEqual([200, { reached: true }, 1, ["t"]]);
+    });
   });
 
   it("the registrar hands the declaration to Express as the first handler", () => {

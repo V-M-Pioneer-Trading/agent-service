@@ -54,6 +54,126 @@ describe("the introspection variables are validated exactly as the Go service do
   });
 });
 
+describe("Go's verdict on 107 URL and secret inputs", () => {
+  // [AUTH_INTROSPECTION_URL, AUTH_INTROSPECTION_SECRET, Go's verdict], recorded by running
+  // strings.TrimSpace, url.Parse and the checks of introspection.LoadConfig (center.go:80-114)
+  // on each input with the Go toolchain.
+  const verdicts: Array<[string, string, "accept" | "refuse"]> = [
+    ["http://center.internal:3005/auth/v1/introspect", "s", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect ", "s", "accept"],
+    [" http://center.internal:3005/auth/v1/introspect", "s", "refuse"],
+    ["http://center.internal\t/x", "s", "refuse"],
+    ["http://center.internal/a\tb", "s", "refuse"],
+    ["http://center.internal/a\nb", "s", "refuse"],
+    ["http://cen\nter/x", "s", "refuse"],
+    ["http://center.internal/%zz", "s", "refuse"],
+    ["http://center.internal/%", "s", "refuse"],
+    ["http://exa%41mple/", "s", "refuse"],
+    ["http://exa%C3%A9mple/", "s", "accept"],
+    ["http://exa%25mple/", "s", "accept"],
+    ["http://:80/x", "s", "accept"],
+    ["http://:80", "s", "accept"],
+    ["http://center:99999/x", "s", "accept"],
+    ["http://center:/x", "s", "accept"],
+    ["http://center:abc/x", "s", "refuse"],
+    ["http://center:8a/x", "s", "refuse"],
+    ["1.2.3.4.5", "s", "refuse"],
+    ["HTTP://Center/x", "s", "accept"],
+    ["http://[::1]:80/x", "s", "accept"],
+    ["http://[::1/x", "s", "refuse"],
+    ["http://[::1]x/x", "s", "refuse"],
+    ["http://[fe80::1%25en0]/x", "s", "accept"],
+    ["http://[fe80::1%en0]/x", "s", "refuse"],
+    ["http://cen ter/x", "s", "refuse"],
+    ["http://cen{ter/x", "s", "refuse"],
+    ["http://cen|ter/x", "s", "refuse"],
+    ["http://cen\ter/x", "s", "refuse"],
+    ["http://cen^ter/x", "s", "refuse"],
+    ["http://cen`ter/x", "s", "refuse"],
+    ["http://cen<ter>/x", "s", "accept"],
+    ["http://cen\"ter/x", "s", "accept"],
+    ["http://cen'ter/x", "s", "accept"],
+    ["http://cen_ter/x", "s", "accept"],
+    ["http://cen~ter/x", "s", "accept"],
+    ["http://cen!ter/x", "s", "accept"],
+    ["http://cen$ter/x", "s", "accept"],
+    ["http://cen&ter/x", "s", "accept"],
+    ["http://cen*ter/x", "s", "accept"],
+    ["http://cen+ter/x", "s", "accept"],
+    ["http://cen,ter/x", "s", "accept"],
+    ["http://cen;ter/x", "s", "accept"],
+    ["http://cen=ter/x", "s", "accept"],
+    ["http://caf\u00e9/x", "s", "accept"],
+    ["http:center/x", "s", "refuse"],
+    ["http:/center/x", "s", "refuse"],
+    ["http:///x", "s", "refuse"],
+    ["http://", "s", "refuse"],
+    ["http:", "s", "refuse"],
+    ["://x/y", "s", "refuse"],
+    ["h ttp://x/y", "s", "refuse"],
+    ["-http://x/y", "s", "refuse"],
+    ["1http://x/y", "s", "refuse"],
+    ["h+t.t-p://x", "s", "refuse"],
+    ["https://x/y", "s", "accept"],
+    ["https://x", "s", "accept"],
+    ["ftp://x/y", "s", "refuse"],
+    ["http://x/y#", "s", "accept"],
+    ["http://x/y#f", "s", "refuse"],
+    ["http://x/y?", "s", "refuse"],
+    ["http://x/y?a", "s", "refuse"],
+    ["http://x/y#%zz", "s", "refuse"],
+    ["http://u@x/y", "s", "refuse"],
+    ["http://@x/y", "s", "refuse"],
+    ["http://u:p@x/y", "s", "refuse"],
+    ["http://x@/y", "s", "refuse"],
+    ["http://x/a@b", "s", "accept"],
+    ["http://x/a b", "s", "accept"],
+    ["http://x/a%20b", "s", "accept"],
+    ["http://x/\u00fc", "s", "accept"],
+    ["http://x//", "s", "accept"],
+    ["http://x/%41", "s", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", "sec\tret", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "sec\nret", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "sec\u007fret", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "sec\u0000ret", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "secret\u0085", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "\u0085secret", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "secret\u00a0", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "\u00a0secret", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "\ufeffsecret", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", "secret\ufeff", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", "secret\u2028", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "secret\u200b", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", "secret\u3000", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "\u1680s", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "a b", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", "sec\u0085ret", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", " ", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "\u0085", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "\ufeff", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", "s\u180e", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", "s\u000b", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "s\f", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "\u200bs", "accept"],
+    ["http://center.internal:3005/auth/v1/introspect", "s\u2000", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "s\u202f", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "s\u205f", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect", "s\u00e9cret", "accept"],
+    ["\ufeffhttp://center.internal:3005/auth/v1/introspect", "s", "refuse"],
+    ["http://center.internal:3005/auth/v1/introspect\u0085", "s", "accept"],
+    ["\u0085", "s", "refuse"],
+    ["\u00a0", "s", "refuse"],
+    ["http://x/\u0085", "s", "accept"],
+    ["http://x\u0085/", "s", "accept"],
+    ["http://x/\ufeff", "s", "accept"],
+  ];
+  it.each(verdicts)("%j with secret %j: Go %s", (url, secret, verdict) => {
+    const load = () => loadConfig({ AUTH_INTROSPECTION_URL: url, AUTH_INTROSPECTION_SECRET: secret });
+    if (verdict === "accept") expect(load).not.toThrow();
+    else expect(load).toThrow(ConfigError);
+  });
+});
+
 describe("the other variables keep Go's defaults", () => {
   it("defaults", () => {
     const c = loadConfig(base);
@@ -80,7 +200,8 @@ describe("the other variables keep Go's defaults", () => {
 
   it("PORT must be a TCP port: Node would otherwise listen on a pipe called 'abc'", () => {
     expect(loadConfig(withEnv({ PORT: "8080" })).port).toBe(8080);
-    for (const bad of ["abc", "-1", "65536", "80.5", "0x50", "8 0"]) {
+    expect(loadConfig(withEnv({ PORT: "000080" })).port).toBe(80);
+    for (const bad of ["abc", "-1", "65536", "99999", "80.5", "0x50", "8 0"]) {
       expect(() => loadConfig(withEnv({ PORT: bad }))).toThrow(ConfigError);
     }
   });

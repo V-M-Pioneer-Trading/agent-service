@@ -35,17 +35,21 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
 | Dependency allowlist | `npm run check:deps`; a new direct dependency needs a line in `allowed-dependencies.txt` |
 | Contract suite against the port | `npm run build` then, from the repo root, `node ts/scripts/run-contract.js` (runs `contract/` unchanged with `CONTRACT_COMMAND`; set `CONTRACT_IMAGE` to use an image) |
 
-* **Skip list.** `ts/contract-skip.txt` lists, as `--test-skip-pattern` regexes, the contract
-  cases of routes not ported yet; `ts/contract-skip.expected` pins how many tests that removes,
-  runs and passes, so a pattern that is too broad or stale fails the job. Each porting PR deletes
-  its lines and updates the numbers; #37 leaves the list empty. Never add a line for a case that
-  fails for another reason, and never edit `contract/` to make the port pass.
+* **Skip list.** `ts/contract-skip.txt` lists, as regexes, the contract cases of routes not
+  ported yet (matched like `--test-skip-pattern`: against the space-joined describe and test names,
+  or any ancestor's). `ts/scripts/run-contract.js` runs the whole suite unfiltered and judges it: a case
+  off the list must pass; a case on the list must not pass (bar the vacuous ones named in
+  `ts/contract-skip-passing.txt`), so a too-broad or stale pattern fails; a pattern that matches
+  nothing fails; and the measured numbers must equal `ts/contract-skip.expected`. Each porting PR
+  deletes its lines and updates the numbers; #37 leaves the list empty. Never add a line for a case
+  that fails for another reason, and never edit `contract/` to make the port pass.
 * **Auth.** Routes are declared in `ts/src/auth.ts` (`routePolicy`, the TS twin of
   `SetUpRouter`); tsoa's generated routes are registered through `declaring()`, which puts the
   clerk-client declaration first and refuses to start on a route with no entry. The app is also
   `secured()`, so a route registered anywhere else without a declaration refuses startup too.
-  `AUTH_INTROSPECTION_*` are validated in `ts/src/config.ts` exactly as Go does, *before*
-  clerk-client sees them (its loader is laxer).
+  `AUTH_INTROSPECTION_*` are validated in `ts/src/config.ts` exactly as Go does (Go's
+  `TrimSpace` and `url.Parse`; every verdict is recorded in `config.test.ts`). clerk-client's loader
+  is laxer in some places and stricter in others, so it is not used for that.
 * **HTTP artefacts.** `ts/src/http/muxCompat.ts` reproduces gorilla/mux and net/http (400 on a
   bad escape, 301 path cleaning, decoded-path routing, bare 405 / `404 page not found`), before
   any Express default; `json.ts` writes Go's `application/json` (no charset), `cors.ts` Go's four

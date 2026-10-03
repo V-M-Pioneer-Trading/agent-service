@@ -1,12 +1,16 @@
-# Direct dependencies of ts/ (package.json dependencies + devDependencies), and
-# nothing else. scripts/check-dependencies.js fails CI on any difference.
-# Adding a line here is the review point for a new dependency: say why in the PR.
+# Direct dependencies of ts/, per package.json section, and nothing else.
+# scripts/check-dependencies.js fails CI on any difference, on a name in the
+# wrong section, on a spec that is not a plain semver range (the clerk-client
+# release tarball excepted), and on a lockfile entry not resolved from
+# registry.npmjs.org or that tarball. Adding a line is the review point for a
+# new dependency: say why in the PR.
 
-# runtime
+[dependencies]
 @tsoa/runtime                          # decorators and request validation of the generated routes
 @v-m-pioneer-trading/clerk-client      # guard, secured(), the auth envelope (release tarball)
 express                                # HTTP server, major version 4 (clerk-client's adapter)
 
+[devDependencies]
 # build and test only; none of it is in the runtime image
 @types/express
 @types/jest

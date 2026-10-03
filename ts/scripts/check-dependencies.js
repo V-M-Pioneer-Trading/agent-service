@@ -1,50 +1,87 @@
 // Direct-dependency allowlist (meta#103, decision 23 "Accepted costs").
 //
 // package.json's dependencies and devDependencies must be exactly the names in
-// allowed-dependencies.txt, and the lockfile must resolve each of them: a new
-// direct dependency is a visible diff in this file, reviewed, never a side
-// effect of `npm install`. Transitive packages are covered by `npm audit` and
-// `npm ci --ignore-scripts` (agent-service has no transitive snapshot; that is
-// auth-service's stricter mitigation).
+// the matching section of allowed-dependencies.txt ([dependencies] and
+// [devDependencies]); a name moved between sections fails. Every spec must be a
+// plain semver range (no npm: alias, git, file or URL spec) except the one
+// clerk-client release tarball. Every `resolved` in the lockfile must be the
+// npm registry or that release URL. A new direct dependency is therefore a
+// visible diff in allowed-dependencies.txt, never a side effect of `npm install`.
+// Transitive packages are covered by `npm audit` and `npm ci --ignore-scripts`.
 //
 //   node scripts/check-dependencies.js
 const fs = require("fs");
 const path = require("path");
 
-const root = path.join(__dirname, "..");
-const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
+const CLERK = "@v-m-pioneer-trading/clerk-client";
+const CLERK_URL = /^https:\/\/github\.com\/V-M-Pioneer-Trading\/clerk-client\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[A-Za-z0-9._-]+\.tgz$/;
+const SEMVER_RANGE = /^[~^]?[0-9]+\.[0-9]+\.[0-9]+$/;
+const SECTIONS = ["dependencies", "devDependencies"];
 
-const allowed = new Set(
-  fs
-    .readFileSync(path.join(root, "allowed-dependencies.txt"), "utf8")
-    .split(/\r?\n/)
-    .map((l) => l.replace(/#.*/, "").trim())
-    .filter(Boolean),
-);
-const declared = new Set([
-  ...Object.keys(pkg.dependencies ?? {}),
-  ...Object.keys(pkg.devDependencies ?? {}),
-  ...Object.keys(pkg.optionalDependencies ?? {}),
-  ...Object.keys(pkg.peerDependencies ?? {}),
-]);
-const lockRoot = lock.packages?.[""] ?? {};
-const locked = new Set([...Object.keys(lockRoot.dependencies ?? {}), ...Object.keys(lockRoot.devDependencies ?? {})]);
-
-const problems = [];
-for (const name of declared) if (!allowed.has(name)) problems.push(`${name} is a direct dependency but is not in allowed-dependencies.txt`);
-for (const name of allowed) if (!declared.has(name)) problems.push(`${name} is in allowed-dependencies.txt but is not a direct dependency (remove it)`);
-for (const name of declared) if (!locked.has(name)) problems.push(`${name} is in package.json but not in package-lock.json's root: run npm install`);
-for (const name of locked) if (!declared.has(name)) problems.push(`${name} is in package-lock.json's root but not in package.json`);
-// The shared auth package must stay the release tarball, never a registry name or a git URL.
-if (!/^https:\/\/github\.com\/V-M-Pioneer-Trading\/clerk-client\/releases\/download\/v[0-9.]+\/.*\.tgz$/.test(pkg.dependencies?.["@v-m-pioneer-trading/clerk-client"] ?? "")) {
-  problems.push("@v-m-pioneer-trading/clerk-client must be a clerk-client GitHub release tarball URL");
+function parseAllowlist(text) {
+  const out = { dependencies: new Set(), devDependencies: new Set() };
+  let section = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, "").trim();
+    if (line === "") continue;
+    const m = /^\[(\w+)\]$/.exec(line);
+    if (m) {
+      if (!SECTIONS.includes(m[1])) throw new Error(`allowed-dependencies.txt: unknown section [${m[1]}]`);
+      section = m[1];
+    } else if (section === null) {
+      throw new Error(`allowed-dependencies.txt: "${line}" is outside a [dependencies] / [devDependencies] section`);
+    } else {
+      out[section].add(line);
+    }
+  }
+  return out;
 }
-// Express 4 only: clerk-client's adapter targets it.
-if (!/^[~^]?4\./.test(pkg.dependencies?.express ?? "")) problems.push("express must stay on major version 4 (clerk-client's adapter targets Express 4)");
 
-if (problems.length > 0) {
-  for (const p of problems) console.error(`::error file=ts/allowed-dependencies.txt::${p}`);
-  process.exit(1);
+function check(pkg, lock, allowlistText) {
+  const allowed = parseAllowlist(allowlistText);
+  const problems = [];
+  for (const extra of ["optionalDependencies", "peerDependencies", "bundledDependencies", "bundleDependencies"]) {
+    const v = pkg[extra];
+    if (v !== undefined && (Array.isArray(v) ? v.length > 0 : Object.keys(v).length > 0)) {
+      problems.push(`package.json has ${extra}; only dependencies and devDependencies are allowed`);
+    }
+  }
+  const lockRoot = lock.packages?.[""] ?? {};
+  for (const section of SECTIONS) {
+    const declared = pkg[section] ?? {};
+    for (const [name, spec] of Object.entries(declared)) {
+      if (!allowed[section].has(name)) problems.push(`${name} is in ${section} but not in the [${section}] section of allowed-dependencies.txt`);
+      if (name === CLERK) {
+        if (section !== "dependencies" || !CLERK_URL.test(spec)) problems.push(`${CLERK} must be a clerk-client GitHub release tarball URL in dependencies`);
+      } else if (!SEMVER_RANGE.test(spec)) {
+        problems.push(`${name}: "${spec}" is not a plain semver range (no npm: alias, git, file or URL spec)`);
+      }
+      if (name === "express" && !/^[~^]?4\./.test(spec)) problems.push("express must stay on major version 4 (clerk-client's adapter targets Express 4)");
+      if (!(name in (lockRoot[section] ?? {}))) problems.push(`${name} is in ${section} but not in package-lock.json's root ${section}: run npm install`);
+    }
+    for (const name of allowed[section]) if (!(name in declared)) problems.push(`${name} is on the [${section}] allowlist but is not in ${section} (remove it)`);
+    for (const name of Object.keys(lockRoot[section] ?? {})) if (!(name in declared)) problems.push(`${name} is in package-lock.json's root ${section} but not in package.json`);
+  }
+  for (const [where, entry] of Object.entries(lock.packages ?? {})) {
+    const resolved = entry.resolved;
+    if (resolved === undefined) continue;
+    if (!resolved.startsWith("https://registry.npmjs.org/") && !CLERK_URL.test(resolved)) {
+      problems.push(`package-lock.json: ${where || "(root)"} resolves from ${resolved}, which is neither registry.npmjs.org nor the clerk-client release`);
+    }
+  }
+  return problems;
 }
-console.log(`${declared.size} direct dependencies, all on the allowlist.`);
+
+module.exports = { check, parseAllowlist };
+
+if (require.main === module) {
+  const root = path.join(__dirname, "..");
+  const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
+  const pkg = JSON.parse(read("package.json"));
+  const problems = check(pkg, JSON.parse(read("package-lock.json")), read("allowed-dependencies.txt"));
+  if (problems.length > 0) {
+    for (const p of problems) console.error(`::error file=ts/allowed-dependencies.txt::${p}`);
+    process.exit(1);
+  }
+  console.log(`${Object.keys(pkg.dependencies ?? {}).length + Object.keys(pkg.devDependencies ?? {}).length} direct dependencies, all on the allowlist.`);
+}
