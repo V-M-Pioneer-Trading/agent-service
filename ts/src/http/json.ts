@@ -18,11 +18,24 @@ export const goJson: RequestHandler = (_req: Request, res: Response, next: NextF
 };
 
 /** net/http's http.Error: text/plain, the message and one newline. */
-export function sendText(res: Response, status: number, message: string): void {
+export function sendText(res: Response, status: number, message: string | Buffer): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  res.end(`${message}\n`);
+  res.end(typeof message === "string" ? `${message}\n` : Buffer.concat([message, Buffer.from("\n")]));
+}
+
+/** Resolves when the socket has room again or is gone; leaves no listener behind. */
+function drained(res: Response): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const done = (): void => {
+      res.off("drain", done);
+      res.off("close", done);
+      resolve();
+    };
+    res.on("drain", done);
+    res.on("close", done);
+  });
 }
 
 /** About how much is written to the socket at a time. */
@@ -51,10 +64,7 @@ export async function sendJson(res: Response, value: unknown): Promise<void> {
     pending = [];
     size = 0;
     if (res.destroyed) return;
-    if (!full) await new Promise<void>((resolve) => {
-      res.once("drain", resolve);
-      res.once("close", resolve);
-    });
+    if (!full) await drained(res);
   }
   pending.push("\n");
   res.end(pending.join(""));

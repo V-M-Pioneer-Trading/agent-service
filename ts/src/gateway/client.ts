@@ -12,8 +12,9 @@
  *    ten requests in all, then "st-gateway did not answer"; 301-303 turn a POST
  *    into a GET without a body, 307/308 keep both; Authorization travels only to
  *    the same host or a subdomain of it, and once a hop has left that domain it
- *    stays off for good (Go 1.24, CVE-2024-45336); a redirect without a Location
- *    is the answer itself; fetch's own `redirect: "follow"` would stop at twenty
+ *    stays off for good (Go 1.24, CVE-2024-45336), and it goes only where both Go's
+ *    reading of the Location and the URL actually fetched agree it may; a redirect
+ *    without a Location is the answer itself; fetch's own `redirect: "follow"` would stop at twenty
  *    and strip Authorization on any change of origin. The Location is read as
  *    Go's url.Parse reads it (location.ts);
  *  - one 30 s deadline covers every hop and the reading of the body, and a
@@ -28,7 +29,7 @@
 
 import { decode, DecodeError, type Decoded, type Schema } from "./decode";
 import { gatewayDidNotAnswer, REQUEST_TIMEOUT_MS, UnreadableAnswer, UpstreamError, upstreamErrorFrom } from "./errors";
-import { hostnameOf, isDomainOrSubdomain, resolveReference } from "./location";
+import { asciiHostname, fromHeaderValue, hostnameOf, isDomainOrSubdomain, resolveReference } from "./location";
 import { getMyAgentResponse, getMyContractResponse, getMyContractsResponse, getMyShipResponse, getMyShipsResponse, type Agent, type Contract, type Ship } from "./schema";
 import { pathEscape } from "../http/muxCompat";
 
@@ -94,7 +95,21 @@ export class GatewayClient {
 
   /** The body of the final non-error answer, after redirects. */
   private async send(method: string, endpoint: string, authorization: string, body?: string, callerGone?: AbortSignal): Promise<Uint8Array> {
-    const signal = AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), ...(callerGone === undefined ? [] : [callerGone])]);
+    // One deadline for every hop and the body; cleared when the call is over, not left to fire later.
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(), REQUEST_TIMEOUT_MS);
+    const onGone = (): void => deadline.abort();
+    callerGone?.addEventListener("abort", onGone, { once: true });
+    if (callerGone?.aborted === true) deadline.abort();
+    try {
+      return await this.follow(method, endpoint, authorization, body, deadline.signal, callerGone);
+    } finally {
+      clearTimeout(timer);
+      callerGone?.removeEventListener("abort", onGone);
+    }
+  }
+
+  private async follow(method: string, endpoint: string, authorization: string, body: string | undefined, signal: AbortSignal, callerGone?: AbortSignal): Promise<Uint8Array> {
     // Not hearing back is the gateway's fault, unless the caller left first.
     const noAnswer = (cause: unknown): Error => (callerGone?.aborted === true ? new CallerGone() : gatewayDidNotAnswer(method, endpoint, cause));
 
@@ -103,6 +118,7 @@ export class GatewayClient {
       // A gateway address that is no URL: Go's NewRequest fails, and the caller gets a 502.
       throw new UpstreamError(502, "st-gateway address is not a usable URL", `${method} ${endpoint}`);
     }
+    const firstName = asciiHostname(hostnameOf(first.host));
     let target = first;
     let verb = method;
     let payload = body;
@@ -119,13 +135,18 @@ export class GatewayClient {
       } catch (err) {
         throw noAnswer(err);
       }
-      const location = res.headers.get("Location") ?? "";
+      // fetch joins repeated Location headers with ", "; Go reads the first.
+      const location = (res.headers.get("Location") ?? "").split(", ", 1)[0] ?? "";
       if (!FOLLOWED.has(res.status) || location === "") break;
       await res.body?.cancel().catch(() => undefined);
-      const next = resolveReference(target, location);
+      const next = resolveReference(target, fromHeaderValue(location));
       if (next === null) throw noAnswer(new Error("failed to parse Location header"));
       if (requests >= MAX_REQUESTS) throw noAnswer(new Error(`stopped after ${MAX_REQUESTS} redirects`));
-      if (!stripped && next.host !== first.host && !isDomainOrSubdomain(hostnameOf(next.host), hostnameOf(first.host))) stripped = true;
+      // Authorization stays only where BOTH views agree it may go: Go's (the host as written, compared byte for byte)
+      // and the one of the URL that is actually fetched.
+      const goSame = next.host === first.host || isDomainOrSubdomain(asciiHostname(hostnameOf(next.host)), firstName);
+      const fetchedSame = isDomainOrSubdomain(next.url.hostname, first.url.hostname);
+      if (!goSame || !fetchedSame) stripped = true;
       target = next;
       if (res.status <= 303 && verb !== "GET" && verb !== "HEAD") verb = "GET";
       if (res.status <= 303) payload = undefined;

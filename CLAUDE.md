@@ -67,9 +67,15 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
   followed by hand like Go (10 requests, then 504; `fetch`'s own follow would stop at 20 and strip
   Authorization on any origin change). Authorization goes only to the original host or a subdomain, and
   once a hop has left that domain it stays off, also if a later hop comes back (Go 1.24, CVE-2024-45336);
-  hosts compare as written, case included. `gateway/location.ts` reads a `Location` like `url.Parse`
-  (bad `%`, control characters, a colon in the first segment of a scheme-less reference, a bad port are
-  refused, so the call is a 504; a backslash is a path character, `%5C`). A caller who hangs up cancels the
+  hosts compare as written, case included, and Authorization goes only where Go's reading of the
+  `Location` and the URL that is actually fetched both say it may. `gateway/location.ts` reads a `Location`
+  like `url.Parse` and then hands fetch a URL assembled from the parts Go's rules give
+  (`scheme://host/path?query`), never the reference itself, because WHATWG reads several of them differently
+  (`///evil/x` is a host to it and a path to Go; `https:/evil/x` is a host to it and an error to Go). Refused
+  (so the call is a 504): a bad `%` in path, host or fragment, control characters, a colon in the first
+  segment of a scheme-less reference, a bad port, a scheme other than http(s), a scheme with no host, userinfo.
+  A backslash is a path character (`%5C`); a byte above 0x7f is escaped once, as bytes. A caller who hangs up
+  cancels the
   call (`CallerGone`, nothing is answered or logged as a gateway failure) and `/current-agent` makes no
   further calls. Answers are decoded by `gateway/decode.ts` (schemas in `gateway/schema.ts`, member for
   member like `src/spacetraders/schema`) on top of the lossless parser `gateway/json.ts`: int64 is bigint, a
@@ -79,6 +85,15 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
     before the fraction, a zone offset with minute 60 or hour 24 are read, and written back with the offset
     recomputed (`+00:60` is `+01:00`). An offset of a day or more is read but Go's encoder refuses it, so the
     answer is **200, `application/json`, empty body** (`UnencodableTime`, `hasUnencodable`).
+  * **Known deviations in following a redirect** (each is path-only on the same host, or refuses where Go
+    requests; none can send Authorization anywhere Go would not): userinfo in a `Location` is refused (Go
+    would send Basic credentials; nothing here forwards credentials to a redirect target); `%2e`/`%2E`
+    segments are resolved as dot segments by WHATWG, Go leaves them; a relative path that starts with `%2f` is
+    absolute to Go, relative here; spaces and non-ASCII in the query are percent-encoded, Go sends them raw;
+    an IPv4 shorthand host (`2130706433`) is normalised by WHATWG; an IPv6 zone is refused; non-ASCII hosts go
+    through UTS 46, Go's IDNA tables; repeated `Location` headers are read as the text up to the first `", "`
+    (fetch joins them), so a single Location holding a comma and a space is cut there; Go sends
+    `Content-Type` on the GET that follows a 301/302/303 of a POST, this client does not (4c's concern).
   * **Writing** is in pieces (`http/json.ts` `sendJson`), so an answer too big for one string still goes out.
   * **Known deviation (stale slice).** Go decodes a repeated key into the earlier slice, and a slice that was
     shrunk by an earlier repeat leaks old elements when a third repeat grows it again

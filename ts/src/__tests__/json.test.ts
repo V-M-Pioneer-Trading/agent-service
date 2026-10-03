@@ -89,38 +89,76 @@ describe("stringifyJson", () => {
 });
 
 describe("sendJson writes in pieces", () => {
-  it("a 3 MB answer goes out in several writes, waits for drain, and ends with a newline", async () => {
+  /** A response that records its writes, says "slow down" on every other one, and counts its listeners. */
+  function fakeResponse(opts: { destroyAfterFirstWrite?: boolean } = {}) {
     const writes: string[] = [];
-    let drained = 0;
-    const listeners: Record<string, () => void> = {};
+    const listeners = new Map<string, Set<() => void>>();
+    const count = (): number => Array.from(listeners.values()).reduce((n, set) => n + set.size, 0);
     const res = {
       statusCode: 0,
       destroyed: false,
       headers: {} as Record<string, string>,
+      maxListeners: 0,
       setHeader(k: string, v: string) {
         this.headers[k] = v;
       },
       write(chunk: string) {
         writes.push(chunk);
-        return writes.length % 2 === 0; // every other write says "slow down"
+        if (opts.destroyAfterFirstWrite === true) this.destroyed = true;
+        return writes.length % 2 === 0;
       },
-      once(event: string, fn: () => void) {
-        listeners[event] = fn;
-        if (event === "drain") setTimeout(() => ((drained += 1), fn()), 0);
+      on(event: string, fn: () => void) {
+        const set = listeners.get(event) ?? new Set();
+        listeners.set(event, set.add(fn));
+        this.maxListeners = Math.max(this.maxListeners, count());
+        if (event === "drain") setTimeout(() => listeners.get("drain")?.forEach((f) => f()), 0);
+      },
+      off(event: string, fn: () => void) {
+        listeners.get(event)?.delete(fn);
       },
       end(chunk?: string) {
         if (chunk !== undefined) writes.push(chunk);
       },
     };
-    const value = Array.from({ length: 60000 }, (_, k) => ({ n: BigInt(k), s: "x".repeat(40) }));
+    return { res, writes, count };
+  }
+  const big = (n: number) => Array.from({ length: n }, (_, k) => ({ n: BigInt(k), s: "x".repeat(40) }));
+
+  it("a 3 MB answer goes out in several writes, waits for drain, and ends with a newline", async () => {
+    const { res, writes } = fakeResponse();
     const { sendJson } = await import("../http/json");
-    await sendJson(res as never, value);
+    await sendJson(res as never, big(60000));
     expect(writes.length).toBeGreaterThan(2);
-    expect(drained).toBeGreaterThan(0);
     const text = writes.join("");
     expect(text.endsWith("]\n")).toBe(true);
     expect(text.length).toBeGreaterThan(3 << 20);
     expect(JSON.parse(text)).toHaveLength(60000);
     expect([res.statusCode, res.headers["Content-Type"]]).toEqual([200, "application/json"]);
+  });
+
+  it("leaves no drain or close listener behind, however often it waits", async () => {
+    const { res, writes, count } = fakeResponse();
+    const { sendJson } = await import("../http/json");
+    await sendJson(res as never, big(200000));
+    expect(writes.length).toBeGreaterThan(8);
+    expect(count()).toBe(0);
+    expect(res.maxListeners).toBeLessThanOrEqual(2);
+  });
+
+  it("does not serialise the rest for a caller who is gone", async () => {
+    let reads = 0;
+    const rows = big(60000);
+    const watched = new Proxy(rows, {
+      get(target, prop, receiver) {
+        if (typeof prop === "string" && /^\d+$/.test(prop)) reads += 1;
+        return Reflect.get(target, prop, receiver) as unknown;
+      },
+    });
+    const { res, writes } = fakeResponse({ destroyAfterFirstWrite: true });
+    const { sendJson } = await import("../http/json");
+    await sendJson(res as never, watched);
+    expect(writes).toHaveLength(1);
+    // One pass for the check that Go could encode it (60000 reads), then only as many as were written.
+    expect(reads).toBeLessThan(100000);
   });
 });

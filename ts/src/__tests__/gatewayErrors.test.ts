@@ -212,3 +212,38 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
     expect(String((err.cause as Error).message)).toContain("10.0.0.7");
   });
 });
+
+describe("a raw body that is not UTF-8 goes out as it came, like Go's string(body)", () => {
+  it("keeps the bytes of a short one, counts each bad byte as one rune, and writes U+FFFD once it cuts", async () => {
+    const { upstreamMessageOf } = await import("../gateway/errors");
+    const short = Buffer.from([0x61, 0xff, 0xe2, 0x82, 0x62]);
+    expect(upstreamMessageOf(short)).toEqual({ message: "a���b", raw: short });
+    // 250 truncated three-byte sequences are 500 runes in Go (two bad bytes each) and 250 in a decoder that merges them.
+    expect(upstreamMessageOf(Buffer.alloc(500, 0xff)).raw).toBeDefined();
+    const cut = upstreamMessageOf(Buffer.concat([Buffer.alloc(300, 0xff), Buffer.alloc(300, 0x41)]));
+    expect(cut.raw).toBeUndefined();
+    expect(cut.message).toBe("�".repeat(300) + "A".repeat(200));
+    expect(upstreamMessageOf(Buffer.from([0xe2, 0x82]).toString("latin1").repeat(0) + "ok").raw).toBeUndefined();
+  });
+
+  it("is relayed byte for byte, with the newline", async () => {
+    const url = await stub((_req, res) => {
+      res.statusCode = 502;
+      res.end(Buffer.from([0x62, 0x61, 0x64, 0xff, 0xfe]));
+    });
+    const res = await request(appFor(url)).get("/probe").buffer(true).parse((r, cb) => {
+      const parts: Buffer[] = [];
+      r.on("data", (c: Buffer) => parts.push(c));
+      r.on("end", () => cb(null, Buffer.concat(parts)));
+    });
+    expect(Buffer.from(res.body as Buffer).equals(Buffer.from([0x62, 0x61, 0x64, 0xff, 0xfe, 0x0a]))).toBe(true);
+  });
+
+  it("trims with Go's TrimSpace: U+FEFF is not a space, U+0085 and U+3000 are", async () => {
+    const { upstreamMessage } = await import("../gateway/errors");
+    expect(upstreamMessage('{"error":{"message":"﻿"}}')).toBe("﻿");
+    expect(upstreamMessage('{"error":{"message":"\u0085　"}}')).toBe('{"error":{"message":"\u0085　"}}');
+    expect(upstreamMessage("\u0085 　")).toBe("st-gateway returned an error with no message");
+    expect(upstreamMessage("﻿")).toBe("﻿");
+  });
+});

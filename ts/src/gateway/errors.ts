@@ -15,8 +15,10 @@
  */
 
 import type { Response } from "express";
+import { goTrimSpace } from "../config";
 import { sendText } from "../http/json";
 import { DecodeError, decode, struct, text } from "./decode";
+import { validLength } from "./json";
 
 /** Pacing signals st-gateway forwards on a passed-through error, relayed to the caller. */
 export const FORWARDED_HEADERS = ["Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"] as const;
@@ -34,13 +36,16 @@ export class UpstreamError extends Error {
   /** For the log line, not the caller: one request can make several calls. */
   readonly endpoint: string;
   readonly headers: Readonly<Record<string, string>>;
+  /** The sentence as bytes, when it is not valid UTF-8: Go relays a raw body as it came. */
+  readonly raw: Buffer | undefined;
 
-  constructor(statusCode: number, message: string, endpoint: string, headers: Record<string, string> = {}, options?: { cause?: unknown }) {
+  constructor(statusCode: number, message: string, endpoint: string, headers: Record<string, string> = {}, options?: { cause?: unknown; raw?: Buffer }) {
     super(message, options);
     this.name = "UpstreamError";
     this.statusCode = statusCode;
     this.endpoint = endpoint;
     this.headers = headers;
+    this.raw = options?.raw;
   }
 }
 
@@ -69,16 +74,30 @@ function envelopeMessage(body: Uint8Array): string | null {
   }
 }
 
-/** The human-readable reason in an error body (client.go upstreamMessage). */
-export function upstreamMessage(body: Uint8Array | string): string {
-  const bytes = typeof body === "string" ? Buffer.from(body, "utf8") : body;
-  const text = Buffer.from(bytes).toString("utf8");
+/**
+ * The human-readable reason in an error body (client.go upstreamMessage): the envelope's message; else
+ * the body, cut to 500 runes (Go counts each byte that is not UTF-8 as one rune, and writes it as U+FFFD
+ * once it cuts); `raw` is set when the body goes out untouched and is not valid UTF-8.
+ */
+export function upstreamMessageOf(body: Uint8Array | string): { message: string; raw?: Buffer } {
+  const bytes = Buffer.from(typeof body === "string" ? Buffer.from(body, "utf8") : body);
   const lifted = envelopeMessage(bytes);
-  if (lifted !== null && lifted.trim() !== "") return lifted;
-  if (text.trim() === "") return NO_MESSAGE;
-  const chars = Array.from(text);
-  return chars.length > MAX_MESSAGE_LENGTH ? chars.slice(0, MAX_MESSAGE_LENGTH).join("") : text;
+  if (lifted !== null && goTrimSpace(lifted) !== "") return { message: lifted };
+  const runes: string[] = [];
+  let valid = true;
+  for (let i = 0; i < bytes.length; ) {
+    const len = validLength(bytes, i);
+    valid &&= len > 0;
+    runes.push(len === 0 ? "\ufffd" : bytes.toString("utf8", i, i + len));
+    i += Math.max(len, 1);
+  }
+  const text = runes.join("");
+  if (goTrimSpace(text) === "") return { message: NO_MESSAGE };
+  if (runes.length > MAX_MESSAGE_LENGTH) return { message: runes.slice(0, MAX_MESSAGE_LENGTH).join("") };
+  return valid ? { message: text } : { message: text, raw: bytes };
 }
+
+export const upstreamMessage = (body: Uint8Array | string): string => upstreamMessageOf(body).message;
 
 /** The non-empty pacing headers, nothing else of the gateway's answer. */
 export function pacingHeaders(headers: Headers): Record<string, string> {
@@ -119,7 +138,8 @@ async function readCapped(res: globalThis.Response, limit: number): Promise<Uint
 /** The UpstreamError for a gateway answer with status >= 400. */
 export async function upstreamErrorFrom(res: globalThis.Response, method: string, endpoint: string): Promise<UpstreamError> {
   const body = await readCapped(res, MAX_ERROR_BODY);
-  return new UpstreamError(res.status, upstreamMessage(body), `${method} ${endpoint}`, pacingHeaders(res.headers));
+  const { message, raw } = upstreamMessageOf(body);
+  return new UpstreamError(res.status, message, `${method} ${endpoint}`, pacingHeaders(res.headers), raw === undefined ? {} : { raw });
 }
 
 /** Relays the verdict: the gateway's status (502 outside 400-599), its sentence, its pacing headers; text/plain. */
@@ -128,7 +148,7 @@ export function writeUpstreamError(res: Response, err: unknown, log: (line: stri
   if (err instanceof UpstreamError) {
     const status = err.statusCode < 400 || err.statusCode > 599 ? 502 : err.statusCode;
     for (const [name, value] of Object.entries(err.headers)) res.setHeader(name, value);
-    sendText(res, status, err.message);
+    sendText(res, status, err.raw ?? err.message);
     return;
   }
   sendText(res, 502, err instanceof Error ? err.message : String(err));

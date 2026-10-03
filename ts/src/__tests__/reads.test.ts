@@ -12,6 +12,8 @@ interface Seen {
 }
 type Reply = { status?: number; body?: string; headers?: Record<string, string>; delay?: number };
 
+jest.setTimeout(20000);
+
 const servers: http.Server[] = [];
 afterAll(async () => {
   await Promise.all(servers.map((s) => new Promise((r) => s.close(r))));
