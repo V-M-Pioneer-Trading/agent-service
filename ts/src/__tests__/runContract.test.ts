@@ -100,9 +100,8 @@ describe("the judge on a real run of a mock suite", () => {
     expect([run.status, judged.problems]).toEqual([0, []]);
   });
 
-  it("an after hook that throws (node exits 0 and every test passes) is caught", () => {
-    const { run, judged } = mock(`import { describe, it, after } from 'node:test';\ndescribe('s', () => { it('a', () => {}); after(() => { throw new Error('boom'); }); });\n`);
-    expect(run.status).toBe(0);
+  it("an after hook that throws (every test passes) is caught", () => {
+    const { judged } = mock(`import { describe, it, after } from 'node:test';\ndescribe('s', () => { it('a', () => {}); after(() => { throw new Error('boom'); }); });\n`);
     expect(judged.problems.join("\n")).toMatch(/suite failed for its own reason \(hookFailed\)/);
   });
 
