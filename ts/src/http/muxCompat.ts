@@ -87,9 +87,10 @@ function badRequest(res: Response): void {
 export const muxCompat: RequestHandler = (req: Request, res: Response, next: NextFunction) => {
   // Absolute-form ("GET http://host/path HTTP/1.1"): Go routes on the URL's path, so do we.
   // An empty path ("GET http://host") is "" there, which mux cleans to "/": a 301.
-  const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/?#]*([\s\S]*)$/.exec(req.url);
-  const target = absolute === null ? req.url : (absolute[1] ?? "");
-  if (absolute === null && !target.startsWith("/")) {
+  const absolute = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?]*)([\s\S]*)$/.exec(req.url);
+  const target = absolute === null ? req.url : (absolute[2] ?? "");
+  // A "#" in the authority is an invalid host for Go's parser: 400 ("GET http://h#f").
+  if ((absolute !== null && (absolute[1] ?? "").includes("#")) || (absolute === null && !target.startsWith("/"))) {
     // "OPTIONS *" is answered by Go's server itself (200, empty); here it is a 400. No caller sends it.
     badRequest(res);
     return;

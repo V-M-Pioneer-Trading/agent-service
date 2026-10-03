@@ -47,9 +47,10 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
   `SetUpRouter`); tsoa's generated routes are registered through `declaring()`, which puts the
   clerk-client declaration first and refuses to start on a route with no entry. The app is also
   `secured()`, so a route registered anywhere else without a declaration refuses startup too.
-  `AUTH_INTROSPECTION_*` are validated in `ts/src/config.ts` exactly as Go does (Go's
-  `TrimSpace` and `url.Parse`; every verdict is recorded in `config.test.ts`). clerk-client's loader
-  is laxer in some places and stricter in others, so it is not used for that.
+  `AUTH_INTROSPECTION_*` are validated in `ts/src/config.ts` as Go does (Go 1.25.x's `TrimSpace`
+  and patched `url.Parse`; every verdict is recorded in `config.test.ts`) and, on purpose stricter
+  than Go, the URL must be fetch-identical: clerk-client calls `fetch(url)`, and WHATWG URL rewrites
+  or rejects URLs Go sends as written. clerk-client's own loader is not used.
 * **HTTP artefacts.** `ts/src/http/muxCompat.ts` reproduces gorilla/mux and net/http (400 on a
   bad escape, 301 path cleaning, decoded-path routing, bare 405 / `404 page not found`), before
   any Express default; `json.ts` writes Go's `application/json` (no charset), `cors.ts` Go's four

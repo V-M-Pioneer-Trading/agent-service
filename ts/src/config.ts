@@ -5,7 +5,18 @@
  *
  * An error thrown from here ends the process with status 1 before a port is
  * bound (server.ts), like `log.Fatal` in Go. No message echoes the secret.
+ *
+ * AUTH_INTROSPECTION_URL is accepted when Go's url.Parse and LoadConfig accept
+ * it (the patched Go 1.25.x parser: golang:1.25-alpine builds the image) AND it
+ * is fetch-identical. The second rule is intentionally STRICTER than Go:
+ * clerk-client calls fetch(url), and WHATWG URL rewrites or rejects many URLs Go
+ * sends as written (a trailing space is stripped, `0x7f.1` becomes 127.0.0.1, a
+ * soft hyphen vanishes, dot segments are resolved, `http://:80/x` and port 99999
+ * throw, and clerk-client swallows the throw into a 503 on every request). A URL
+ * whose `new URL(raw).href` is not the URL itself (bar the case of the scheme and
+ * host, and a "/" for an empty path) is refused at start, exit 1, instead.
  */
+import { isIPv6 } from "node:net";
 
 import type { IntrospectionConfig } from "@v-m-pioneer-trading/clerk-client";
 
@@ -72,18 +83,50 @@ function validEscapes(s: string, mode: "host" | "zone" | "path"): boolean {
 /** Go's validOptionalPort: "" or ":" followed by digits. Not range-checked. */
 const validOptionalPort = (p: string): boolean => p === "" || /^:[0-9]*$/.test(p);
 
-/** Go's parseHost: bracketed literal, optional port, escapes. */
+/**
+ * Go's parseHost, as patched for CVE-2025-47912 (Go 1.25.2 and later, what the
+ * image builds with): a "[" anywhere but the first byte is an error, and what
+ * is inside the brackets, once unescaped, must be an IPv6 address (with an
+ * optional, non-empty zone), not an IPv4 address, an IPvFuture or nothing.
+ */
 function validHost(host: string): boolean {
+  if (host.indexOf("[", 1) !== -1) return false;
   if (host.startsWith("[")) {
     const close = host.lastIndexOf("]");
     if (close < 0 || !validOptionalPort(host.slice(close + 1))) return false;
-    const zone = host.slice(0, close).indexOf("%25");
-    if (zone >= 0) return validEscapes(host.slice(0, zone), "host") && validEscapes(host.slice(zone, close), "zone") && validEscapes(host.slice(close), "host");
-    return validEscapes(host, "host");
+    const inside = host.slice(1, close);
+    const zoneAt = inside.indexOf("%25");
+    const address = zoneAt >= 0 ? inside.slice(0, zoneAt) : inside;
+    if (!validEscapes(address, "host") || !isIPv6(address)) return false;
+    if (zoneAt >= 0) {
+      const zone = inside.slice(zoneAt + 3);
+      if (zone === "" || !validEscapes(zone, "zone")) return false;
+    }
+    return validEscapes(host.slice(close), "host");
   }
   const colon = host.lastIndexOf(":");
   if (colon !== -1 && !validOptionalPort(host.slice(colon))) return false;
   return validEscapes(host, "host");
+}
+
+/**
+ * Whether fetch would send this URL as written. `rewritten` is a reason, null means identical.
+ * Only the case of the scheme and host, and a "/" for an empty path, may differ.
+ */
+function fetchProblem(raw: string): string | null {
+  const m = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([\s\S]*)$/.exec(raw);
+  let href: string;
+  try {
+    href = new URL(raw).href;
+  } catch {
+    href = "";
+  }
+  if (m !== null && href !== "") {
+    const rest = m[3] ?? "";
+    const path = rest === "" || rest.startsWith("#") ? `/${rest}` : rest;
+    if (href === `${(m[1] ?? "").toLowerCase()}://${(m[2] ?? "").toLowerCase()}${path}`) return null;
+  }
+  return `${ENV_URL} would be rewritten (or refused) by fetch; write it in its normalised form, with no trailing space, default port, dot segment or escape that WHATWG URL would change`;
 }
 
 /**
@@ -124,8 +167,8 @@ function urlProblem(raw: string): string | null {
 
 /**
  * AUTH_INTROSPECTION_URL and _SECRET, validated exactly as Go's
- * introspection.LoadConfig does: Go's TrimSpace, Go's url.Parse. 130 inputs were
- * run through both (config.test.ts holds Go's verdicts). clerk-client's own
+ * introspection.LoadConfig does (Go's TrimSpace, Go's url.Parse), then also requires
+ * the URL to be fetch-identical (see the file header; stricter than Go on purpose). clerk-client's own
  * loader is not used: it trims the secret and goes through WHATWG URL, so it
  * accepts what Go refuses (userinfo, an empty "?", a fragment, "http:///x",
  * a tab inside the URL) and refuses what Go accepts ("http://:80/x").
@@ -140,7 +183,7 @@ export function loadAuthConfig(env: Env): IntrospectionConfig {
   if (secret !== goTrimSpace(secret) || [...secret].some((c) => isControl(c.codePointAt(0)!))) {
     throw new ConfigError(`${ENV_SECRET} must not contain surrounding whitespace or control characters`);
   }
-  const problem = urlProblem(rawUrl);
+  const problem = urlProblem(rawUrl) ?? fetchProblem(rawUrl);
   if (problem !== null) throw new ConfigError(problem);
   return { url: rawUrl, secret };
 }

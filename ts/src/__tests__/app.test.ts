@@ -158,6 +158,8 @@ describe("request targets in absolute form", () => {
     expect(await raw("http://example.test:81/health")).toMatch(/^HTTP\/1\.1 200 /);
     expect(await raw("http://example.test/api/agent//health")).toMatch(/^HTTP\/1\.1 301 [\s\S]*\r\nLocation: \/api\/agent\/health\r\n/i);
     expect(await raw("http://example.test/api/agent/nope")).toMatch(/^HTTP\/1\.1 404 /);
+    expect(await raw("http://h#f")).toMatch(/^HTTP\/1\.1 400 /);
+    expect(await raw("http://example.test/x#f")).toMatch(/^HTTP\/1\.1 405 /);
     expect(await raw("http://example.test")).toMatch(/^HTTP\/1\.1 301 [\s\S]*\r\nLocation: \/\r\n/i);
   });
 });

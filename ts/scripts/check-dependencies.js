@@ -7,6 +7,11 @@
 // clerk-client release tarball. Every `resolved` in the lockfile must be the
 // npm registry or that release URL. A new direct dependency is therefore a
 // visible diff in allowed-dependencies.txt, never a side effect of `npm install`.
+//
+// Also refused: `overrides` / `resolutions` (they rewrite what a name resolves to),
+// a ts/.npmrc, bundled dependencies in any form, a lockfile entry installed under
+// another name than its path (bar five pinned aliases npm writes for jest), a
+// resolved URL of another package than the entry, and any entry without sha512 integrity.
 // Transitive packages are covered by `npm audit` and `npm ci --ignore-scripts`.
 //
 //   node scripts/check-dependencies.js
@@ -16,6 +21,15 @@ const path = require("path");
 const CLERK = "@v-m-pioneer-trading/clerk-client";
 const CLERK_URL = /^https:\/\/github\.com\/V-M-Pioneer-Trading\/clerk-client\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[A-Za-z0-9._-]+\.tgz$/;
 const SEMVER_RANGE = /^[~^]?[0-9]+\.[0-9]+\.[0-9]+$/;
+// The aliases npm itself writes for jest's tree (react-is, string-width and friends under another name).
+// Pinned by lock path, name and version: a new alias, or a changed one, is a reviewed diff here.
+const KNOWN_ALIASES = {
+  "node_modules/@jest/react-is-18": { name: "react-is", version: "18.3.1" },
+  "node_modules/@jest/react-is-19": { name: "react-is", version: "19.3.0" },
+  "node_modules/string-width-cjs": { name: "string-width", version: "4.2.3" },
+  "node_modules/strip-ansi-cjs": { name: "strip-ansi", version: "6.0.1" },
+  "node_modules/wrap-ansi-cjs": { name: "wrap-ansi", version: "7.0.0" },
+};
 const SECTIONS = ["dependencies", "devDependencies"];
 
 function parseAllowlist(text) {
@@ -37,15 +51,22 @@ function parseAllowlist(text) {
   return out;
 }
 
-function check(pkg, lock, allowlistText) {
+function check(pkg, lock, allowlistText, opts = {}) {
   const allowed = parseAllowlist(allowlistText);
   const problems = [];
-  for (const extra of ["optionalDependencies", "peerDependencies", "bundledDependencies", "bundleDependencies"]) {
+  for (const extra of ["optionalDependencies", "peerDependencies"]) {
     const v = pkg[extra];
-    if (v !== undefined && (Array.isArray(v) ? v.length > 0 : Object.keys(v).length > 0)) {
-      problems.push(`package.json has ${extra}; only dependencies and devDependencies are allowed`);
-    }
+    if (v !== undefined && Object.keys(v).length > 0) problems.push(`package.json has ${extra}; only dependencies and devDependencies are allowed`);
   }
+  // Any truthy form, `true` included: bundled packages are installed from the tarball itself.
+  for (const key of ["bundledDependencies", "bundleDependencies"]) {
+    if (pkg[key]) problems.push(`package.json has ${key}; bundled dependencies are not allowed`);
+  }
+  // These rewrite what a name resolves to (overrides: {"body-parser": "npm:left-pad@1"}).
+  for (const key of ["overrides", "resolutions"]) {
+    if (key in pkg) problems.push(`package.json has ${key}; a name must resolve to itself`);
+  }
+  if (opts.npmrc) problems.push("ts/.npmrc exists; it can redirect the registry or alias packages. Configure nothing there");
   const lockRoot = lock.packages?.[""] ?? {};
   for (const section of SECTIONS) {
     const declared = pkg[section] ?? {};
@@ -63,22 +84,44 @@ function check(pkg, lock, allowlistText) {
     for (const name of Object.keys(lockRoot[section] ?? {})) if (!(name in declared)) problems.push(`${name} is in package-lock.json's root ${section} but not in package.json`);
   }
   for (const [where, entry] of Object.entries(lock.packages ?? {})) {
-    const resolved = entry.resolved;
-    if (resolved === undefined) continue;
-    if (!resolved.startsWith("https://registry.npmjs.org/") && !CLERK_URL.test(resolved)) {
-      problems.push(`package-lock.json: ${where || "(root)"} resolves from ${resolved}, which is neither registry.npmjs.org nor the clerk-client release`);
+    if (where === "") continue;
+    const label = where;
+    const pathName = where.slice(where.lastIndexOf("node_modules/") + "node_modules/".length);
+    const alias = KNOWN_ALIASES[where];
+    if (entry.name !== undefined && entry.name !== pathName) {
+      if (alias === undefined || alias.name !== entry.name || alias.version !== entry.version) {
+        problems.push(`package-lock.json: ${label} is installed as "${entry.name}" under another name; only the pinned aliases are allowed`);
+      }
+    } else if (alias !== undefined && entry.version !== alias.version) {
+      problems.push(`package-lock.json: ${label} is not the pinned alias ${alias.name}@${alias.version}`);
     }
+    const resolved = entry.resolved;
+    if (resolved === undefined) {
+      if (!entry.link) problems.push(`package-lock.json: ${label} has no resolved URL`);
+      continue;
+    }
+    const clerk = CLERK_URL.test(resolved);
+    if (!resolved.startsWith("https://registry.npmjs.org/") && !clerk) {
+      problems.push(`package-lock.json: ${label} resolves from ${resolved}, which is neither registry.npmjs.org nor the clerk-client release`);
+    }
+    if (!clerk) {
+      const installedAs = entry.name ?? pathName;
+      if (!resolved.startsWith(`https://registry.npmjs.org/${installedAs}/-/`)) {
+        problems.push(`package-lock.json: ${label} is "${installedAs}" but resolves from ${resolved}`);
+      }
+    }
+    if (!/^sha512-[A-Za-z0-9+/]+=*$/.test(entry.integrity ?? "")) problems.push(`package-lock.json: ${label} has no sha512 integrity`);
   }
   return problems;
 }
 
-module.exports = { check, parseAllowlist };
+module.exports = { check, parseAllowlist, KNOWN_ALIASES };
 
 if (require.main === module) {
   const root = path.join(__dirname, "..");
   const read = (f) => fs.readFileSync(path.join(root, f), "utf8");
   const pkg = JSON.parse(read("package.json"));
-  const problems = check(pkg, JSON.parse(read("package-lock.json")), read("allowed-dependencies.txt"));
+  const problems = check(pkg, JSON.parse(read("package-lock.json")), read("allowed-dependencies.txt"), { npmrc: fs.existsSync(path.join(root, ".npmrc")) });
   if (problems.length > 0) {
     for (const p of problems) console.error(`::error file=ts/allowed-dependencies.txt::${p}`);
     process.exit(1);
