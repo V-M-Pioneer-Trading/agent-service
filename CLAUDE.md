@@ -61,7 +61,18 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
   gateway call but after auth). `express.json()` and tsoa's own body validation would answer first.
 * **Gateway errors.** `ts/src/gateway/errors.ts` is the mapping for st-gateway's answers; the
   fixture (`contract/fixtures/gateway-errors.json`, pinned) is driven through it by
-  `gatewayErrors.test.ts`.
+  `gatewayErrors.test.ts`. Failures are thrown (`UpstreamError`, `UnreadableAnswer`) and relayed by
+  the app error handler in `server.ts`.
+* **Live reads (#36).** `ts/src/gateway/client.ts` is the only outbound HTTP: `GatewayClient`, redirects
+  followed by hand like Go (10 requests, then 504; Authorization only to the same host or a subdomain;
+  `fetch`'s own follow would stop at 20 and strip it on any origin change). Answers are decoded by
+  `gateway/decode.ts` (schemas in `gateway/schema.ts`, member for member like `src/spacetraders/schema`) on
+  top of the lossless parser `gateway/json.ts`: int64 is bigint, a missing list is null, times are
+  normalised, names fold like Go's. No dependency was added for this. The controllers write their answers
+  themselves (`controllers/support.ts`): tsoa would 204 a null list and cannot print a bigint.
+  `controllers/models.ts` is the spec's view of the same shapes, and a type assertion there fails the
+  build if it drifts from the decoder. Path symbols are read from `lastSegmentOf(req)` (the exact decoded
+  bytes, kept by muxCompat) and re-escaped with `pathEscape`, so bytes that are not UTF-8 survive.
 
 ## Module map
 

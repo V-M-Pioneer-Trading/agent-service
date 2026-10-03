@@ -1,4 +1,2 @@
 # Listed cases that pass against the TypeScript service for a vacuous reason (they assert an absence that holds whether or not the route exists).
 # Exact full names. Nothing else on the skip list may pass.
-every upstream route, answered normally GET routes send no body and no Content-Type to the gateway
-a gateway that does not answer a dead gateway never leaks its address

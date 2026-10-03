@@ -76,7 +76,7 @@ export const escapeForLocation = (bytes: Buffer): string => escapeWith(bytes, "$
 const escapeForRouting = (bytes: Buffer): string => escapeWith(bytes, "/!$&'()*+,;=:@");
 
 /** Go's url.PathEscape: what a path segment is sent as, whatever its bytes. */
-export const pathEscape = (bytes: Uint8Array): string => escapeWith(Buffer.from(bytes), "const CORS_HEADER_NAMES+=:@");
+export const pathEscape = (bytes: Uint8Array): string => escapeWith(Buffer.from(bytes), "$&+=:@");
 
 const decodedPaths = new WeakMap<IncomingMessage, Buffer>();
 /** The request path after percent-decoding, as mux sees it: raw bytes. */
