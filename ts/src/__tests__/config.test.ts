@@ -1,4 +1,4 @@
-import { ConfigError, loadConfig, type Env } from "../config";
+import { ConfigError, loadConfig, urlProblem, type Env } from "../config";
 
 const base: Env = {
   AUTH_INTROSPECTION_URL: "http://center.internal:3005/auth/v1/introspect",
@@ -222,6 +222,11 @@ describe("159 URL and secret inputs: Go's verdict, and whether fetch sends the U
     ["http://a_b/x", "s", "accept", "same"],
     ["http://a%2Db/x", "s", "refuse", "n/a"],
   ];
+  // The Go layer alone, without the fetch rule that would refuse many of these anyway.
+  it.each(verdicts.filter(([, secret]) => secret === "s"))("%j: the Go rules alone say %s", (url, _secret, go) => {
+    expect(urlProblem(url) === null).toBe(go === "accept");
+  });
+
   it.each(verdicts)("%j with secret %j: Go %s, fetch %s", (url, secret, go, fetch) => {
     const load = () => loadConfig({ AUTH_INTROSPECTION_URL: url, AUTH_INTROSPECTION_SECRET: secret });
     if (go === "accept" && fetch === "same") expect(load).not.toThrow();

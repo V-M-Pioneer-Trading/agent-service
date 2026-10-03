@@ -134,7 +134,7 @@ function fetchProblem(raw: string): string | null {
  * verdict: null when Go accepts the URL, else why not. Not WHATWG: it keeps a
  * tab-stripping, host-normalising parser out of a security-relevant decision.
  */
-function urlProblem(raw: string): string | null {
+export function urlProblem(raw: string): string | null {
   const absolute = `${ENV_URL} must be an absolute URL, for example http://localhost:3005/auth/v1/introspect`;
   for (const c of raw) if (isControl(c.codePointAt(0)!)) return `${ENV_URL} must not contain control characters`;
   // getScheme
