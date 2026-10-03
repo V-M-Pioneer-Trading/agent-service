@@ -1,5 +1,5 @@
 /**
- * @file The wire types for the SpaceTraders API: src/spacetraders/schema/*.go,
+ * @file The wire types for the SpaceTraders API: the former Go service's src/spacetraders/schema/*.go (deleted in agent-service#38; see 65bb4b2),
  * member for member, in the same order (the order is the order of the answer).
  * Every Go `int` and `int64` is int64 here (bigint). The write routes' results
  * (contract and agent, purchase, market transaction) are at the end.

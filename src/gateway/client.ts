@@ -1,5 +1,5 @@
 /**
- * @file The only outbound HTTP of the service: src/spacetraders/client.go.
+ * @file The only outbound HTTP of the service: the former Go service's src/spacetraders/client.go (deleted in agent-service#38; `git show 65bb4b2:src/spacetraders/client.go`).
  *
  * Every call goes to `ST_GATEWAY_URL + /proxy + <the SpaceTraders path>` and
  * carries one header of the caller's: Authorization, verbatim, so st-gateway

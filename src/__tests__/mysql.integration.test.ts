@@ -2,7 +2,7 @@ import { HistoryStore } from "../db/history";
 import { setUpDatabase } from "../db/setup";
 import { MysqlSql } from "../db/sql";
 
-// Against a real MySQL, when TEST_MYSQL_HOST is set (ts.yml's ts-checks job has one; locally: any MySQL 9 with the
+// Against a real MySQL, when TEST_MYSQL_HOST is set (the `test` job of container.yml has one; locally: any MySQL 9 with the
 // root password `example`). The server's own time zone is moved away from UTC first, so that a session that is not
 // pinned to UTC shows in behaviour and not only in the text of a statement.
 const host = process.env["TEST_MYSQL_HOST"];

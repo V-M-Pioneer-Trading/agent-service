@@ -1,5 +1,5 @@
 /**
- * @file The history tables, read and written: src/db/contracts.go and transactions.go.
+ * @file The history tables, read and written: the former Go service's src/db/contracts.go and transactions.go (deleted in agent-service#38; `git show 65bb4b2:src/db/contracts.go`).
  *
  * Only this module (and migrate.ts) writes SQL; handlers call the named functions below, never
  * build a query. Values arrive here already shaped for the columns (times as UTC text, int64 as

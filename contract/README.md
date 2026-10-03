@@ -110,7 +110,7 @@ contract.test.ts` runs exactly them.
 
 ## Coverage
 
-Every route of `src/api/routes.go`:
+Every route of the original Go service's `src/api/routes.go` (deleted in agent-service#38; the TypeScript service has the same table):
 
 * `GET /health`, `GET /api/agent/health`, `GET /api/agent/swagger/`
 * `GET /api/agent/v1/{current-agent, agent, ships, ships/{symbol}, contracts, contracts/{id}}`

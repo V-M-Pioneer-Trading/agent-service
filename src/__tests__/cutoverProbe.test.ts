@@ -12,7 +12,7 @@ const part = (o: object): string => Buffer.from(JSON.stringify(o)).toString("bas
 const OPERATOR = `${part({ alg: "RS256" })}.${part({ sub: "user_VALUE_MUST_NOT_PRINT", iat: 1, exp: 4102444800 })}.signature-part-EEEEEEEEEEEE`;
 const NO_SCOPE = "scopeless-session-token-DDDDDDDDDDDDDDDDDDD";
 
-type Quirk = "validation-skipped" | "html-fallback" | "none";
+type Quirk = "validation-skipped" | "html-fallback" | "go-image" | "no-snapshot" | "none";
 
 function stub(quirk: Quirk): Promise<http.Server> {
   const server = http.createServer((req, res) => {
@@ -50,9 +50,17 @@ function stub(quirk: Quirk): Promise<http.Server> {
       return quirk === "validation-skipped" ? json(201, {}) : text(400, "shipType and waypointSymbol are required");
     }
     if (p === "/api/automation/v1/autopilot/status") return json(200, { status: "armed", mode: "live" });
-    if (p === "/api/automation/v1/autopilot/events") return json(200, { events: [{ type: "agent_credits_snapshot", occurredAt: new Date().toISOString(), detail: { secret: OPERATOR } }] });
+    if (p === "/api/automation/v1/autopilot/events") return json(200, { events: [{ type: quirk === "no-snapshot" ? "planner_assignment" : "agent_credits_snapshot", occurredAt: new Date().toISOString(), detail: { secret: OPERATOR } }] });
     if (p === "/api/automation/v1/events") return refuse();
     if (p.startsWith("/api/fleet/v1/")) return who === "none" || who === "bad" ? refuse() : json(404, { error: { message: "no such ship" } });
+    if (p === "/api/agent/swagger/") {
+      res.writeHead(200, { "content-type": "text/html" });
+      return void res.end("<html>swagger-ui</html>");
+    }
+    if (p === "/api/agent/swagger/swagger-ui-init.js") {
+      res.writeHead(200, { "content-type": "application/javascript" });
+      return void res.end(quirk === "go-image" ? "" : "var spec = {info:{title:\"Agent Info Service API\"},paths:{\"/api/agent/v1/transactions\":{}}}");
+    }
     text(404, "404 page not found");
   });
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
@@ -97,6 +105,37 @@ describe("scripts/cutover-probe.mjs", () => {
     expect(lax.out).toContain("SKIPPED checks proved nothing");
     const strict = await probe({ BASE_URL: base, OPERATOR_TOKEN: OPERATOR }, ["--strict"]);
     expect(strict.code).toBe(1);
+  });
+
+  it("is green with --strict when every input is given, the Swagger check included", async () => {
+    const base = await serve("none");
+    const { code, out } = await probe({ BASE_URL: base, AGENT_DIRECT_URL: base, OPERATOR_TOKEN: OPERATOR, NO_SCOPE_TOKEN: NO_SCOPE }, ["--strict"]);
+    expect(out).toContain("RESULT: GREEN");
+    expect(code).toBe(0);
+    expect(out).toContain("spec is Agent Info Service API");
+  });
+
+  it("--strict fails without AGENT_DIRECT_URL, so a run against Go cannot pass; --allow-skip names what may stay unset", async () => {
+    const base = await serve("none");
+    const env = { BASE_URL: base, OPERATOR_TOKEN: OPERATOR, NO_SCOPE_TOKEN: NO_SCOPE };
+    expect((await probe(env, ["--strict"])).code).toBe(1);
+    expect((await probe(env, ["--strict", "--allow-skip=AGENT_DIRECT_URL"])).code).toBe(0);
+    expect((await probe({ BASE_URL: base, AGENT_DIRECT_URL: base, OPERATOR_TOKEN: OPERATOR }, ["--strict"])).code).toBe(1);
+    expect((await probe({ BASE_URL: base, AGENT_DIRECT_URL: base, OPERATOR_TOKEN: OPERATOR }, ["--strict", "--allow-skip=NO_SCOPE_TOKEN"])).code).toBe(0);
+  });
+
+  it("fails the identity check on an image that does not serve the TypeScript Swagger page", async () => {
+    const base = await serve("go-image");
+    const { code, out } = await probe({ BASE_URL: base, AGENT_DIRECT_URL: base, OPERATOR_TOKEN: OPERATOR, NO_SCOPE_TOKEN: NO_SCOPE }, ["--strict"]);
+    expect(code).toBe(1);
+    expect(out).toContain("Agent Info Service API");
+  });
+
+  it("requires agent_credits_snapshot for the cycle, not just any planner event", async () => {
+    const base = await serve("no-snapshot");
+    const { code, out } = await probe({ BASE_URL: base, OPERATOR_TOKEN: OPERATOR });
+    expect(code).toBe(1);
+    expect(out).toContain("no agent_credits_snapshot event");
   });
 
   it("fails when a write with an empty body is accepted, and says so without printing the token", async () => {

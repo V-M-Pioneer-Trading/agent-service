@@ -1,6 +1,6 @@
-# TypeScript agent-service (meta#103, decision 23). Build context is this
-# directory. Nothing deploys from this file until the cutover (agent-service#38):
-# the Dockerfile at the repository root still builds the Go image.
+# agent-service (TypeScript, meta#103, decision 23). Build context is the
+# repository root. CI builds this file for the `image` and `contract` checks and
+# deploys it from the tip of main (.github/workflows/container.yml).
 #
 # `npm ci --ignore-scripts` everywhere: no dependency's install script runs.
 

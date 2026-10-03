@@ -1,7 +1,6 @@
 /**
  * @file Environment configuration, with the same variables, defaults and
- * refusals as the Go service (src/app-runner.go, src/db/db.go,
- * src/spacetraders/client.go, src/introspection/center.go). No new variable.
+ * refusals as the former Go service (deleted in agent-service#38; last at commit 65bb4b2, read it with `git show 65bb4b2:src/app-runner.go`, src/db/db.go, src/spacetraders/client.go, src/introspection/center.go). No new variable.
  *
  * An error thrown from here ends the process with status 1 before a port is
  * bound (server.ts), like `log.Fatal` in Go. No message echoes the secret.

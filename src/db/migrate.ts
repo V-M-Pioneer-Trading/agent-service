@@ -1,5 +1,5 @@
 /**
- * @file The schema and its idempotent migration: src/db/db.go, statement for statement, so a
+ * @file The schema and its idempotent migration: the former Go service's src/db/db.go (deleted in agent-service#38; `git show 65bb4b2:src/db/db.go`), statement for statement, so a
  * database written by the Go image is read and written by this one and the other way round.
  * The schema does not change.
  *

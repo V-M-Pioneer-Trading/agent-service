@@ -21,8 +21,22 @@
 //   SINCE              ISO time. The automation checks look only at events at or after it. Set it
 //                      to when the deploy finished. Default: 20 minutes ago.
 //
-// Flags: --dry-run, --strict (a SKIPPED check fails the run), --help.
+// Flags: --dry-run, --strict, --allow-skip=NAME[,NAME] (with --strict: these inputs may stay unset,
+// NAME is NO_SCOPE_TOKEN or AGENT_DIRECT_URL), --help.
 // Exit status: 0 every check passed (or was skipped without --strict), 1 a check failed, 2 bad usage.
+//
+// Run it with --strict. Without AGENT_DIRECT_URL the outside checks cannot tell the Go image from the
+// TypeScript one (the contract suite pins them to the same behaviour, and CloudFront routes neither
+// Swagger nor any header that differs), so a run against Go would be green. With it, the Swagger check
+// asks the host's agent-service for a page only the TypeScript image serves (swagger-ui-init.js
+// carrying the spec; Go served doc.json), which is the image-identity check. Reach the host with an
+// SSM port forward, for example:
+//   aws ssm start-session --target i-011b6b82a9072a385 --document-name AWS-StartPortForwardingSession //     --parameters portNumber=80,localPortNumber=8080        # then AGENT_DIRECT_URL=http://127.0.0.1:8080
+// Whatever the probe says, on-host checklist item 1 (the running image tag is sha-<rc tip>) is the
+// mandatory gate: the probe prints it last.
+//
+// NOT probed: ai-service (parked by the owner, not deployed; its M2M caller path is the same as
+// automation-service's, which is covered by the cycle check).
 //
 // WHAT IS NEVER DONE, and what is never printed:
 //   * no bearer, no token, no token fragment and no body is ever printed. Output is status codes,
@@ -48,8 +62,11 @@ const GARBAGE = "probe-garbage-not-a-token";
 // An unsigned, alg=none token shaped like a JWT: a verifier that trusts the header would let it in.
 const FORGED = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJwcm9iZSIsInNjb3BlIjoiZmxlZXQ6Y29udHJvbCJ9.";
 const PROBE_ID = "PROBE-NOT-A-REAL-ID";
-// Event types that mean one healthy pass of the automation cycle ran.
-const CYCLE_TYPES = new Set(["agent_credits_snapshot", "planner_assignment", "planner_shadow_assignment", "contract_evaluated", "dispatch_standby"]);
+// The event that means one healthy automation cycle read agent-service.
+// agent_credits_snapshot is the one event that proves an M2M read through agent-service: the balance it
+// records comes from GET /agent with the machine token, which went through introspection. The planner's
+// own events prove only that the planner ran.
+const CYCLE_EVENT = "agent_credits_snapshot";
 // Event types that mean the cycle broke (the *_error types) or an action failed.
 const ERROR_TYPES = new Set(["mining_tick_error", "contract_discovery_error", "observation_write_error"]);
 const WARN_TYPES = new Set(["mining_task_failed"]);
@@ -75,7 +92,7 @@ function claimNames(token) {
 
 export async function run(argv, env, write = (line) => process.stdout.write(line + "\n")) {
   const flags = new Set(argv);
-  const unknown = argv.filter((a) => !["--dry-run", "--strict", "--help", "-h"].includes(a));
+  const unknown = argv.filter((a) => !["--dry-run", "--strict", "--help", "-h"].includes(a) && !/^--allow-skip=[A-Z_,]+$/.test(a));
   const secrets = [env.OPERATOR_TOKEN, env.NO_SCOPE_TOKEN].filter((s) => typeof s === "string" && s !== "").flatMap((t) => [t, ...segmentsOf(t)]);
   const redact = (text) => {
     let out = String(text);
@@ -85,7 +102,7 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
   const say = (line = "") => write(redact(line));
 
   if (unknown.length > 0 || flags.has("--help") || flags.has("-h")) {
-    say("usage: [OPERATOR_TOKEN=... NO_SCOPE_TOKEN=... BASE_URL=... AGENT_DIRECT_URL=... SINCE=...] node scripts/cutover-probe.mjs [--dry-run] [--strict]");
+    say("usage: [OPERATOR_TOKEN=... NO_SCOPE_TOKEN=... BASE_URL=... AGENT_DIRECT_URL=... SINCE=...] node scripts/cutover-probe.mjs [--dry-run] [--strict] [--allow-skip=NO_SCOPE_TOKEN]");
     say("see the header of this file for what every variable means and what the probe never does.");
     return unknown.length > 0 ? 2 : 0;
   }
@@ -381,7 +398,7 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
     expectJson(status);
     const lifecycle = typeof status.json.status === "string" ? status.json.status : "(no status member)";
     const mode = typeof status.json.mode === "string" ? status.json.mode : "none";
-    if (lifecycle !== "armed") throw new Skip(`autopilot is ${lifecycle}, not armed, so no cycle runs (arming it is the owner's call, with the fleet:control token)`);
+    if (lifecycle !== "armed") throw new Skip(`autopilot is ${lifecycle}, not armed, so no cycle runs (arming it, live or shadow, is the owner's call, with the fleet:control token; shadow is enough)`);
     const res = await call("GET", "/api/automation/v1/autopilot/events?limit=200");
     expectStatus(res, 200);
     expectJson(res);
@@ -392,7 +409,7 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
     const summary = Object.entries(count).sort().map(([t, n]) => `${t}x${n}`).join(" ") || "(none)";
     const errors = recent.filter((e) => ERROR_TYPES.has(e.type));
     if (errors.length > 0) fail(`error events since SINCE: ${summary}`);
-    if (!recent.some((e) => CYCLE_TYPES.has(e.type))) fail(`armed (${mode}) but no cycle event since ${new Date(sinceMs).toISOString()}: ${summary}`);
+    if (!recent.some((e) => e.type === CYCLE_EVENT)) fail(`armed (${mode}) but no ${CYCLE_EVENT} event since ${new Date(sinceMs).toISOString()}: ${summary}`);
     const warn = recent.filter((e) => WARN_TYPES.has(e.type)).length;
     return `armed (${mode}); events since SINCE: ${summary}${warn > 0 ? `; NOTE ${warn} action failure event(s): read them on the host` : ""}`;
   });
@@ -412,14 +429,14 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
 
   const checklist = [
     "On the host (SSM session), these are the checks no outside caller can make:",
-    "  1. the deployed image is the one under test:  docker inspect agent-service --format '{{.Config.Image}}'   (expect ghcr.io/v-m-pioneer-trading/agent-service:sha-<tip of the cutover PR>)",
+    "  1. MANDATORY GATE, the outside checks cannot prove it: the running image is the one under test:  docker inspect agent-service --format '{{.Config.Image}}'   (must print ghcr.io/v-m-pioneer-trading/agent-service:sha-<tip of the cutover PR>, the tag pushed for the v* tag; a Go image anywhere else makes every outside check above meaningless)",
     "  2. it is not restarting and the cap holds:   docker ps --filter name=agent-service --format '{{.Status}}'; docker stats --no-stream agent-service   (record RSS: size --memory from it)",
     "  3. its log has no introspection or gateway failure after the deploy:  docker logs --since 30m agent-service 2>&1 | grep -ciE 'error|503|refus'   (read what matches; the log never holds a token)",
     "  4. automation-service's M2M token goes through introspection: its calls to agent-service (reads every cycle, writes when it trades) must not fail:  docker logs --since 30m automation-service 2>&1 | grep -ciE '401|403|503'   (read what matches; the log never holds a token)",
     "  5. fleet-service's POST /contracts/{id}/deliveries with the forwarded bearer: do one delivery (or watch the next), then GET /api/agent/v1/contracts/{id}/deliveries (public) shows the new row, and fleet-service's log shows no 401/403 from agent-service.",
     "  6. st-gateway's token fetch (unaffected): a 200 from GET /api/agent/v1/current-agent above proves it, since without a credential the gateway answers 503.",
-    "  7. Swagger, if AGENT_DIRECT_URL was not set:  curl -s http://127.0.0.1:80/api/agent/swagger/swagger-ui-init.js | grep -c 'Agent Info Service API'   (expect 1 or more; and  curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:80/api/agent/swagger/swagger-initializer.js  must print 404)",
-    "  8. rollback target, if any check is red:  imageTag=sha-65bb4b28b5392a370b6d011cdaa4aa831f739157  (the last Go image; see the PR description for the full command)",
+    "  7. Swagger (the image-identity check from outside; skipped without AGENT_DIRECT_URL):  curl -s http://127.0.0.1:80/api/agent/swagger/swagger-ui-init.js | grep -c 'Agent Info Service API'   (expect 1 or more; and  curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:80/api/agent/swagger/swagger-initializer.js  must print 404)",
+    "  8. not probed: ai-service (parked, not deployed). Rollback target, if any check is red:  imageTag=sha-65bb4b28b5392a370b6d011cdaa4aa831f739157  (the last Go image; see the PR description for the full command)",
   ];
 
   // ---- run --------------------------------------------------------------------------------------
@@ -444,6 +461,7 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
   }
 
   const tally = { pass: 0, fail: 0, skip: 0 };
+  const skipped = []; // per skipped check: the inputs it lacked, or [] for a runtime skip
   let group = "";
   for (const c of checks) {
     if (c.group !== group) {
@@ -452,6 +470,7 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
     }
     if (!configured(c.needs)) {
       tally.skip++;
+      skipped.push(c.needs.filter((n) => !configured([n])));
       say(`  SKIPPED  ${c.name}   (needs ${c.needs.filter((n) => !configured([n])).join(", ")}, not set)`);
       continue;
     }
@@ -462,6 +481,7 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
     } catch (err) {
       if (err instanceof Skip) {
         tally.skip++;
+        skipped.push([]);
         say(`  SKIPPED  ${c.name} -> ${err.message}`);
       } else {
         tally.fail++;
@@ -474,7 +494,10 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
   for (const line of checklist) say(line);
   say(`\n${tally.pass} passed, ${tally.fail} failed, ${tally.skip} skipped.`);
   if (tally.skip > 0) say("SKIPPED checks proved nothing: read each one above before calling the cutover green.");
-  const failed = tally.fail > 0 || (flags.has("--strict") && tally.skip > 0);
+  const allowed = new Set(argv.filter((a) => a.startsWith("--allow-skip=")).flatMap((a) => a.slice(13).split(",")));
+  const unallowed = skipped.filter((n) => !n.some((x) => allowed.has(x)));
+  const failed = tally.fail > 0 || (flags.has("--strict") && unallowed.length > 0);
+  if (flags.has("--strict") && unallowed.length > 0) say(`--strict: ${unallowed.length} skipped check(s) not covered by --allow-skip count as failures.`);
   say(failed ? "RESULT: RED" : "RESULT: GREEN");
   return failed ? 1 : 0;
 }

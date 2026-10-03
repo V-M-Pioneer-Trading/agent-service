@@ -210,7 +210,7 @@ A memory cap for the container (`--memory` on its `docker run`, and/or
 `NODE_OPTIONS=--max-old-space-size=…`) belongs in the bootstrap document in infrastructure: a client
 that pipelines requests and never reads the answers grows Node's heap.
 
-`scripts/cutover-probe.sh` is the production probe used for the Go to TypeScript cutover
+`scripts/cutover-probe.mjs` is the production probe used for the Go to TypeScript cutover
 (see its header); it is safe to re-run after any deploy of this service.
 
 ## API

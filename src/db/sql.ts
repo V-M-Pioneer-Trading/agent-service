@@ -5,7 +5,7 @@
  * Nothing above this file imports `mysql2`; the store (history.ts) and the migration (migrate.ts)
  * take a `Sql`, which the unit tests replace with a recorder.
  *
- * What the Go service's DSN pinned (src/db/db.go) and how it is pinned here:
+ * What the Go service's DSN pinned (src/db/db.go at 65bb4b2, deleted in agent-service#38) and how it is pinned here:
  *
  *  - the session time zone is UTC: `SET time_zone='+00:00'` on every new connection (the DSN's
  *    `time_zone` parameter does the same), and times travel as UTC text (time.ts);

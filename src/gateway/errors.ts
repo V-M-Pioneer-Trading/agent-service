@@ -2,7 +2,7 @@
  * @file The upstream-error mapping for st-gateway's answers: what a caller
  * receives when the gateway does not answer with a 2xx.
  *
- * Ports src/spacetraders/{errors,client}.go and writeUpstreamError. The shared
+ * Ports the former Go service's src/spacetraders/{errors,client}.go and writeUpstreamError (deleted in agent-service#38; see 65bb4b2). The shared
  * contract is meta/fixtures/gateway-errors.json (see contract/fixtures); it is
  * driven through this module by __tests__/gatewayErrors.test.ts. The transport
  * is client.ts; the route handlers let these errors reach the app's error
