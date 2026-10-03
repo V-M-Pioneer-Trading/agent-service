@@ -16,6 +16,7 @@
 
 import type { Response } from "express";
 import { sendText } from "../http/json";
+import { DecodeError, decode, struct, text } from "./decode";
 
 /** Pacing signals st-gateway forwards on a passed-through error, relayed to the caller. */
 export const FORWARDED_HEADERS = ["Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"] as const;
@@ -51,38 +52,28 @@ export class UnreadableAnswer extends Error {
   }
 }
 
+const envelope = struct({ error: struct({ message: text }) });
+
 /**
- * error.message of an envelope, or null when the body is not one: the Go
- * decoder's rules (names match case-insensitively, the last repeat wins, null
- * is absent, a wrongly typed member fails the whole decode, trailing data is
- * an error). "" means a valid document with no message.
+ * error.message of an envelope, or null when the body is not one: decoded by the same rules as every
+ * other gateway answer (names match case-insensitively under Go's folding, the last repeat wins, null
+ * is absent, a wrongly typed member fails the whole decode, trailing data is an error). "" means a
+ * valid document with no message.
  */
-function envelopeMessage(text: string): string | null {
-  let doc: unknown;
+function envelopeMessage(body: Uint8Array): string | null {
   try {
-    doc = JSON.parse(text);
-  } catch {
-    return null;
+    return decode(envelope, body).error.message;
+  } catch (err) {
+    if (err instanceof DecodeError) return null;
+    throw err;
   }
-  if (doc === null) return "";
-  if (typeof doc !== "object" || Array.isArray(doc)) return null;
-  let message = "";
-  for (const [key, value] of Object.entries(doc)) {
-    if (key.toLowerCase() !== "error" || value === null) continue;
-    if (typeof value !== "object" || Array.isArray(value)) return null;
-    for (const [inner, text2] of Object.entries(value)) {
-      if (inner.toLowerCase() !== "message" || text2 === null) continue;
-      if (typeof text2 !== "string") return null;
-      message = text2;
-    }
-  }
-  return message;
 }
 
 /** The human-readable reason in an error body (client.go upstreamMessage). */
 export function upstreamMessage(body: Uint8Array | string): string {
-  const text = typeof body === "string" ? body : Buffer.from(body).toString("utf8");
-  const lifted = envelopeMessage(text);
+  const bytes = typeof body === "string" ? Buffer.from(body, "utf8") : body;
+  const text = Buffer.from(bytes).toString("utf8");
+  const lifted = envelopeMessage(bytes);
   if (lifted !== null && lifted.trim() !== "") return lifted;
   if (text.trim() === "") return NO_MESSAGE;
   const chars = Array.from(text);

@@ -9,7 +9,7 @@
  *  - missing members are zero values ("", 0n, false, the zero time); a missing
  *    list is `null`; an empty one stays `[]`; unknown members are dropped; a
  *    JSON `null` changes nothing (so it is a zero value unless an earlier
- *    repeat of the key already set one);
+ *    repeat of the key already set one), except that it resets a list to null;
  *  - member names match case-insensitively under Go's simple Unicode folding,
  *    not with other punctuation; the last repeat wins, and a repeated object
  *    or array is merged into the earlier one, like Go does;
@@ -21,7 +21,7 @@
  * An empty body is the zero value. A body of only whitespace is a syntax error.
  */
 
-import { JsonSyntaxError, parseJson, type JsonNode } from "./json";
+import { JsonSyntaxError, parseJson, UnencodableTime, type JsonNode } from "./json";
 
 export class DecodeError extends Error {
   constructor(message: string) {
@@ -92,29 +92,35 @@ export const foldName = (name: string): string => Array.from(name, foldRune).joi
 export const ZERO_TIME = "0001-01-01T00:00:00Z";
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
-const TIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+// Go 1.25 reads times with the lenient time.Parse (its strict RFC 3339 check is not applied): the hour may be
+// one digit, the fraction may follow a comma, the zone offset may say minute 60 or hour 24.
+const TIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{1,2}):(\d{2}):(\d{2})(?:[.,](\d+))?(?:Z|([+-])(\d{2}):(\d{2}))$/;
 
 const isLeap = (y: number): boolean => y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
 const daysIn = (month: number, year: number): number => (month === 2 ? (isLeap(year) ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31);
 
 /**
- * time.Time.UnmarshalJSON then MarshalJSON: strict RFC 3339 (upper-case T and
- * Z, a zone, no leap second, fraction digits beyond the ninth cut off), written
- * with the zone it came with ("Z" for any zero offset) and the shortest exact
- * fraction. `text` is the source text between the quotes, exactly as written.
+ * time.Time.UnmarshalJSON then MarshalJSON, as Go 1.25 does them: time.Parse with the RFC 3339
+ * layout (upper-case T and Z, a zone, no leap second, fraction digits beyond the ninth cut off,
+ * leniencies above), written with the zone offset it came with, recomputed ("+00:60" is "+01:00",
+ * any zero offset is "Z"), and the shortest exact fraction. `text` is the source text between
+ * the quotes, exactly as written.
  */
-export function normaliseTime(text: string): string {
+export function normaliseTime(text: string): string | UnencodableTime {
   const m = TIME_RE.exec(text);
   if (m === null) throw new DecodeError(`parsing time ${JSON.stringify(text)} as RFC 3339: not an RFC 3339 time`);
   const [year, month, day, hour, min, sec] = [m[1], m[2], m[3], m[4], m[5], m[6]].map(Number) as [number, number, number, number, number, number];
   const offHour = m[9] === undefined ? 0 : Number(m[9]);
   const offMin = m[10] === undefined ? 0 : Number(m[10]);
-  if (month < 1 || month > 12 || day < 1 || day > daysIn(month, year) || hour > 23 || min > 59 || sec > 59 || offHour > 23 || offMin > 59) {
+  if (month < 1 || month > 12 || day < 1 || day > daysIn(month, year) || hour > 23 || min > 59 || sec > 59 || offHour > 24 || offMin > 60) {
     throw new DecodeError(`parsing time ${JSON.stringify(text)}: field out of range`);
   }
+  const offset = (offHour * 60 + offMin) * 60;
+  if (offset >= 86400) return new UnencodableTime(text);
   const fraction = (m[7] ?? "").slice(0, 9).replace(/0+$/, "");
-  const zone = offHour === 0 && offMin === 0 ? "Z" : `${m[8]}${m[9]}:${m[10]}`;
-  return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${fraction === "" ? "" : `.${fraction}`}${zone}`;
+  const two = (n: number): string => String(n).padStart(2, "0");
+  const zone = offset === 0 ? "Z" : `${m[8]}${two(Math.floor(offset / 3600))}:${two((offset % 3600) / 60)}`;
+  return `${m[1]}-${m[2]}-${m[3]}T${two(hour)}:${m[5]}:${m[6]}${fraction === "" ? "" : `.${fraction}`}${zone}`;
 }
 
 /** strconv.ParseInt(literal, 10, 64): digits only, so no fraction and no exponent. */
@@ -149,7 +155,8 @@ const mismatch = (node: JsonNode, want: string): DecodeError => new DecodeError(
 
 /** `existing` is what an earlier repeat of the same member produced: null changes nothing, objects and arrays merge into it. */
 function bind(node: JsonNode, schema: Schema, existing: unknown): unknown {
-  if (node.t === "null") return existing ?? zero(schema);
+  // null is a no-op in Go, except that it sets a slice to nil.
+  if (node.t === "null") return schema.kind === "list" ? null : (existing ?? zero(schema));
   switch (schema.kind) {
     case "string":
       if (node.t !== "str") throw mismatch(node, "string");
@@ -164,7 +171,8 @@ function bind(node: JsonNode, schema: Schema, existing: unknown): unknown {
       // Go parses the text between the quotes without unescaping it: an escape, or anything that is not ASCII, can never be a time.
       if (node.t !== "str") throw mismatch(node, "time.Time");
       if (!node.plain) throw new DecodeError("parsing time: an escape or a non-ASCII character is not RFC 3339");
-      return normaliseTime(node.v);
+      // An UnencodableTime travels in the field in place of its string; only the writer ever meets it (json.ts).
+      return normaliseTime(node.v) as string;
     case "list": {
       if (node.t !== "arr") throw mismatch(node, "array");
       const before = Array.isArray(existing) ? (existing as unknown[]) : [];

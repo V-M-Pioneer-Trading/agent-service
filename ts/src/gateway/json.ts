@@ -42,33 +42,23 @@ const isWs = (c: number | undefined): boolean => c === 0x20 || c === 0x09 || c =
 const isDigit = (c: number | undefined): boolean => c !== undefined && c >= 0x30 && c <= 0x39;
 
 /**
- * Go's utf8.DecodeRune on bytes[i..]: the code point and its length, or
- * U+FFFD with length 1 for anything that is not a well-formed, shortest-form,
- * non-surrogate sequence.
+ * Length (1 to 4) of the well-formed UTF-8 sequence at b[i], or 0 when what is there is not one:
+ * Go's utf8.DecodeRune says RuneError with width 1 for those, and so each bad byte is one U+FFFD.
+ * Shortest form only, no surrogates, nothing above U+10FFFF.
  */
-export function decodeRune(b: Uint8Array, i: number): readonly [codePoint: number, length: number] {
+export function validLength(b: Uint8Array, i: number): number {
   const b0 = b[i] as number;
-  if (b0 < 0x80) return [b0, 1];
-  const cont = (k: number, lo = 0x80, hi = 0xbf): number | undefined => {
+  if (b0 < 0x80) return 1;
+  const cont = (k: number, lo = 0x80, hi = 0xbf): boolean => {
     const x = b[i + k];
-    return x !== undefined && x >= lo && x <= hi ? x & 0x3f : undefined;
+    return x !== undefined && x >= lo && x <= hi;
   };
-  if (b0 >= 0xc2 && b0 <= 0xdf) {
-    const c1 = cont(1);
-    if (c1 !== undefined) return [((b0 & 0x1f) << 6) | c1, 2];
-  } else if (b0 >= 0xe0 && b0 <= 0xef) {
-    // E0 needs A0..BF (no overlong), ED needs 80..9F (no surrogates).
-    const c1 = cont(1, b0 === 0xe0 ? 0xa0 : 0x80, b0 === 0xed ? 0x9f : 0xbf);
-    const c2 = cont(2);
-    if (c1 !== undefined && c2 !== undefined) return [((b0 & 0x0f) << 12) | (c1 << 6) | c2, 3];
-  } else if (b0 >= 0xf0 && b0 <= 0xf4) {
-    // F0 needs 90..BF (no overlong), F4 needs 80..8F (<= U+10FFFF).
-    const c1 = cont(1, b0 === 0xf0 ? 0x90 : 0x80, b0 === 0xf4 ? 0x8f : 0xbf);
-    const c2 = cont(2);
-    const c3 = cont(3);
-    if (c1 !== undefined && c2 !== undefined && c3 !== undefined) return [((b0 & 0x07) << 18) | (c1 << 12) | (c2 << 6) | c3, 4];
-  }
-  return [0xfffd, 1];
+  if (b0 >= 0xc2 && b0 <= 0xdf) return cont(1) ? 2 : 0;
+  // E0 needs A0..BF (no overlong), ED needs 80..9F (no surrogates).
+  if (b0 >= 0xe0 && b0 <= 0xef) return cont(1, b0 === 0xe0 ? 0xa0 : 0x80, b0 === 0xed ? 0x9f : 0xbf) && cont(2) ? 3 : 0;
+  // F0 needs 90..BF (no overlong), F4 needs 80..8F (<= U+10FFFF).
+  if (b0 >= 0xf0 && b0 <= 0xf4) return cont(1, b0 === 0xf0 ? 0x90 : 0x80, b0 === 0xf4 ? 0x8f : 0xbf) && cont(2) && cont(3) ? 4 : 0;
+  return 0;
 }
 
 const ESCAPES: Readonly<Record<number, string>> = { 0x22: '"', 0x5c: "\\", 0x2f: "/", 0x62: "\b", 0x66: "\f", 0x6e: "\n", 0x72: "\r", 0x74: "\t" };
@@ -107,15 +97,21 @@ export function parseJson(bytes: Uint8Array): JsonNode {
       if (c < 0x20) fail("in string literal");
       i++;
     }
-    let out = buf.toString("latin1", start, i);
+    // Slow path. Runs of well-formed text are cut out of the buffer whole; each bad byte is one U+FFFD.
+    const parts: string[] = [];
+    let run = start;
+    const flush = (end: number): void => {
+      if (end > run) parts.push(buf.toString("utf8", run, end));
+    };
     while (i < n) {
       const c = buf[i] as number;
       if (c === 0x22) {
-        i++;
-        return { v: out, plain: false };
+        flush(i++);
+        return { v: parts.join(""), plain: false };
       }
       if (c < 0x20) fail("in string literal");
       if (c === 0x5c) {
+        flush(i);
         const e = buf[i + 1];
         if (e === 0x75) {
           let cp = hex4(i + 2);
@@ -130,21 +126,26 @@ export function parseJson(bytes: Uint8Array): JsonNode {
               cp = 0xfffd;
             }
           }
-          out += String.fromCodePoint(cp);
+          parts.push(String.fromCodePoint(cp));
         } else if (e !== undefined && ESCAPES[e] !== undefined) {
-          out += ESCAPES[e];
+          parts.push(ESCAPES[e] as string);
           i += 2;
         } else {
           i++;
           fail("in string escape code");
         }
+        run = i;
       } else if (c < 0x80) {
-        out += String.fromCharCode(c);
         i++;
       } else {
-        const [cp, len] = decodeRune(buf, i);
-        out += String.fromCodePoint(cp);
-        i += len;
+        const len = validLength(buf, i);
+        if (len > 0) {
+          i += len;
+        } else {
+          flush(i);
+          parts.push("�");
+          run = ++i;
+        }
       }
     }
     return fail("in string literal");
@@ -259,24 +260,57 @@ export function parseJson(bytes: Uint8Array): JsonNode {
 }
 
 /**
- * JSON text for a value built from null, booleans, strings, bigints (written
- * as integers, whatever their size), arrays and plain objects. Strings go
- * through JSON.stringify; Go would also write `<`, `>`, `&`, U+2028 and U+2029
- * as escapes, which is the same string after parsing.
+ * A time Go reads but cannot write: its zone offset is a day or more. Go's encoder fails on it, so
+ * the answer that carries it is a 200 with an empty body (writeJSON drops the error). It travels in
+ * a time field in place of the string; writing it throws.
  */
-export function stringifyJson(value: unknown): string {
-  if (value === null) return "null";
-  switch (typeof value) {
-    case "bigint":
-      return value.toString();
-    case "boolean":
-      return value ? "true" : "false";
-    case "string":
-      return JSON.stringify(value);
-    case "object":
-      if (Array.isArray(value)) return `[${value.map(stringifyJson).join(",")}]`;
-      return `{${Object.entries(value).map(([k, v]) => `${JSON.stringify(k)}:${stringifyJson(v)}`).join(",")}}`;
-    default:
-      throw new TypeError(`stringifyJson: cannot write a ${typeof value}`);
+export class UnencodableTime {
+  readonly source: string;
+  constructor(source: string) {
+    this.source = source;
+  }
+  toString(): string {
+    return this.source;
   }
 }
+
+/** True when the value holds a time Go could not encode (see UnencodableTime). */
+export function hasUnencodable(value: unknown): boolean {
+  if (value instanceof UnencodableTime) return true;
+  if (Array.isArray(value)) return value.some(hasUnencodable);
+  return typeof value === "object" && value !== null && Object.values(value).some(hasUnencodable);
+}
+
+/** The text of a value built from null, booleans, strings, bigints (written as integers of any size), arrays and plain objects, as pieces of modest size. Throws on what Go could not encode. */
+export function* jsonPieces(value: unknown): Generator<string> {
+  if (value === null) yield "null";
+  else if (typeof value === "bigint") yield value.toString();
+  else if (typeof value === "boolean") yield value ? "true" : "false";
+  else if (typeof value === "string") yield JSON.stringify(value);
+  else if (value instanceof UnencodableTime) throw new TypeError("a time Go cannot encode: zone offset of a day or more");
+  else if (Array.isArray(value)) {
+    yield "[";
+    let first = true;
+    for (const item of value) {
+      if (!first) yield ",";
+      first = false;
+      yield* jsonPieces(item);
+    }
+    yield "]";
+  } else if (typeof value === "object") {
+    yield "{";
+    let first = true;
+    for (const [k, v] of Object.entries(value)) {
+      yield `${first ? "" : ","}${JSON.stringify(k)}:`;
+      first = false;
+      yield* jsonPieces(v);
+    }
+    yield "}";
+  } else throw new TypeError(`jsonPieces: cannot write a ${typeof value}`);
+}
+
+/**
+ * The same as one string, for values known to be small. Strings go through JSON.stringify; Go would
+ * also write `<`, `>`, `&`, U+2028 and U+2029 as escapes, which is the same string after parsing.
+ */
+export const stringifyJson = (value: unknown): string => Array.from(jsonPieces(value)).join("");

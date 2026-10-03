@@ -2,7 +2,7 @@ import { Controller, Get, Path, Request, Response, Route, Tags } from "@tsoa/run
 import type { Request as ExpressRequest } from "express";
 import { lastSegmentOf } from "../http/muxCompat";
 import type { Agent, Contract, CurrentAgent, Ship } from "./models";
-import { answer, callerSession, gatewayOf } from "./support";
+import { answer, callerOf, gatewayOf } from "./support";
 
 /**
  * The live reads: each one asks st-gateway (which owns the shared rate budget
@@ -26,25 +26,25 @@ export class AgentController extends Controller {
   @Get("current-agent")
   public async getCurrentAgent(@Request() req: ExpressRequest): Promise<CurrentAgent> {
     const gateway = gatewayOf(req);
-    const session = callerSession(req);
-    const agent = await gateway.getMyAgent(session);
-    const ships = await gateway.getMyShips(session);
-    const contracts = await gateway.getMyContracts(session);
-    return answer<CurrentAgent>(req, { agent, ships, contracts });
+    const caller = callerOf(req);
+    const agent = await gateway.getMyAgent(caller);
+    const ships = await gateway.getMyShips(caller);
+    const contracts = await gateway.getMyContracts(caller);
+    return await answer<CurrentAgent>(req, { agent, ships, contracts });
   }
 
   /** The current agent's profile. */
   @Tags("agent")
   @Get("agent")
   public async getAgent(@Request() req: ExpressRequest): Promise<Agent> {
-    return answer<Agent>(req, await gatewayOf(req).getMyAgent(callerSession(req)));
+    return await answer<Agent>(req, await gatewayOf(req).getMyAgent(callerOf(req)));
   }
 
   /** The agent's ships; null when the gateway sent none. */
   @Tags("ships")
   @Get("ships")
   public async getShips(@Request() req: ExpressRequest): Promise<Ship[] | null> {
-    return answer<Ship[] | null>(req, await gatewayOf(req).getMyShips(callerSession(req)));
+    return await answer<Ship[] | null>(req, await gatewayOf(req).getMyShips(callerOf(req)));
   }
 
   /**
@@ -56,14 +56,14 @@ export class AgentController extends Controller {
   @Get("ships/{shipSymbol}")
   public async getShip(@Path() shipSymbol: string, @Request() req: ExpressRequest): Promise<Ship> {
     // The symbol is read from the request itself: Express' own copy of it fails on bytes that are not UTF-8.
-    return answer<Ship>(req, await gatewayOf(req).getMyShip(callerSession(req), lastSegmentOf(req)));
+    return await answer<Ship>(req, await gatewayOf(req).getMyShip(callerOf(req), lastSegmentOf(req)));
   }
 
   /** The agent's contracts; null when the gateway sent none. */
   @Tags("contracts")
   @Get("contracts")
   public async getContracts(@Request() req: ExpressRequest): Promise<Contract[] | null> {
-    return answer<Contract[] | null>(req, await gatewayOf(req).getMyContracts(callerSession(req)));
+    return await answer<Contract[] | null>(req, await gatewayOf(req).getMyContracts(callerOf(req)));
   }
 
   /**
@@ -74,6 +74,6 @@ export class AgentController extends Controller {
   @Response<string>(404, "contract not found")
   @Get("contracts/{contractId}")
   public async getContract(@Path() contractId: string, @Request() req: ExpressRequest): Promise<Contract> {
-    return answer<Contract>(req, await gatewayOf(req).getMyContract(callerSession(req), lastSegmentOf(req)));
+    return await answer<Contract>(req, await gatewayOf(req).getMyContract(callerOf(req), lastSegmentOf(req)));
   }
 }

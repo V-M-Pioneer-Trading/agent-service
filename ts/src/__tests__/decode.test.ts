@@ -1,5 +1,8 @@
+import { hasUnencodable, UnencodableTime } from "../gateway/json";
+import { getMyContractResponse, getMyShipResponse, getMyShipsResponse } from "../gateway/schema";
 import { bool, DecodeError, decode, foldName, int64, list, normaliseTime, struct, text, time, ZERO_TIME, type Schema } from "../gateway/decode";
 
+const decodeAs = <S extends Schema>(schema: S, body: string) => decode(schema, Buffer.from(body));
 const dec = <S extends Schema>(schema: S, body: string) => decode(schema, Buffer.from(body));
 
 const inner = struct({ n: int64, s: text });
@@ -23,6 +26,25 @@ describe("zero values and absent members", () => {
   });
   it("members come out in schema order", () => {
     expect(Object.keys(dec(thing, '{"sub":{"s":"x"},"id":"i"}'))).toEqual(["id", "count", "ok", "at", "items", "sub"]);
+  });
+});
+
+describe("null resets a list, and only a list", () => {
+  it("sets an earlier list back to null, at every depth", () => {
+    expect(dec(thing, '{"items":[{"n":1}],"items":null}').items).toBeNull();
+    expect(dec(thing, '{"items":[],"ITEMS":null}').items).toBeNull();
+    expect(dec(thing, '{"items":null,"items":[{"n":2}]}').items).toEqual([{ n: 2n, s: "" }]);
+    expect(dec(thing, '{"sub":{"n":4},"sub":null,"id":"a","id":null,"count":5,"count":null}')).toMatchObject({ sub: { n: 4n }, id: "a", count: 5n });
+  });
+  it("applies to data, cargo.inventory, modules, mounts, deposits and terms.deliver", () => {
+    const ship = decodeAs(getMyShipsResponse, '{"data":[{"modules":[{}],"modules":null,"mounts":[{"deposits":["x"],"deposits":null}],"cargo":{"inventory":[{}],"inventory":null}}],"data":null}');
+    expect(ship.data).toBeNull();
+    const one = decodeAs(getMyShipResponse, '{"data":{"modules":[{}],"modules":null,"mounts":[{"deposits":["x"],"deposits":null}],"mounts":[{"deposits":["x"],"deposits":null}],"cargo":{"inventory":[{}],"inventory":null}}}').data;
+    expect(one.modules).toBeNull();
+    expect(one.cargo.inventory).toBeNull();
+    expect(one.mounts?.[0]?.deposits).toBeNull();
+    const contract = decodeAs(getMyContractResponse, '{"data":{"terms":{"deliver":[{}],"deliver":null}}}').data;
+    expect(contract.terms.deliver).toBeNull();
   });
 });
 
@@ -99,6 +121,13 @@ describe("times", () => {
     ["2026-01-02T03:04:05.500-05:30", "2026-01-02T03:04:05.5-05:30"],
     ["2026-01-02T03:04:05+00:30", "2026-01-02T03:04:05+00:30"],
     ["2026-01-02T03:04:05-00:45", "2026-01-02T03:04:05-00:45"],
+    ["2026-01-02T3:04:05Z", "2026-01-02T03:04:05Z"],
+    ["2026-01-02T03:04:05,5Z", "2026-01-02T03:04:05.5Z"],
+    ["2026-01-02T03:04:05+00:60", "2026-01-02T03:04:05+01:00"],
+    ["2026-01-02T03:04:05-00:60", "2026-01-02T03:04:05-01:00"],
+    ["2026-01-02T03:04:05+02:60", "2026-01-02T03:04:05+03:00"],
+    ["2026-01-02T03:04:05+23:59", "2026-01-02T03:04:05+23:59"],
+    ["2026-01-02T03:04:05+00:00", "2026-01-02T03:04:05Z"],
     ["2024-02-29T00:00:00Z", "2024-02-29T00:00:00Z"],
     ["0000-01-01T00:00:00Z", "0000-01-01T00:00:00Z"],
     ["9999-12-31T23:59:59Z", "9999-12-31T23:59:59Z"],
@@ -110,10 +139,15 @@ describe("times", () => {
   it.each([
     "2026-01-02 03:04:05Z", "2026-01-02t03:04:05z", "2026-01-02T03:04:05", "2026-01-02", "", " 2026-01-02T03:04:05Z", "2026-01-02T03:04:05Z ",
     "2026-12-31T23:59:60Z", "2026-13-02T03:04:05Z", "2026-00-02T03:04:05Z", "2026-02-30T03:04:05Z", "2025-02-29T00:00:00Z", "1900-02-29T00:00:00Z", "2026-01-00T03:04:05Z",
-    "2026-01-02T24:04:05Z", "2026-01-02T03:60:05Z", "2026-01-02T03:04:05+0200", "2026-01-02T03:04:05+24:00", "2026-01-02T03:04:05+02:60",
-    "2026-01-02T03:04:05,5Z", "2026-01-02T03:04:05.Z", "2026-1-2T3:4:5Z", "2026-01-02T03:04:05١Z",
+    "2026-01-02T24:04:05Z", "2026-01-02T03:60:05Z", "2026-01-02T03:04:05+0200", "2026-01-02T03:04:05+25:00", "2026-01-02T03:04:05+24:61", "2026-01-02T03:04:05+02:61",
+    "2026-01-02T123:04:05Z", "2026-01-02T03:04:05,Z", "2026-01-02T03:04:05.Z", "2026-1-2T3:4:5Z", "2026-01-02T03:04:05١Z",
   ])("%j is not a time", (sent) => {
     expect(() => dec(thing, JSON.stringify({ at: sent }))).toThrow(DecodeError);
+  });
+
+  it.each(["+24:00", "-24:00", "+23:60", "+24:05", "-24:60"])("a zone offset of %s is read, and cannot be written", (zone) => {
+    expect(normaliseTime(`2026-01-02T03:04:05${zone}`)).toBeInstanceOf(UnencodableTime);
+    expect(hasUnencodable(dec(thing, JSON.stringify({ at: `2026-01-02T03:04:05${zone}` })))).toBe(true);
   });
 
   it("is judged on the source text: an escape can never be a time", () => {

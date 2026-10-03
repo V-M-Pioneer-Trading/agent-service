@@ -7,7 +7,7 @@ import {
 } from "@v-m-pioneer-trading/clerk-client";
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
 import { GATEWAY_LOCAL } from "./controllers/support";
-import { GatewayClient } from "./gateway/client";
+import { CallerGone, GatewayClient } from "./gateway/client";
 import { UnreadableAnswer, UpstreamError, writeUpstreamError } from "./gateway/errors";
 import { declaring, routePolicy, type Policy, type Registrar } from "./auth";
 import { ConfigError, loadConfig, type Config } from "./config";
@@ -74,6 +74,8 @@ export function createApp(deps: AppDeps) {
       next(err);
       return;
     }
+    // The caller left; nobody is there to answer, and the gateway did nothing wrong.
+    if (err instanceof CallerGone) return;
     if (err instanceof UpstreamError || err instanceof UnreadableAnswer) {
       writeUpstreamError(res, err);
       return;

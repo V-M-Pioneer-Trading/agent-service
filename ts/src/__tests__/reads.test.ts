@@ -10,7 +10,7 @@ interface Seen {
   url: string;
   headers: http.IncomingHttpHeaders;
 }
-type Reply = { status?: number; body?: string; headers?: Record<string, string> };
+type Reply = { status?: number; body?: string; headers?: Record<string, string>; delay?: number };
 
 const servers: http.Server[] = [];
 afterAll(async () => {
@@ -24,7 +24,7 @@ async function gateway(script: Record<string, Reply>) {
     const reply = script[`${req.method} ${req.url}`];
     res.statusCode = reply?.status ?? (reply === undefined ? 599 : 200);
     for (const [k, v] of Object.entries(reply?.headers ?? {})) res.setHeader(k, v);
-    res.end(reply?.body ?? (reply === undefined ? "nothing scripted" : ""));
+    setTimeout(() => res.end(reply?.body ?? (reply === undefined ? "nothing scripted" : "")), reply?.delay ?? 0);
   });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -216,5 +216,55 @@ describe("redirects from the gateway", () => {
   it("a Location that is no URL is a 504", async () => {
     const { app } = await appWith({ "GET /proxy/my/agent": { status: 302, headers: { Location: "http://[bad" } } });
     expect((await request(app).get("/api/agent/v1/agent").set("Authorization", SESSION)).status).toBe(504);
+  });
+});
+
+describe("answers Go cannot encode, and answers too big for one string", () => {
+  it("a zone offset of a day or more is read but cannot be written: 200, application/json, no body", async () => {
+    const { app } = await appWith({ "GET /proxy/my/contracts/C1": { body: '{"data":{"id":"C1","expiration":"2026-01-02T03:04:05+24:00"}}' } });
+    const res = await request(app).get("/api/agent/v1/contracts/C1").set("Authorization", SESSION);
+    expect([res.status, res.headers["content-type"], res.text]).toEqual([200, "application/json", ""]);
+  });
+
+  it("a lenient time is normalised, and the offset recomputed", async () => {
+    const { app } = await appWith({ "GET /proxy/my/contracts/C1": { body: '{"data":{"expiration":"2026-01-02T3:04:05,5+00:60"}}' } });
+    const res = await request(app).get("/api/agent/v1/contracts/C1").set("Authorization", SESSION);
+    expect(JSON.parse(res.text).expiration).toBe("2026-01-02T03:04:05.5+01:00");
+  });
+
+  it("a long list goes out in pieces, whole", async () => {
+    const items = Array.from({ length: 30000 }, (_, k) => `{"symbol":"S${k}","registration":{"name":"${"x".repeat(60)}"}}`).join(",");
+    const { app } = await appWith({ "GET /proxy/my/ships": { body: `{"data":[${items}]}` } });
+    const res = await request(app).get("/api/agent/v1/ships").set("Authorization", SESSION);
+    expect(res.status).toBe(200);
+    expect(res.text.length).toBeGreaterThan(3 << 20);
+    const ships = JSON.parse(res.text) as Array<{ symbol: string }>;
+    expect(ships).toHaveLength(30000);
+    expect(ships[29999]?.symbol).toBe("S29999");
+  });
+});
+
+describe("a caller who hangs up", () => {
+  it("stops /current-agent before its remaining calls", async () => {
+    const { app, seen } = await appWith({
+      "GET /proxy/my/agent": { body: agent, delay: 200 },
+      "GET /proxy/my/ships": { body: '{"data":[]}' },
+      "GET /proxy/my/contracts": { body: "" },
+    });
+    const server = http.createServer(app);
+    servers.push(server);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => {
+      const req = http.get({ port, host: "127.0.0.1", path: "/api/agent/v1/current-agent", headers: { Authorization: SESSION } });
+      req.on("error", () => undefined);
+      const poll = setInterval(() => {
+        if (seen.length === 0) return;
+        clearInterval(poll);
+        req.destroy();
+        setTimeout(resolve, 500);
+      }, 5);
+    });
+    expect(seen.map((x) => x.url)).toEqual(["/proxy/my/agent"]);
   });
 });

@@ -1,4 +1,4 @@
-import { decodeRune, JsonSyntaxError, MAX_DEPTH, parseJson, stringifyJson, type JsonNode } from "../gateway/json";
+import { JsonSyntaxError, MAX_DEPTH, parseJson, stringifyJson, type JsonNode } from "../gateway/json";
 
 const parse = (s: string | number[]): JsonNode => parseJson(typeof s === "string" ? Buffer.from(s) : Uint8Array.from(s));
 const str = (s: string | number[]): string => {
@@ -32,6 +32,9 @@ describe("parseJson: strings are unquoted like Go does", () => {
     // A truncated three-byte sequence is two bad bytes in Go (Node's decoder would write one replacement).
     expect(str([0x22, 0xe2, 0x82, 0x22])).toBe("\ufffd\ufffd");
     // Overlong, surrogate and beyond-Unicode encodings are invalid byte by byte.
+    expect(str([0x22, 0xe0, 0x80, 0x80, 0x22])).toBe("���");
+    expect(str([0x22, 0xf0, 0x80, 0x80, 0x80, 0x22])).toBe("����");
+    expect(str([0x22, 0xe0, 0xa0, 0x80, 0x22])).toBe("ࠀ");
     expect(str([0x22, 0xc0, 0x80, 0x22])).toBe("\ufffd\ufffd");
     expect(str([0x22, 0xed, 0xa0, 0x80, 0x22])).toBe("\ufffd\ufffd\ufffd");
     expect(str([0x22, 0xf4, 0x90, 0x80, 0x80, 0x22])).toBe("\ufffd\ufffd\ufffd\ufffd");
@@ -39,7 +42,6 @@ describe("parseJson: strings are unquoted like Go does", () => {
 
   it("reads valid multi-byte text as is", () => {
     expect(str('"é日\u{1F600}"')).toBe("é日\u{1F600}");
-    expect(decodeRune(Buffer.from("€"), 0)).toEqual([0x20ac, 3]);
   });
 
   it("joins a surrogate pair and replaces a lone surrogate, reading what follows on its own", () => {
@@ -83,5 +85,42 @@ describe("stringifyJson", () => {
   });
   it("refuses what it cannot write exactly", () => {
     expect(() => stringifyJson({ n: 1 })).toThrow(TypeError);
+  });
+});
+
+describe("sendJson writes in pieces", () => {
+  it("a 3 MB answer goes out in several writes, waits for drain, and ends with a newline", async () => {
+    const writes: string[] = [];
+    let drained = 0;
+    const listeners: Record<string, () => void> = {};
+    const res = {
+      statusCode: 0,
+      destroyed: false,
+      headers: {} as Record<string, string>,
+      setHeader(k: string, v: string) {
+        this.headers[k] = v;
+      },
+      write(chunk: string) {
+        writes.push(chunk);
+        return writes.length % 2 === 0; // every other write says "slow down"
+      },
+      once(event: string, fn: () => void) {
+        listeners[event] = fn;
+        if (event === "drain") setTimeout(() => ((drained += 1), fn()), 0);
+      },
+      end(chunk?: string) {
+        if (chunk !== undefined) writes.push(chunk);
+      },
+    };
+    const value = Array.from({ length: 60000 }, (_, k) => ({ n: BigInt(k), s: "x".repeat(40) }));
+    const { sendJson } = await import("../http/json");
+    await sendJson(res as never, value);
+    expect(writes.length).toBeGreaterThan(2);
+    expect(drained).toBeGreaterThan(0);
+    const text = writes.join("");
+    expect(text.endsWith("]\n")).toBe(true);
+    expect(text.length).toBeGreaterThan(3 << 20);
+    expect(JSON.parse(text)).toHaveLength(60000);
+    expect([res.statusCode, res.headers["Content-Type"]]).toEqual([200, "application/json"]);
   });
 });
