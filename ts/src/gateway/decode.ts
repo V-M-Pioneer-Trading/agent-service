@@ -21,7 +21,7 @@
  * An empty body is the zero value. A body of only whitespace is a syntax error.
  */
 
-import { JsonSyntaxError, parseJson, UnencodableTime, type JsonNode } from "./json";
+import { JsonSyntaxError, parseFirstJson, parseJson, UnencodableTime, type JsonNode } from "./json";
 
 export class DecodeError extends Error {
   constructor(message: string) {
@@ -123,6 +123,23 @@ export function normaliseTime(text: string): string | UnencodableTime {
   return `${m[1]}-${m[2]}-${m[3]}T${two(hour)}:${m[5]}:${m[6]}${fraction === "" ? "" : `.${fraction}`}${zone}`;
 }
 
+/**
+ * The instant a time text names, to the nanosecond: whole seconds since the Unix epoch (negative before it,
+ * exact for every year Go can write) and the nanoseconds. The text is what the decoder accepts, normalised or
+ * not (an `UnencodableTime`'s source too), so a zone offset of a day or more is read like any other.
+ */
+export function timeInstant(text: string): { readonly seconds: number; readonly nanos: number } {
+  const m = TIME_RE.exec(text);
+  if (m === null) throw new DecodeError(`parsing time ${JSON.stringify(text)} as RFC 3339: not an RFC 3339 time`);
+  const [year, month, day, hour, min, sec] = [m[1], m[2], m[3], m[4], m[5], m[6]].map(Number) as [number, number, number, number, number, number];
+  // setUTCFullYear, not Date.UTC: the latter reads years 0 to 99 as 1900 to 1999.
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, min, sec, 0);
+  const offset = m[8] === undefined ? 0 : (Number(m[9]) * 60 + Number(m[10])) * 60 * (m[8] === "+" ? 1 : -1);
+  return { seconds: date.getTime() / 1000 - offset, nanos: Number((m[7] ?? "").slice(0, 9).padEnd(9, "0")) };
+}
+
 /** strconv.ParseInt(literal, 10, 64): digits only, so no fraction and no exponent. */
 function parseInt64(raw: string): bigint {
   if (!/^-?\d+$/.test(raw)) throw new DecodeError(`cannot unmarshal number ${raw} into an int64`);
@@ -199,6 +216,24 @@ export function decode<S extends Schema>(schema: S, body: Uint8Array): Decoded<S
   } catch (err) {
     if (err instanceof JsonSyntaxError) throw new DecodeError(err.message);
     throw err;
+  }
+  return bind(node, schema, undefined) as Decoded<S>;
+}
+
+/**
+ * `json.NewDecoder(r).Decode(&v)` on a request body (contract README note 28): the first JSON value
+ * is decoded and whatever follows it is never looked at. Nothing at all, or only whitespace, is
+ * "EOF"; a value cut short is "unexpected EOF"; a top-level `null` changes nothing, so it is the
+ * zero value. A `DecodeError` is the caller's 400.
+ */
+export function decodeFirstValue<S extends Schema>(schema: S, body: Uint8Array): Decoded<S> {
+  let node: JsonNode;
+  try {
+    node = parseFirstJson(body);
+  } catch (err) {
+    if (!(err instanceof JsonSyntaxError)) throw err;
+    if (err.eof) throw new DecodeError(body.every((b) => b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d) ? "EOF" : "unexpected EOF");
+    throw new DecodeError(err.message);
   }
   return bind(node, schema, undefined) as Decoded<S>;
 }

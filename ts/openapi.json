@@ -7,22 +7,6 @@
     "requestBodies": {},
     "responses": {},
     "schemas": {
-      "HealthStatus": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "ok"
-            ],
-            "nullable": false
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "type": "object",
-        "additionalProperties": false
-      },
       "Agent": {
         "description": "The agent's profile.",
         "properties": {
@@ -603,6 +587,261 @@
         "type": "object",
         "additionalProperties": false
       },
+      "ShipyardTransaction": {
+        "properties": {
+          "waypointSymbol": {
+            "type": "string"
+          },
+          "shipType": {
+            "type": "string"
+          },
+          "price": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "agentSymbol": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "RFC 3339"
+          }
+        },
+        "required": [
+          "waypointSymbol",
+          "shipType",
+          "price",
+          "agentSymbol",
+          "timestamp"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "PurchaseShipResult": {
+        "description": "The new ship, what it cost and what the agent has left.",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/Agent"
+          },
+          "ship": {
+            "$ref": "#/components/schemas/Ship"
+          },
+          "transaction": {
+            "$ref": "#/components/schemas/ShipyardTransaction"
+          }
+        },
+        "required": [
+          "agent",
+          "ship",
+          "transaction"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "PurchaseShipRequest": {
+        "properties": {
+          "shipType": {
+            "type": "string"
+          },
+          "waypointSymbol": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "shipType",
+          "waypointSymbol"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "MarketTransaction": {
+        "properties": {
+          "waypointSymbol": {
+            "type": "string"
+          },
+          "shipSymbol": {
+            "type": "string"
+          },
+          "tradeSymbol": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "units": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pricePerUnit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "RFC 3339"
+          }
+        },
+        "required": [
+          "waypointSymbol",
+          "shipSymbol",
+          "tradeSymbol",
+          "type",
+          "units",
+          "pricePerUnit",
+          "totalPrice",
+          "timestamp"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "MarketTransactionResult": {
+        "description": "purchase-cargo and sell-cargo answer the same shape.",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/Agent"
+          },
+          "cargo": {
+            "$ref": "#/components/schemas/ShipCargo"
+          },
+          "transaction": {
+            "$ref": "#/components/schemas/MarketTransaction"
+          }
+        },
+        "required": [
+          "agent",
+          "cargo",
+          "transaction"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "CargoTransactionRequest": {
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "The trade good's symbol."
+          },
+          "units": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "symbol",
+          "units"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "Delivery": {
+        "description": "One delivery against a contract, as recorded.",
+        "properties": {
+          "contractId": {
+            "type": "string"
+          },
+          "shipSymbol": {
+            "type": "string"
+          },
+          "tradeSymbol": {
+            "type": "string"
+          },
+          "units": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deliveredAt": {
+            "type": "string",
+            "description": "RFC 3339, UTC"
+          }
+        },
+        "required": [
+          "contractId",
+          "shipSymbol",
+          "tradeSymbol",
+          "units",
+          "deliveredAt"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "TransactionType": {
+        "type": "string",
+        "enum": [
+          "SHIP_PURCHASE",
+          "PURCHASE",
+          "SELL"
+        ]
+      },
+      "Transaction": {
+        "description": "One ship purchase, cargo purchase or cargo sale. A member the row has no value for is absent.",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/TransactionType"
+          },
+          "shipSymbol": {
+            "type": "string"
+          },
+          "waypointSymbol": {
+            "type": "string"
+          },
+          "shipType": {
+            "type": "string"
+          },
+          "tradeSymbol": {
+            "type": "string"
+          },
+          "units": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pricePerUnit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalPrice": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "agentCredits": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "RFC 3339, UTC, to the second"
+          }
+        },
+        "required": [
+          "type",
+          "shipSymbol",
+          "waypointSymbol",
+          "totalPrice",
+          "agentCredits",
+          "occurredAt"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "HealthStatus": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ],
+            "nullable": false
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
       "ContractPayment": {
         "properties": {
           "onAccepted": {
@@ -714,6 +953,45 @@
         "type": "object",
         "additionalProperties": false
       },
+      "ContractAndAgent": {
+        "description": "accept-contract and fulfill-contract answer the same shape.",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/Agent"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/Contract"
+          }
+        },
+        "required": [
+          "agent",
+          "contract"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
+      "DeliveryRequest": {
+        "description": "What fleet-service reports after a successful deliver-contract.",
+        "properties": {
+          "shipSymbol": {
+            "type": "string"
+          },
+          "tradeSymbol": {
+            "type": "string"
+          },
+          "units": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "shipSymbol",
+          "tradeSymbol",
+          "units"
+        ],
+        "type": "object",
+        "additionalProperties": false
+      },
       "CurrentAgent": {
         "description": "Agent, ships and contracts in one answer.",
         "properties": {
@@ -753,6 +1031,537 @@
     "contact": {}
   },
   "paths": {
+    "/api/agent/v1/ships/purchase": {
+      "post": {
+        "operationId": "PurchaseShip",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseShipResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request body, or a member is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "session lacks fleet:control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Calls SpaceTraders' purchase-ship, then records the transaction in the history.",
+        "tags": [
+          "ships"
+        ],
+        "security": [],
+        "parameters": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchaseShipRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/ships/{shipSymbol}/purchase": {
+      "post": {
+        "operationId": "PurchaseCargo",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketTransactionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request body, or a member is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "session lacks fleet:control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Calls SpaceTraders' purchase-cargo, then records the transaction in the history.",
+        "tags": [
+          "ships"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Ship symbol",
+            "in": "path",
+            "name": "shipSymbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CargoTransactionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/ships/{shipSymbol}/sell": {
+      "post": {
+        "operationId": "SellCargo",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketTransactionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request body, or a member is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "session lacks fleet:control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Calls SpaceTraders' sell-cargo, then records the transaction in the history.",
+        "tags": [
+          "ships"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Ship symbol",
+            "in": "path",
+            "name": "shipSymbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CargoTransactionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/contracts/{contractId}/deliveries": {
+      "get": {
+        "operationId": "GetDeliveries",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Delivery"
+                  },
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "failed to load deliveries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "a token was presented and auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "The recorded deliveries of a contract, oldest first.",
+        "tags": [
+          "contracts"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Contract ID",
+            "in": "path",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "RecordDelivery",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Delivery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request body, or a member is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "session lacks fleet:control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "failed to record delivery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Records one delivery against a contract. Called by fleet-service after a successful\ndeliver-contract action on SpaceTraders, forwarding its caller's session.\n\nThe body is read by this handler, not by tsoa: the first JSON value, whatever follows it ignored,\nmember names in any case, Content-Type never checked, at most 1 MiB. It is declared optional\nbelow only so that it is documented: nothing validates it before the handler runs.",
+        "tags": [
+          "contracts"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Contract ID",
+            "in": "path",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/v1/transactions": {
+      "get": {
+        "operationId": "GetTransactions",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Transaction"
+                  },
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid query parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "failed to load transactions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "a token was presented and auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Ship purchases, cargo purchases and cargo sells, newest first. Optionally filtered by ship symbol\nand/or type.\n\nThe query string is read by the handler with Go's rules (the first of a repeated name wins, a pair\nwith a `;` or a bad escape is dropped, names are case sensitive), so Express' parser is off and\nthese parameters are documented only: nothing validates them before the handler runs. A bad `type`\nis reported before a bad `limit`; both are 400 and need no session.",
+        "tags": [
+          "ships"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Filter by ship symbol",
+            "in": "query",
+            "name": "shipSymbol",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by transaction type",
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TransactionType"
+            }
+          },
+          {
+            "description": "Max results, 1-1000 (default 100; a larger value is capped at 1000)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "Health",
@@ -797,6 +1606,172 @@
         ],
         "security": [],
         "parameters": []
+      }
+    },
+    "/api/agent/v1/contracts/{contractId}/accept": {
+      "post": {
+        "operationId": "AcceptContract",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractAndAgent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "session lacks fleet:control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Calls SpaceTraders' accept-contract, then persists the resulting contract state (best effort:\na failed write is logged and the answer is still the gateway's).",
+        "tags": [
+          "contracts"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Contract ID",
+            "in": "path",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/agent/v1/contracts/{contractId}/fulfill": {
+      "post": {
+        "operationId": "FulfillContract",
+        "responses": {
+          "200": {
+            "description": "Ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractAndAgent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "no verified session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "session lacks fleet:control",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "st-gateway answered with something unreadable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "auth-service could not be asked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "st-gateway did not answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "description": "Calls SpaceTraders' fulfill-contract, then persists the resulting contract state.",
+        "tags": [
+          "contracts"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "description": "Contract ID",
+            "in": "path",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/api/agent/v1/current-agent": {

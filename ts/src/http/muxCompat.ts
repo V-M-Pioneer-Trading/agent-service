@@ -83,8 +83,25 @@ const decodedPaths = new WeakMap<IncomingMessage, Buffer>();
 export const decodedPathOf = (req: IncomingMessage): Buffer => decodedPaths.get(req) ?? Buffer.alloc(0);
 /** What follows the last "/" of the decoded path: `mux.Vars` of a route that ends in a variable. */
 export function lastSegmentOf(req: IncomingMessage): Buffer {
+  return segmentFromEnd(req, 0);
+}
+
+/**
+ * A segment of the decoded path counted from the end (0 is the last): `mux.Vars` of a variable that
+ * is followed by a literal, as in `/ships/{shipSymbol}/sell` (1). A `%2F` is a slash by the time the
+ * router looks, so a variable never holds one.
+ */
+export function segmentFromEnd(req: IncomingMessage, fromEnd: number): Buffer {
   const path = decodedPathOf(req);
-  return path.subarray(path.lastIndexOf(0x2f) + 1);
+  let end = path.length;
+  for (let n = 0; ; n++) {
+    // (A negative offset would count from the other end.)
+    if (end < 1) return Buffer.alloc(0);
+    const start = path.lastIndexOf(0x2f, end - 1) + 1;
+    if (n === fromEnd) return path.subarray(start, end);
+    if (start === 0) return Buffer.alloc(0);
+    end = start - 1;
+  }
 }
 
 const CORS_HEADER_NAMES = [
@@ -135,17 +152,23 @@ export const muxCompat: RequestHandler = (req: Request, res: Response, next: Nex
   next();
 };
 
-/** The terminal handler: wrap in notFound() from clerk-client. */
-export const terminalAnswer = (req: Request, res: Response): void => {
+/** net/http's NotFound, which is what a path under /api/agent that no route takes gets. */
+export function pageNotFound(res: Response): void {
   // CORS headers belong to a matched route; this answer is for none.
   for (const name of CORS_HEADER_NAMES) res.removeHeader(name);
+  res.status(404);
+  res.setHeader("Content-Type", TEXT);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.end("404 page not found\n");
+}
+
+/** The terminal handler: wrap in notFound() from clerk-client. */
+export const terminalAnswer = (req: Request, res: Response): void => {
   if (req.path.startsWith(AGENT_PREFIX)) {
-    res.status(404);
-    res.setHeader("Content-Type", TEXT);
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.end("404 page not found\n");
+    pageNotFound(res);
     return;
   }
+  for (const name of CORS_HEADER_NAMES) res.removeHeader(name);
   // A catch-all OPTIONS route in the Go router makes every other method
   // "a wrong method on a path that exists": a bare 405, no body, no Allow.
   res.status(405).end();

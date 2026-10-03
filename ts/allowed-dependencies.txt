@@ -9,6 +9,8 @@
 @tsoa/runtime                          # decorators and request validation of the generated routes
 @v-m-pioneer-trading/clerk-client      # guard, secured(), the auth envelope (release tarball)
 express                                # HTTP server, major version 4 (clerk-client's adapter)
+mysql2                                 # MySQL driver, raw SQL, no ORM (the history tables)
+swagger-ui-express                     # Swagger UI at /api/agent/swagger/, serving the committed openapi.json
 
 [devDependencies]
 # build and test only; none of it is in the runtime image

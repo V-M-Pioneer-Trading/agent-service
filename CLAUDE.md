@@ -33,16 +33,17 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
 | Typecheck / build / test | `npm run typecheck` / `npm run build` / `npm test` |
 | Regenerate the OpenAPI spec | `npm run openapi` (CI fails on drift in `ts/openapi.json`) |
 | Dependency allowlist | `npm run check:deps`; a new direct dependency needs a line in `allowed-dependencies.txt` |
-| Contract suite against the port | `npm run build` then, from the repo root, `node ts/scripts/run-contract.js` (runs `contract/` unchanged with `CONTRACT_COMMAND`; set `CONTRACT_IMAGE` to use an image) |
+| Contract suite against the port | `npm run build` then, from the repo root, `node ts/scripts/run-contract.js` (runs `contract/` unchanged with `CONTRACT_COMMAND`; set `CONTRACT_IMAGE` to use an image). It needs a MySQL: `CONTRACT_MYSQL_*` as in `contract/README.md`, and a fresh database for a port |
 
-* **Skip list.** `ts/contract-skip.txt` lists, as regexes, the contract cases of routes not
-  ported yet (matched like `--test-skip-pattern`: against the space-joined describe and test names,
-  or any ancestor's). `ts/scripts/run-contract.js` runs the whole suite unfiltered and judges it: a case
-  off the list must pass; a case on the list must not pass (bar the vacuous ones named in
-  `ts/contract-skip-passing.txt`), so a too-broad or stale pattern fails; a pattern that matches
-  nothing fails; and the measured numbers must equal `ts/contract-skip.expected`. Each porting PR
-  deletes its lines and updates the numbers; #37 leaves the list empty. Never add a line for a case
-  that fails for another reason, and never edit `contract/` to make the port pass.
+* **Skip list.** `ts/contract-skip.txt` is empty: every route is ported (#37), so the whole contract
+  suite has to pass, bar the one case the suite skips itself (`dynamic-skips=1` in
+  `ts/contract-skip.expected`: the swagger page names no spec URL because the spec is embedded in it).
+  The mechanism stays: a listed pattern is a regex matched like `--test-skip-pattern` (against the
+  space-joined describe and test names, or any ancestor's), `ts/scripts/run-contract.js` runs the whole
+  suite unfiltered and judges it, a case off the list must pass, a case on it must not (bar the vacuous
+  ones in `ts/contract-skip-passing.txt`), a pattern that matches nothing fails, and the measured numbers
+  must equal `ts/contract-skip.expected`. Never add a line for a case that fails for another reason,
+  and never edit `contract/` to make the port pass.
 * **Auth.** Routes are declared in `ts/src/auth.ts` (`routePolicy`, the TS twin of
   `SetUpRouter`); tsoa's generated routes are registered through `declaring()`, which puts the
   clerk-client declaration first and refuses to start on a route with no entry. The app is also
@@ -96,7 +97,8 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
     an IPv4 shorthand host (`2130706433`) is normalised by WHATWG; an IPv6 zone is refused; non-ASCII hosts go
     through UTS 46, Go's IDNA tables; repeated `Location` headers are read as the text up to the first `", "`
     (fetch joins them), so a single Location holding a comma and a space is cut there; Go sends
-    `Content-Type` on the GET that follows a 301/302/303 of a POST, this client does not (4c's concern).
+    `Content-Type` on the GET that follows a 301/302/303 of a POST, and so does this client now (#37; a call that had no
+    body, accept and fulfill, has none to send).
   * **Writing** is in pieces (`http/json.ts` `sendJson`), so an answer too big for one string still goes out.
   * **Known deviation (stale slice).** Go decodes a repeated key into the earlier slice, and a slice that was
     shrunk by an earlier repeat leaks old elements when a third repeat grows it again
@@ -107,7 +109,56 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
     cannot print a bigint. `controllers/models.ts` is the spec's view of the same shapes, and a type
     assertion there fails the build if it drifts from the decoder. Path symbols are read from
     `lastSegmentOf(req)` (the exact decoded bytes, kept by muxCompat) and re-escaped with `pathEscape`, so
-    bytes that are not UTF-8 survive.
+    bytes that are not UTF-8 survive; a variable followed by a literal (`/ships/{shipSymbol}/sell`) is
+    `segmentFromEnd(req, 1)`.
+* **Writes, history and Swagger (#37).** The six `fleet:control` POSTs are in `controllers/contracts.controller.ts`
+  and `ships.controller.ts`, the two public DB reads in `history.controller.ts`.
+  * **Bodies and queries are read by the handlers**, never by Express or tsoa. `http/body.ts` is Go's
+    `json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode`: the first JSON value, the rest never read
+    (`parseFirstJson`), Content-Type never looked at, a value cut short by the cap is `http: request body too
+    large`; `decodeFirstValue` binds it with the gateway decoder's rules (names fold, last repeat wins, `null` is
+    a no-op, int64 exact), and a refusal is the 400 `invalid request body: <why>` (the wording is ours bar
+    `EOF`, `unexpected EOF` and the cap's). `http/query.ts` is `r.URL.Query()` and `strconv.Atoi`; Express'
+    query parser is switched off (`app.set("query parser", false)`) so that tsoa's `@Query()` parameters, which
+    exist only to document the route in OpenAPI, always see nothing and validate nothing; the same goes for the
+    optional `@Body()` parameters (no body parser is mounted, `request.body` is undefined). `writes.test.ts`
+    pins that tsoa never answers first. Validation comes after auth and before any gateway call.
+  * **MySQL** is `mysql2` with raw SQL and no ORM; `db/sql.ts` is the only module that imports it and is the
+    only door (`Sql`), which the unit tests replace with `testSupport/fakeSql.ts` (the sqlmock of the TS tests).
+    Statements run prepared. The session is UTC (`SET time_zone='+00:00'` on each new connection) and times are
+    sent as UTC text, microseconds truncated like the Go driver (`db/time.ts`); MySQL rounds a TIMESTAMP(0) and
+    refuses what is outside 1970..2038 itself. BIGINT comes back as a string (`supportBigNumbers` +
+    `bigNumberStrings`) and goes in as decimal text, so nothing passes through a double; a `LIMIT` is sent as
+    text for the same reason. Pool: 10 connections, 10 idle, none older than 3 minutes (checked when a connection
+    is taken: mysql2 has no lifetime), 15 pings 2 s apart at startup, all before any port is bound.
+    `db/migrate.ts` is `src/db/db.go`'s DDL statement for statement, and `db.test.ts` compares the two while that file exists.
+  * **The server** is `http.createServer` with `connectionsCheckingInterval: 1000` (Node's default of 30 s makes
+    the 10 s header timeout 10 to 40 s) and `headersTimeout`/`requestTimeout` as Go's `ReadHeaderTimeout`/`ReadTimeout`;
+    an answer that leaves the request body unread closes the connection like Go's (Node would read and discard
+    any amount: an endless chunked body was tens of GB); like Go, up to 256 KiB of an unread body (and 1 s of waiting for it) is
+    read to keep the connection, then a FIN, 500 ms of discarding and a close (`closeWhenBodyUnread`: no listener on the
+    socket, which would detach it from the parser and wedge a connection that other callers share behind a proxy; the
+    request is resumed and `socket.bytesRead` polled). A caller that is too slow is closed without a 408, as Go does
+    (`clientError`), and `100 Continue` is never sent by Node itself: `http/body.ts` sends it when a handler starts
+    reading the body. The five Swagger assets are read into memory at startup and answered from there (a file stream
+    per response blows memory up when a caller pipelines requests and never reads). `connections.test.ts` pins both on real sockets.
+    `mysql.integration.test.ts` runs against a real MySQL when `TEST_MYSQL_HOST` is set (CI does) with the server's
+    global time zone moved to +05:00, so that a session not pinned to UTC fails in behaviour.
+  * **History is best effort** (`persistence.ts`, invariant 5): a failed write is logged and the answer still goes
+    out. Cargo trades take the ship from the path, a ship purchase from the answer, `occurredAt` from the answer
+    or now when it is the zero time; an empty 2xx records a zero row. A path symbol that is not UTF-8 cannot be a
+    JavaScript string, so it is a refused insert (what MySQL says to Go) and a query parameter is passed as bytes.
+  * **Swagger UI** is `swagger-ui-express` over the committed `ts/openapi.json` (copied next to `dist/` in the
+    image), mounted by `swagger.ts`. `/api/agent/swagger` without the slash stays `404 page not found`, as does
+    any method but GET and HEAD. Accepted deviations (owner, 2026-10-03; contract note 7 pins reachability only):
+    the slash path serves the page itself instead of http-swagger's redirect to `index.html`, `HEAD` is served
+    (Go: 405), the spec is embedded in `swagger-ui-init.js` (Go: `doc.json`), and the static files carry
+    `express.static`'s headers. Only our page (`/`, `/index.html`), `swagger-ui-init.js` and the files in
+    `ASSETS` (css, bundle, preset, favicons) are served; swagger-ui-dist's own `index.html` and
+    `swagger-initializer.js` (the Petstore demo), its README, LICENSE and `.js` files are `404 page not found`.
+  * **Known deviations from Go**: the pool's lifetime is checked at checkout; `deliveredAt` has the precision of a
+    JavaScript clock (milliseconds, Go nanoseconds); MySQL's error text in a 500 body or a log line is mysql2's, not go-sql-driver's (`Error 1406
+    (22001): ...`); forwarded JSON is not HTML-escaped (`<` is not `<`; the same after parsing).
 
 ## Module map
 

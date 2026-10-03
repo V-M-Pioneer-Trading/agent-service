@@ -5,22 +5,98 @@ import {
   secured,
   type ExpressAuth,
 } from "@v-m-pioneer-trading/clerk-client";
+import http from "node:http";
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
-import { GATEWAY_LOCAL } from "./controllers/support";
+import { ERROR_LOG_LOCAL, GATEWAY_LOCAL, HISTORY_LOCAL } from "./controllers/support";
+import { HistoryStore } from "./db/history";
+import { setUpDatabase } from "./db/setup";
 import { CallerGone, GatewayClient } from "./gateway/client";
 import { UnreadableAnswer, UpstreamError, writeUpstreamError } from "./gateway/errors";
 import { declaring, routePolicy, type Policy, type Registrar } from "./auth";
 import { ConfigError, loadConfig, type Config } from "./config";
 import { RegisterRoutes } from "./generated/routes";
 import { corsHeaders } from "./http/cors";
-import { goJson, sendText } from "./http/json";
+import { goJson, sendText, TextAnswer } from "./http/json";
 import { muxCompat, terminalAnswer } from "./http/muxCompat";
+import { mountSwagger } from "./swagger";
+
+/**
+ * How much of an unread request body is read, after the answer, to keep the connection (Go's maxPostHandlerReadBytes);
+ * the wait for it is bounded too (UNREAD_BODY_WAIT_MS).
+ */
+export const UNREAD_BODY_ALLOWANCE = 256 << 10;
+export const UNREAD_BODY_WAIT_MS = 1000;
+
+/** How long a connection is read from, after its answer, before it is closed (Go: 500 ms). */
+export const CLOSE_WAIT_MS = 500;
+
+/**
+ * An answer that leaves the request body unread must not make the server read it all (Node would discard any
+ * amount) nor wedge the connection (the next request on it, other users' through a proxy, must still be served).
+ * No listener is put on the socket, which would detach it from the HTTP parser: the request is resumed so that the
+ * parser discards the body, and the bytes the socket has read are watched. Within the allowance and the wait the body
+ * ends and the connection serves on; past either: Go's closeWriteAndWait, a FIN so that the answer is read, a short
+ * wait (closing on unread data resets the connection and the caller loses the answer), then close.
+ */
+export const closeWhenBodyUnread: express.RequestHandler = (req, res, next) => {
+  res.once("finish", () => {
+    if (req.complete) return;
+    const socket = req.socket;
+    const start = socket.bytesRead;
+    const t0 = Date.now();
+    req.resume();
+    const poll = setInterval(() => {
+      if (req.complete || socket.destroyed) {
+        clearInterval(poll);
+        return;
+      }
+      if (socket.bytesRead - start <= UNREAD_BODY_ALLOWANCE && Date.now() - t0 < UNREAD_BODY_WAIT_MS) return;
+      clearInterval(poll);
+      socket.end();
+      setTimeout(() => socket.destroy(), CLOSE_WAIT_MS).unref();
+    }, 5);
+    poll.unref();
+  });
+  next();
+};
+
+/** What Node answers a request it cannot parse, written with explicit CRLFs. */
+export function clientErrorAnswer(err: NodeJS.ErrnoException): string {
+  const status = err.code === "HPE_HEADER_OVERFLOW" ? "431 Request Header Fields Too Large" : "400 Bad Request";
+  return "HTTP/1.1 " + status + "\r\nConnection: close\r\n\r\n";
+}
+
+/**
+ * The server the process runs: reads are bounded like Go's, and a check every second makes the header timeout 10 s, not
+ * 10 to 40. Like Go it closes a connection that is too slow without a word (Node would answer 408), and it never sends
+ * `100 Continue` by itself: http/body.ts sends it when a handler starts reading the body, so a caller who is refused
+ * (401) does not upload.
+ */
+export function createHttpServer(app: express.Express): http.Server {
+  const server = http.createServer({ connectionsCheckingInterval: 1000, headersTimeout: 10_000, requestTimeout: 30_000, keepAliveTimeout: 120_000 }, app);
+  server.on("checkContinue", (req, res) => app(req as never, res as never));
+  server.on("clientError", (err: NodeJS.ErrnoException, socket) => {
+    // Node's default: a socket that cannot be written to is closed.
+    if (!socket.writable || socket.destroyed) {
+      socket.destroy();
+      return;
+    }
+    // net/http closes on a slow client; for the rest, what Node answers without a listener.
+    if (err.code === "ERR_HTTP_REQUEST_TIMEOUT") socket.destroy();
+    else socket.end(clientErrorAnswer(err));
+  });
+  return server;
+}
 
 export interface AppDeps {
   readonly corsAllowedOrigin: string;
   readonly auth: ExpressAuth;
   /** The only way out of the service: st-gateway. */
   readonly gateway: GatewayClient;
+  /** The history tables: what the writes record and the public reads serve. */
+  readonly history: HistoryStore;
+  /** Where a failed best-effort write is logged; the console's error stream if not given. */
+  readonly errorLog?: (line: string) => void;
   /** Replaces the policy table (tests). */
   readonly policy?: Policy;
   /** Replaces tsoa's RegisterRoutes (tests); receives the declaring registrar and the secured app itself (for the routes tsoa cannot register, e.g. Swagger UI). */
@@ -41,17 +117,23 @@ export interface AppDeps {
  *  5. notFound(): 404 / 405 exactly as the Go router answers them.
  *  6. the error handler.
  *
- * No body parser is mounted: request bodies are read by the handlers that
- * need them, with the Go decoder's semantics (route PRs).
+ * No body parser is mounted and Express' query parser is off: request bodies and
+ * query strings are read by the handlers that need them, with the Go decoder's
+ * and net/url's semantics (http/body.ts, http/query.ts).
  */
 export function createApp(deps: AppDeps) {
   const app = secured(express());
   app.locals[GATEWAY_LOCAL] = deps.gateway;
+  app.locals[HISTORY_LOCAL] = deps.history;
+  app.locals[ERROR_LOG_LOCAL] = deps.errorLog ?? ((line: string) => console.error(line));
   app.disable("x-powered-by");
   app.set("etag", false);
   // mux is case sensitive and tolerates no trailing slash.
   app.set("case sensitive routing", true);
   app.set("strict routing", true);
+  // The query string is read by the handlers with Go's rules (http/query.ts); Express' own parser (qs) reads it
+  // differently, and tsoa would validate what it produced before the handler could.
+  app.set("query parser", false);
 
   if (deps.log !== undefined) {
     const log = deps.log;
@@ -60,11 +142,20 @@ export function createApp(deps: AppDeps) {
       next();
     }, "logs the request line; never answers"));
   }
+  // A response that is out while the request body is not all in closes the connection, as Go's server does after a
+  // handler that did not read it (a 401 on a write route, a body over the cap): Node would read and discard the rest,
+  // which an endless body turns into minutes of traffic.
+  app.use(passthrough(closeWhenBodyUnread, "closes the connection after an answer that left the request body unread; never answers"));
   app.use(passthrough(goJson, "installs Go's JSON writer on the response; never answers"));
   app.use(passthrough(muxCompat, "mirrors gorilla/mux path cleaning and net/http's URL refusals; serves no resource"));
   app.use(passthrough(corsHeaders(deps.corsAllowedOrigin), "answers CORS preflights; never serves a resource"));
 
-  const register = deps.registerRoutes ?? ((r: Registrar) => RegisterRoutes(r as never));
+  const register =
+    deps.registerRoutes ??
+    ((r: Registrar, a: express.Express) => {
+      RegisterRoutes(r as never);
+      mountSwagger(a, deps.auth);
+    });
   register(declaring(app as unknown as Registrar, deps.auth, deps.policy ?? routePolicy), app);
 
   app.use(notFound(terminalAnswer));
@@ -76,6 +167,10 @@ export function createApp(deps: AppDeps) {
     }
     // The caller left; nobody is there to answer, and the gateway did nothing wrong.
     if (err instanceof CallerGone) return;
+    if (err instanceof TextAnswer) {
+      sendText(res, err.status, err.message);
+      return;
+    }
     if (err instanceof UpstreamError || err instanceof UnreadableAnswer) {
       writeUpstreamError(res, err);
       return;
@@ -88,27 +183,45 @@ export function createApp(deps: AppDeps) {
 }
 
 /** Startup. Every refusal exits 1 before a port is bound, like log.Fatal in Go. */
-export function main(env: NodeJS.ProcessEnv = process.env): void {
+export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   let config: Config;
-  let app: ReturnType<typeof createApp>;
   try {
+    // Introspection first, before the database wait: it is instant, and a missing AUTH_INTROSPECTION_*
+    // must crash the container within the bootstrap script's liveness window rather than after a slow MySQL ping loop.
     config = loadConfig(env);
-    app = createApp({
-      corsAllowedOrigin: config.corsAllowedOrigin,
-      auth: createExpressAuth(config.introspection),
-      gateway: new GatewayClient(config.gatewayProxyUrl),
-      log: (line) => console.log(line),
-    });
   } catch (err) {
     console.error(err instanceof ConfigError ? err.message : err);
     process.exit(1);
   }
 
-  const server = app.listen(config.port, () => console.log(`agent-service listening on :${config.port}`));
-  // Reading is bounded like the Go server's; writing deliberately is not.
-  server.headersTimeout = 10_000;
-  server.requestTimeout = 30_000;
-  server.keepAliveTimeout = 120_000;
+  // Open the pool, wait for MySQL (15 pings, 2 s apart), migrate. All of it before any port is bound.
+  let sql: Awaited<ReturnType<typeof setUpDatabase>>;
+  try {
+    sql = await setUpDatabase(config.mysql);
+  } catch (err) {
+    // One line, like log.Fatal: the pool's error says what it could not reach or run.
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
+
+  let app: ReturnType<typeof createApp>;
+  try {
+    app = createApp({
+      corsAllowedOrigin: config.corsAllowedOrigin,
+      auth: createExpressAuth(config.introspection),
+      gateway: new GatewayClient(config.gatewayProxyUrl),
+      history: new HistoryStore(sql),
+      log: (line) => console.log(line),
+    });
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+
+  // Reading is bounded like the Go server's; writing deliberately is not. connectionsCheckingInterval (default 30 s)
+  // is how often Node looks for requests past headersTimeout, so it is what makes 10 s mean 10 s.
+  const server = createHttpServer(app);
+  server.listen(config.port, () => console.log(`agent-service listening on :${config.port}`));
   server.on("error", (err) => {
     console.error(err);
     process.exit(1);
@@ -116,11 +229,18 @@ export function main(env: NodeJS.ProcessEnv = process.env): void {
 
   const shutdown = (signal: string) => {
     console.log(`received ${signal}, shutting down`);
-    server.close(() => process.exit(0));
+    server.close(() => {
+      void sql.close().finally(() => process.exit(0));
+    });
     server.closeIdleConnections();
     setTimeout(() => process.exit(1), 10_000).unref();
   };
   for (const signal of ["SIGTERM", "SIGINT"] as const) process.once(signal, () => shutdown(signal));
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  main().catch((err: unknown) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
