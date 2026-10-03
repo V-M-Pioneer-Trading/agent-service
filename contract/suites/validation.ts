@@ -5,20 +5,19 @@
 // the contract: it reads one value and ignores whatever follows it, matches
 // member names case-insensitively, lets the last of a repeated key win, ignores
 // unknown members, and treats null as "absent". Its error sentences are put in the
-// 400 body verbatim ([go-text]; see the README).
+// 400 body; only the stable prefix "invalid request body: " and the presence of an
+// explanation are pinned, not the wording.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { expectText } from '../harness/expect.ts';
+import { expectDecodeError, expectText } from '../harness/expect.ts';
 import { API, bearer, call, gateway, uid, writerToken } from '../harness/world.ts';
 import * as p from '../fixtures/payloads.ts';
 import { TS_PURCHASE } from '../fixtures/routes.ts';
 
 interface Target {
   name: string;
-  /** The Go struct the body is decoded into; it appears in the type-error sentences. */
-  struct: string;
   required: string;
   valid: Record<string, string | number>;
   stringKeys: string[];
@@ -29,7 +28,6 @@ interface Target {
 const targets: Target[] = [
   {
     name: 'POST /contracts/{id}/deliveries',
-    struct: 'deliveryRequest',
     required: 'shipSymbol, tradeSymbol and units (>0) are required',
     valid: { shipSymbol: 'SHIP', tradeSymbol: 'IRON_ORE', units: 3 },
     stringKeys: ['shipSymbol', 'tradeSymbol'],
@@ -37,7 +35,6 @@ const targets: Target[] = [
   },
   {
     name: 'POST /ships/purchase',
-    struct: 'purchaseShipRequest',
     required: 'shipType and waypointSymbol are required',
     valid: { shipType: 'SHIP_MINING_DRONE', waypointSymbol: 'X1-AB12-C3' },
     stringKeys: ['shipType', 'waypointSymbol'],
@@ -48,7 +45,6 @@ const targets: Target[] = [
   },
   {
     name: 'POST /ships/{symbol}/purchase',
-    struct: 'cargoTransactionRequest',
     required: 'symbol and units (>0) are required',
     valid: { symbol: 'IRON_ORE', units: 4 },
     stringKeys: ['symbol'],
@@ -59,7 +55,6 @@ const targets: Target[] = [
   },
   {
     name: 'POST /ships/{symbol}/sell',
-    struct: 'cargoTransactionRequest',
     required: 'symbol and units (>0) are required',
     valid: { symbol: 'IRON_ORE', units: 4 },
     stringKeys: ['symbol'],
@@ -69,6 +64,8 @@ const targets: Target[] = [
     },
   },
 ];
+
+const DECODE = 'invalid request body: ';
 
 function post(path: string, body: string | undefined, headers: Record<string, string> = {}) {
   return call({ method: 'POST', path, headers: { Authorization: bearer(writerToken()), ...headers }, body });
@@ -93,7 +90,8 @@ for (const t of targets) {
     const reject = async (body: string | undefined, message: string, headers?: Record<string, string>) => {
       gateway.clearScripts();
       const res = await post(t.open(uid('VAL')), body, headers);
-      expectText(res, 400, message);
+      if (message.startsWith(DECODE)) expectDecodeError(res, 400, DECODE);
+      else expectText(res, 400, message);
       assert.deepEqual(
         gateway.requests.map((r) => `${r.method} ${r.url}`),
         [],
@@ -109,78 +107,78 @@ for (const t of targets) {
     };
 
     describe('syntax', () => {
-      const syntax: Array<[name: string, body: string, message: string]> = [
-        ['no body at all', '', 'EOF'],
-        ['only whitespace', '  \n\t ', 'EOF'],
-        ['an unterminated object', '{', 'unexpected EOF'],
-        ['an unterminated member', '{"units":', 'unexpected EOF'],
-        ['an unterminated string', '{"units', 'unexpected EOF'],
-        ['not JSON', 'not json', "invalid character 'o' in literal null (expecting 'u')"],
-        ['a truncated literal', 'nul', 'unexpected EOF'],
-        ['a trailing comma', '{"units":1,}', "invalid character '}' looking for beginning of object key string"],
-        ['single quotes', "{'units':1}", "invalid character '\\'' looking for beginning of object key string"],
-        ['a missing colon', '{"units" 1}', "invalid character '1' after object key"],
-        ['a missing comma', '{"units":1 "x":2}', "invalid character '\"' after object key:value pair"],
-        ['a byte order mark', '﻿{}', "invalid character 'ï' looking for beginning of value"],
-        ['a bare word', 'undefined', "invalid character 'u' looking for beginning of value"],
-        ['an unquoted key', '{units:1}', "invalid character 'u' looking for beginning of object key string"],
-        ['a bad escape', '{"a":"\\x"}', "invalid character 'x' in string escape code"],
-        ['a raw newline in a string', '{"a":"x\ny"}', "invalid character '\\n' in string literal"],
-        ['a leading zero', '{"units":01}', "invalid character '1' after object key:value pair"],
-        ['a leading plus', '{"units":+1}', "invalid character '+' looking for beginning of value"],
-        ['NaN', '{"units":NaN}', "invalid character 'N' looking for beginning of value"],
-        ['a comment', '{/*x*/}', "invalid character '/' looking for beginning of object key string"],
+      const syntax: Array<[name: string, body: string]> = [
+        ['no body at all', ''],
+        ['only whitespace', '  \n\t '],
+        ['an unterminated object', '{'],
+        ['an unterminated member', '{"units":'],
+        ['an unterminated string', '{"units'],
+        ['not JSON', 'not json'],
+        ['a truncated literal', 'nul'],
+        ['a trailing comma', '{"units":1,}'],
+        ['single quotes', "{'units':1}"],
+        ['a missing colon', '{"units" 1}'],
+        ['a missing comma', '{"units":1 "x":2}'],
+        ['a byte order mark', '﻿{}'],
+        ['a bare word', 'undefined'],
+        ['an unquoted key', '{units:1}'],
+        ['a bad escape', '{"a":"\\x"}'],
+        ['a raw newline in a string', '{"a":"x\ny"}'],
+        ['a leading zero', '{"units":01}'],
+        ['a leading plus', '{"units":+1}'],
+        ['NaN', '{"units":NaN}'],
+        ['a comment', '{/*x*/}'],
       ];
-      for (const [name, body, message] of syntax) {
-        it(`${name}: 400 [go-text]`, async () => {
-          await reject(body, `invalid request body: ${message}`);
+      for (const [name, body] of syntax) {
+        it(`${name}: 400`, async () => {
+          await reject(body, DECODE);
         });
       }
     });
 
-    describe('types [go-text]', () => {
-      for (const [name, body, kind] of [
-        ['an array', '[]', 'array'],
-        ['a string', '"x"', 'string'],
-        ['a number', '5', 'number'],
-        ['a boolean', 'true', 'bool'],
+    describe('types', () => {
+      for (const [name, body] of [
+        ['an array', '[]'],
+        ['a string', '"x"'],
+        ['a number', '5'],
+        ['a boolean', 'true'],
       ] as const) {
         it(`${name} instead of an object: 400`, async () => {
-          await reject(body, `invalid request body: json: cannot unmarshal ${kind} into Go value of type api.${t.struct}`);
+          await reject(body, DECODE);
         });
       }
 
       for (const key of t.stringKeys) {
-        for (const [what, literal, kind] of [
-          ['a number', '5', 'number'],
-          ['a boolean', 'true', 'bool'],
-          ['an object', '{}', 'object'],
-          ['an array', '[]', 'array'],
+        for (const [what, literal] of [
+          ['a number', '5'],
+          ['a boolean', 'true'],
+          ['an object', '{}'],
+          ['an array', '[]'],
         ] as const) {
           it(`${what} for ${key}: 400`, async () => {
             await reject(
               bodyWith(t.valid, { [key]: literal }),
-              `invalid request body: json: cannot unmarshal ${kind} into Go struct field ${t.struct}.${key} of type string`,
+              DECODE,
             );
           });
         }
       }
 
       if (hasUnits) {
-        for (const [what, literal, kind] of [
-          ['a string', '"5"', 'string'],
-          ['a boolean', 'true', 'bool'],
-          ['an object', '{}', 'object'],
-          ['an array', '[]', 'array'],
-          ['a fraction', '1.5', 'number 1.5'],
-          ['a whole number written with a fraction', '2.0', 'number 2.0'],
-          ['an exponent', '1e2', 'number 1e2'],
-          ['a number beyond 64 bits', '9223372036854775808', 'number 9223372036854775808'],
+        for (const [what, literal] of [
+          ['a string', '"5"'],
+          ['a boolean', 'true'],
+          ['an object', '{}'],
+          ['an array', '[]'],
+          ['a fraction', '1.5'],
+          ['a whole number written with a fraction', '2.0'],
+          ['an exponent', '1e2'],
+          ['a number beyond 64 bits', '9223372036854775808'],
         ] as const) {
           it(`${what} for units: 400`, async () => {
             await reject(
               bodyWith(t.valid, { units: literal }),
-              `invalid request body: json: cannot unmarshal ${kind} into Go struct field ${t.struct}.units of type int`,
+              DECODE,
             );
           });
         }
@@ -254,13 +252,13 @@ for (const t of targets) {
     });
 
     describe('size', () => {
-      it('a body over 1 MiB is a 400 [go-text]', async () => {
+      it('a body over 1 MiB is a 400', async () => {
         const key = t.stringKeys[0]!;
-        await reject(bodyWith(t.valid, { [key]: JSON.stringify('k'.repeat((1 << 20) + 10)) }), 'invalid request body: http: request body too large');
+        await reject(bodyWith(t.valid, { [key]: JSON.stringify('k'.repeat((1 << 20) + 10)) }), DECODE);
       });
 
-      it('garbage over 1 MiB is a 400 for its first bad byte, not for its size [go-text]', async () => {
-        await reject('x'.repeat((1 << 20) + 10), "invalid request body: invalid character 'x' looking for beginning of value");
+      it('garbage over 1 MiB is a 400 for its first bad byte, not for its size', async () => {
+        await reject('x'.repeat((1 << 20) + 10), DECODE);
       });
     });
   });

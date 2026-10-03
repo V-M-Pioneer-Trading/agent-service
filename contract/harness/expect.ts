@@ -127,3 +127,16 @@ export function expectHeadOf(head: Res, get: Res): void {
 export function expectNotFound(res: Res): void {
   expectText(res, 404, '404 page not found', { cors: false });
 }
+
+/**
+ * A text/plain error whose tail is the implementation's own decoder wording
+ * (Go's "json: cannot unmarshal ..."): only the status, the content type, the
+ * stable prefix and "something follows it" are pinned.
+ */
+export function expectDecodeError(res: Res, status: number, prefix = '', opts: Expectation = {}): void {
+  assert.equal(res.status, status, `status (body: ${res.text.slice(0, 300)})`);
+  expectHeaders(res, TEXT_TYPE, opts);
+  assert.ok(res.text.startsWith(prefix), `body ${JSON.stringify(res.text.slice(0, 200))} should start with ${JSON.stringify(prefix)}`);
+  assert.ok(res.text.slice(prefix.length).trim() !== '', 'the explanation after the prefix must not be empty');
+  assert.ok(res.text.endsWith('\n'), 'body should end with a newline');
+}

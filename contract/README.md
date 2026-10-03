@@ -19,8 +19,9 @@ It is step 3 of the Go to TypeScript migration (the epic in `meta`; link to foll
 * JSON bodies are parsed and deep-compared, so key order and whitespace are free but
   null versus missing, and a number versus a string, are not.
 * Plain-text bodies (every error that is not the auth envelope) are compared byte for
-  byte. Where that means pinning the Go standard library's wording of an error, the
-  test is tagged `[go-text]`; see below.
+  byte, with two exceptions: the tail of a decoder error is not pinned (see
+  "Decoder wording" below), and Go's fixed `net/http` texts are, and are tagged
+  `[net-http-text]`.
 * HEAD, trailing slashes, percent-decoding, unknown routes and wrong methods are all
   part of the contract.
 
@@ -89,10 +90,23 @@ st-gateway with nothing scripted for it.
 * `suites/`: operational (health, swagger), routing, cors, auth, proxy,
   upstream-errors, validation, persistence, head, startup.
 
-Tests tagged `[go-text]` pin the wording of Go's `encoding/json` (and `strconv`,
-`time`) errors, and the fixed texts of Go's `net/http` (`404 page not found`, `400 Bad Request`), which the Go service puts verbatim into a 400 or 502 body. If the
-porters decide that text is not worth reproducing, those are the tests to relax,
-and `node --test --test-name-pattern='\[go-text\]'` runs exactly them.
+### Decoder wording is not pinned
+
+A body the service cannot decode (a request body in a 400, a gateway answer in a 502)
+is answered with the Go decoder's own explanation, e.g. `json: cannot unmarshal string
+into Go struct field Agent.data.credits of type int64`. The suite has one mode and does
+not pin that wording: it asserts the status, `Content-Type: text/plain; charset=utf-8`,
+the stable prefix (`invalid request body: ` for a request body, nothing for a 502) and
+that a non-empty explanation follows. The route-specific sentences that are the
+service's own (`symbol and units (>0) are required`, `limit must be a positive
+integer`, ...) stay exact.
+
+### `[net-http-text]`
+
+Go's `net/http` and router answer a few fixed texts that are cheap to reproduce and
+stay pinned exactly: `404 page not found` and `400 Bad Request`. Those tests carry the
+tag `[net-http-text]`, so `node --test --test-name-pattern='\[net-http-text\]'
+contract.test.ts` runs exactly them.
 
 ## Coverage
 
@@ -115,7 +129,7 @@ request body validation; start-up configuration.
 
 Not covered, on purpose: the gateway's 30 s timeout (a stuck gateway is a 504 after
 half a minute, which would triple the run time), the swagger UI's HTML and
-`doc.json`'s content, the service's behaviour when MySQL is down, and
+the spec's content, the service's behaviour when MySQL is down, and
 `contracts` persistence, which no endpoint can read back (accept/fulfill are only
 tested to stay 200 whether or not the row is written).
 
@@ -158,17 +172,16 @@ likely to differ.
    `POST /ships/purchase/purchase` buys cargo for that ship. `HEAD /ships/purchase` is a HEAD
    of that ship. Both `GET` and `POST` exist on `/contracts/{id}/deliveries`.
 6. **No trailing slash is tolerated** anywhere (404 under `/api/agent`, 405
-   elsewhere), except that the swagger prefix *requires* one.
-7. **Swagger is a third-party handler with its own answers.** `GET
-   /api/agent/swagger/` is a `301` to `/api/agent/swagger/index.html` (HTML body),
-   not a 200; `index.html` is `200 text/html`; `doc.json` is `200 application/json`.
-   `HEAD` on any of them is a **405** (`text/plain`, with the CORS headers, since
-   the handler runs inside the CORS middleware); POST/PUT/DELETE/PATCH are the bare
-   405 with no CORS. It never reads `Authorization`.
+   elsewhere).
+7. **Swagger is a third-party handler, and only its reachability is pinned**: the docs
+   route answers 2xx or 3xx, following its redirects ends in `200 text/html`, the spec
+   that page loads (today `doc.json`) is JSON, and the center is never asked. Today the
+   bare prefix is a `301` to `index.html`, `HEAD` is a 405 and the other methods are a
+   bare 405, but none of that is contract. It never reads `Authorization`.
 8. **HEAD is GET without the body**: the same handler runs, so a HEAD on a proxied
    route calls the gateway (with `GET`), a HEAD on `/transactions` queries the
    database, and an auth failure is the same status and `Content-Type` as the GET's.
-   The exception is swagger (above).
+   The exception is swagger (above), which is not pinned.
 9. **OPTIONS** is answered `204` with no body and no `Content-Type` on *every* path
    under the CORS middleware (known, unknown, and POST-only routes), before the auth
    check: `Authorization` is not even read. The CORS headers are constants
@@ -249,11 +262,10 @@ likely to differ.
     offset they came with, `Z` for UTC (including `+00:00`), and the shortest exact
     fraction: `.000Z` loses its fraction, `.120Z` becomes `.12Z`, digits beyond the ninth
     are cut off. A `null` time is the zero time.
-24. **A body that does not fit is `502` with the decoder's sentence** as a
-    `text/plain` body (`[go-text]`), the struct named is the *innermost* one (`Go struct
-    field Agent.data.credits`, `PaginationMeta.meta.total`). That includes `meta`, which
-    is otherwise dropped, and a third `/current-agent` answer that is bad after two
-    good ones (nothing of the first two is returned).
+24. **A body that does not fit is `502`** with the decoder's explanation as a
+    `text/plain` body (wording not pinned, see "Decoder wording"). That includes `meta`,
+    which is otherwise dropped, and a third `/current-agent` answer that is bad after
+    two good ones (nothing of the first two is returned).
 25. **Redirects from the gateway are followed**, up to ten requests in all, carrying
     the `Authorization` header (and a POST body on 307/308); a loop that is still
     redirecting after ten requests is "st-gateway did not answer", a `504`.
@@ -280,13 +292,10 @@ likely to differ.
     members are ignored, `null` is "absent". `Content-Type` is never checked.
     `units: 2.0`, `1e2` and a string are 400; a `-0` is 0 and then "required".
     Whitespace-only strings are valid values.
-29. **Sentences** (`[go-text]`): `invalid request body: <decoder error>` for syntax and
-    type errors (`EOF`, `unexpected EOF`, `invalid character 'o' in literal null
-    (expecting 'u')`, `json: cannot unmarshal string into Go struct field
-    cargoTransactionRequest.units of type int`, `json: cannot unmarshal array into Go
-    value of type api.deliveryRequest`); then the required-member sentence of each route
-    (`symbol and units (>0) are required`, ...). **1 MiB cap**: `invalid request body: http:
-    request body too large` for a value that runs past it. Validation precedes any
+29. **Sentences**: `invalid request body: <decoder explanation>` for syntax and type
+    errors (wording not pinned); then the required-member sentence of each route
+    (`symbol and units (>0) are required`, ...), which stay exact. **1 MiB cap**: a value that
+    runs past it is the same `invalid request body: ` 400. Validation precedes any
     gateway call, and accept/fulfill read no body at all.
 30. Forwarded bodies carry only the known members (`{shipType, waypointSymbol}`,
     `{symbol, units}`), with `units` as an integer.
