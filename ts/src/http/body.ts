@@ -46,8 +46,9 @@ export function readBody(req: IncomingMessage, limit: number = MAX_BODY_BYTES): 
       size += chunk.length;
       chunks.push(chunk);
       if (size <= limit || !settle()) return;
-      // Over the cap: what came is enough to judge by. The rest is read and thrown away, so that the caller can finish sending and read the 400.
-      req.resume();
+      // Over the cap: what came is enough to judge by. The rest is not read at all: the connection is closed once the
+      // 400 is out (server.ts closeWhenBodyUnread), like Go's, and nothing is drained.
+      req.pause();
       resolve({ bytes: Buffer.concat(chunks).subarray(0, limit), exceeded: true });
     }
     function onEnd(): void {

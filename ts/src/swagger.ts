@@ -23,6 +23,15 @@ import { decodedPathOf, pageNotFound } from "./http/muxCompat";
 
 export const SWAGGER_PATH = "/api/agent/swagger";
 
+/** The static files of swagger-ui-dist the page references, and nothing else of that directory. */
+export const ASSETS: ReadonlySet<string> = new Set([
+  "/swagger-ui.css",
+  "/swagger-ui-bundle.js",
+  "/swagger-ui-standalone-preset.js",
+  "/favicon-16x16.png",
+  "/favicon-32x32.png",
+]);
+
 /** ts/openapi.json: next to src/ in the tree, next to dist/ in the image. */
 export const SPEC_FILE = path.join(__dirname, "..", "openapi.json");
 
@@ -44,9 +53,16 @@ export function mountSwagger(app: Express, auth: ExpressAuth, spec: object = loa
     if (bare || (req.method !== "GET" && req.method !== "HEAD")) refuse(req, res, next);
     else next();
   };
-  // setup() answers with the page on any path that reaches it; only the page's own two names should.
-  const index: RequestHandler = (req, res, next) => (req.path === "/" || req.path === "/index.html" ? page(req, res, next) : refuse(req, res, next));
+  // swagger-ui-dist's own index.html and swagger-initializer.js (the Petstore demo), README, LICENSE and the
+  // package's .js files sit in the same directory: only the page and the files it references are served.
+  const [initScript, files] = swaggerUi.serve as [RequestHandler, RequestHandler];
+  const docs: RequestHandler = (req, res, next) => {
+    if (req.path === "/" || req.path === "/index.html") page(req, res, next);
+    else if (req.path === "/swagger-ui-init.js") initScript(req, res, next);
+    else if (ASSETS.has(req.path)) files(req, res, next);
+    else refuse(req, res, next);
+  };
 
   // The gate comes first: a method the route does not serve is not a request for the declaration to judge.
-  app.use(SWAGGER_PATH, passthrough(gate, "answers 404 to a method or a path the docs do not serve; serves no resource"), auth.ignoreCredentials(), ...swaggerUi.serve, index);
+  app.use(SWAGGER_PATH, passthrough(gate, "answers 404 to a method or a path the docs do not serve; serves no resource"), auth.ignoreCredentials(), docs);
 }

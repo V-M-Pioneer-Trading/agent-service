@@ -132,6 +132,13 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
     text for the same reason. Pool: 10 connections, 10 idle, none older than 3 minutes (checked when a connection
     is taken: mysql2 has no lifetime), 15 pings 2 s apart at startup, all before any port is bound.
     `db/migrate.ts` is `src/db/db.go`'s DDL statement for statement, and `db.test.ts` compares the two while that file exists.
+  * **The server** is `http.createServer` with `connectionsCheckingInterval: 1000` (Node's default of 30 s makes
+    the 10 s header timeout 10 to 40 s) and `headersTimeout`/`requestTimeout` as Go's `ReadHeaderTimeout`/`ReadTimeout`;
+    an answer that leaves the request body unread closes the connection like Go's (Node would read and discard
+    any amount: an endless chunked body was tens of GB); like Go, up to 256 KiB of an unread body is read to keep the
+    connection, then a FIN, 500 ms of discarding and a close (`closeWhenBodyUnread`). `connections.test.ts` pins both on real sockets.
+    `mysql.integration.test.ts` runs against a real MySQL when `TEST_MYSQL_HOST` is set (CI does) with the server's
+    global time zone moved to +05:00, so that a session not pinned to UTC fails in behaviour.
   * **History is best effort** (`persistence.ts`, invariant 5): a failed write is logged and the answer still goes
     out. Cargo trades take the ship from the path, a ship purchase from the answer, `occurredAt` from the answer
     or now when it is the zero time; an empty 2xx records a zero row. A path symbol that is not UTF-8 cannot be a
@@ -141,10 +148,11 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
     any method but GET and HEAD. Accepted deviations (owner, 2026-10-03; contract note 7 pins reachability only):
     the slash path serves the page itself instead of http-swagger's redirect to `index.html`, `HEAD` is served
     (Go: 405), the spec is embedded in `swagger-ui-init.js` (Go: `doc.json`), and the static files carry
-    `express.static`'s headers.
+    `express.static`'s headers. Only our page (`/`, `/index.html`), `swagger-ui-init.js` and the files in
+    `ASSETS` (css, bundle, preset, favicons) are served; swagger-ui-dist's own `index.html` and
+    `swagger-initializer.js` (the Petstore demo), its README, LICENSE and `.js` files are `404 page not found`.
   * **Known deviations from Go**: the pool's lifetime is checked at checkout; `deliveredAt` has the precision of a
-    JavaScript clock (milliseconds, Go nanoseconds); an over-long body is read and discarded where Go closes the
-    connection; MySQL's error text in a 500 body or a log line is mysql2's, not go-sql-driver's (`Error 1406
+    JavaScript clock (milliseconds, Go nanoseconds); MySQL's error text in a 500 body or a log line is mysql2's, not go-sql-driver's (`Error 1406
     (22001): ...`); forwarded JSON is not HTML-escaped (`<` is not `<`; the same after parsing).
 
 ## Module map

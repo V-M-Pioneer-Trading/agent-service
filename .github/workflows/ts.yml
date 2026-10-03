@@ -22,6 +22,20 @@ jobs:
   ts-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      # For mysql.integration.test.ts: a real MySQL whose global time zone the test moves off UTC.
+      mysql:
+        image: mysql:9
+        env:
+          MYSQL_ROOT_PASSWORD: example
+          MYSQL_DATABASE: vnm-agent-db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pexample"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     defaults:
       run:
         working-directory: ts
@@ -58,6 +72,9 @@ jobs:
           test -z "$(git status --porcelain -- openapi.json)" || { git diff -- openapi.json; echo "::error file=ts/openapi.json::ts/openapi.json is out of date. Run 'npm run openapi' in ts/ and commit the result."; exit 1; }
 
       - run: npm test
+        env:
+          TEST_MYSQL_HOST: 127.0.0.1
+          TEST_MYSQL_PORT: "3306"
 
   # The contract suite (contract/, unchanged) against the TypeScript image: the
   # whole of it, with no case skipped (ts/contract-skip.txt is empty since

@@ -15,14 +15,14 @@ describe("the schema is the Go service's", () => {
   const goSource = fs.existsSync(goFile) ? fs.readFileSync(goFile, "utf8") : null;
 
   (goSource === null ? it.skip : it)("every statement of src/db/db.go, word for word (whitespace aside)", () => {
-    const block = /var schema = \[\]string\{([\s\S]*?)\n\}/.exec(goSource as string);
+    const block = /var schema = \[\]string\{([\s\S]*?)\r?\n\}/.exec(goSource as string);
     const statements = [...(block?.[1] ?? "").matchAll(/`([^`]*)`/g)].map((m) => flat(m[1] as string));
     expect(statements).toHaveLength(3);
     expect(SCHEMA.map(flat)).toEqual(statements);
   });
 
   (goSource === null ? it.skip : it)("the widened columns and the indexes of src/db/db.go", () => {
-    const block = (name: string): string => new RegExp(`var ${name} = [^\\n]*\\{\\n([\\s\\S]*?)\\n\\}`).exec(goSource as string)?.[1] ?? "";
+    const block = (name: string): string => new RegExp(`var ${name} = [^\\r\\n]*\\{\\r?\\n([\\s\\S]*?)\\r?\\n\\}`).exec(goSource as string)?.[1] ?? "";
     const widened = [...block("widenedColumns").matchAll(/\{"(\w+)", "(\w+)", "([^"]+)"\}/g)].map((m) => ({ table: m[1], column: m[2], definition: m[3] }));
     expect(widened).toHaveLength(2);
     expect(WIDENED_COLUMNS).toEqual(widened);

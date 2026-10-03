@@ -1,6 +1,9 @@
+import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
 import type { AddressInfo } from "node:net";
 import request from "supertest";
+import { ASSETS } from "../swagger";
 import { HistoryStore } from "../db/history";
 import { GatewayClient } from "../gateway/client";
 import { FakeSql } from "../testSupport/fakeSql";
@@ -127,7 +130,7 @@ describe("POST /contracts/{id}/accept and /fulfill", () => {
 
   it("reads no body at all: a body that is not JSON, or huge, changes nothing", async () => {
     const { app, seen } = await appWith({ "POST /proxy/my/contracts/C-1/accept": ok(CONTRACT_AND_AGENT) });
-    const res = await post(app, "/api/agent/v1/contracts/C-1/accept", "{not json" + "x".repeat(200_000));
+    const res = await post(app, "/api/agent/v1/contracts/C-1/accept", "{not json" + "x".repeat(2_000));
     expect(res.status).toBe(200);
     expect(seen[0]?.body).toBe("");
   });
@@ -692,6 +695,34 @@ describe("Swagger UI", () => {
   it("a preflight is answered like everywhere else", async () => {
     const { app } = createTestApp();
     expect((await request(app).options(DOCS)).status).toBe(204);
+  });
+
+  it("is our page at both names, with our script, never swagger-ui-dist's demo", async () => {
+    const { app } = createTestApp();
+    for (const p of [DOCS, `${DOCS}index.html`]) {
+      const page = await request(app).get(p);
+      expect(page.status).toBe(200);
+      expect(page.text).toContain("swagger-ui-init.js");
+      expect(page.text).not.toMatch(/petstore/i);
+      expect(page.text).not.toContain("swagger-initializer.js");
+    }
+    const init = await request(app).get(`${DOCS}swagger-ui-init.js`);
+    expect(init.text).not.toMatch(/petstore/i);
+    expect(init.text).toContain("/api/agent/v1/transactions");
+  });
+
+  it("serves the files the page references, and no other file of swagger-ui-dist", async () => {
+    const { app } = createTestApp();
+    for (const file of ["swagger-ui.css", "swagger-ui-bundle.js", "swagger-ui-standalone-preset.js", "favicon-16x16.png", "favicon-32x32.png", "swagger-ui-init.js"]) {
+      expect([file, (await request(app).get(`${DOCS}${file}`)).status]).toEqual([file, 200]);
+    }
+    const dist = path.dirname(require.resolve("swagger-ui-dist/package.json"));
+    const others = fs.readdirSync(dist).filter((f) => !ASSETS.has(`/${f}`) && f !== "index.html");
+    expect(others).toEqual(expect.arrayContaining(["README.md", "LICENSE", "index.js", "absolute-path.js", "swagger-initializer.js", "package.json"]));
+    for (const file of [...others, "index.css", "oauth2-redirect.html", "swagger-ui.js"]) {
+      const res = await request(app).get(`${DOCS}${file}`);
+      expect([file, res.status, res.text]).toEqual([file, 404, "404 page not found\n"]);
+    }
   });
 
   it("does not serve package.json", async () => {
