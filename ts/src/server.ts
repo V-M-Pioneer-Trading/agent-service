@@ -6,7 +6,7 @@ import {
   type ExpressAuth,
 } from "@v-m-pioneer-trading/clerk-client";
 import http from "node:http";
-import express,{ type ErrorRequestHandler, type Request, type Response } from "express";
+import express, { type ErrorRequestHandler, type Request, type Response } from "express";
 import { ERROR_LOG_LOCAL, GATEWAY_LOCAL, HISTORY_LOCAL } from "./controllers/support";
 import { HistoryStore } from "./db/history";
 import { setUpDatabase } from "./db/setup";
@@ -20,41 +20,65 @@ import { goJson, sendText, TextAnswer } from "./http/json";
 import { muxCompat, terminalAnswer } from "./http/muxCompat";
 import { mountSwagger } from "./swagger";
 
-/** How much of an unread request body is read, after the answer, to keep the connection (Go's maxPostHandlerReadBytes). */
+/**
+ * How much of an unread request body is read, after the answer, to keep the connection (Go's maxPostHandlerReadBytes);
+ * the wait for it is bounded too (UNREAD_BODY_WAIT_MS).
+ */
 export const UNREAD_BODY_ALLOWANCE = 256 << 10;
+export const UNREAD_BODY_WAIT_MS = 1000;
 
 /** How long a connection is read from, after its answer, before it is closed (Go: 500 ms). */
 export const CLOSE_WAIT_MS = 500;
 
+/**
+ * An answer that leaves the request body unread must not make the server read it all (Node would discard any
+ * amount) nor wedge the connection (the next request on it, other users' through a proxy, must still be served).
+ * No listener is put on the socket, which would detach it from the HTTP parser: the request is resumed so that the
+ * parser discards the body, and the bytes the socket has read are watched. Within the allowance and the wait the body
+ * ends and the connection serves on; past either: Go's closeWriteAndWait, a FIN so that the answer is read, a short
+ * wait (closing on unread data resets the connection and the caller loses the answer), then close.
+ */
 export const closeWhenBodyUnread: express.RequestHandler = (req, res, next) => {
   res.once("finish", () => {
-    if (req.readableEnded) return;
-    // Go reads at most 256 KiB of a body the handler left alone (maxPostHandlerReadBytes) to keep the connection, and
-    // closes it otherwise; Node would read and discard any amount. Past the allowance: Go's closeWriteAndWait, a FIN so
-    // that the answer is read, then discarding for a short while (closing on unread data resets the connection and
-    // the caller loses the answer), then close.
+    if (req.complete) return;
     const socket = req.socket;
-    let seen = 0;
-    // Counted on the socket: Node's own discard of an unread body never hands the bytes to the request.
-    const count = (chunk: Buffer): void => {
-      seen += chunk.length;
-      if (seen <= UNREAD_BODY_ALLOWANCE) return;
-      socket.off("data", count);
-      socket.end();
-      socket.resume();
-      setTimeout(() => socket.destroy(), CLOSE_WAIT_MS).unref();
-    };
-    socket.on("data", count);
-    // A handler that stopped reading (a body over the cap) left the request paused, and with it the socket.
+    const start = socket.bytesRead;
+    const t0 = Date.now();
     req.resume();
-    req.once("end", () => socket.off("data", count));
+    const poll = setInterval(() => {
+      if (req.complete || socket.destroyed) {
+        clearInterval(poll);
+        return;
+      }
+      if (socket.bytesRead - start <= UNREAD_BODY_ALLOWANCE && Date.now() - t0 < UNREAD_BODY_WAIT_MS) return;
+      clearInterval(poll);
+      socket.end();
+      setTimeout(() => socket.destroy(), CLOSE_WAIT_MS).unref();
+    }, 5);
+    poll.unref();
   });
   next();
 };
 
-/** The server the process runs: reads are bounded like Go's, and a check every second makes the header timeout 10 s, not 10 to 40. */
+/**
+ * The server the process runs: reads are bounded like Go's, and a check every second makes the header timeout 10 s, not
+ * 10 to 40. Like Go it closes a connection that is too slow without a word (Node would answer 408), and it never sends
+ * `100 Continue` by itself: http/body.ts sends it when a handler starts reading the body, so a caller who is refused
+ * (401) does not upload.
+ */
 export function createHttpServer(app: express.Express): http.Server {
-  return http.createServer({ connectionsCheckingInterval: 1000, headersTimeout: 10_000, requestTimeout: 30_000, keepAliveTimeout: 120_000 }, app);
+  const server = http.createServer({ connectionsCheckingInterval: 1000, headersTimeout: 10_000, requestTimeout: 30_000, keepAliveTimeout: 120_000 }, app);
+  server.on("checkContinue", (req, res) => app(req as never, res as never));
+  server.on("clientError", (err: NodeJS.ErrnoException, socket) => {
+    if (!socket.writable || socket.destroyed) return;
+    // net/http closes on a slow client; for the rest, what Node answers without a listener.
+    if (err.code === "ERR_HTTP_REQUEST_TIMEOUT") socket.destroy();
+    else socket.end(`HTTP/1.1 ${err.code === "HPE_HEADER_OVERFLOW" ? "431 Request Header Fields Too Large" : "400 Bad Request"}
+Connection: close
+
+`);
+  });
+  return server;
 }
 
 export interface AppDeps {

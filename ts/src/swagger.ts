@@ -42,6 +42,17 @@ export function loadSpec(file: string = SPEC_FILE): object {
   return cached;
 }
 
+const TYPES: Readonly<Record<string, string>> = {
+  ".css": "text/css; charset=UTF-8",
+  ".js": "application/javascript; charset=UTF-8",
+  ".png": "image/png",
+};
+
+/** The whitelisted files of swagger-ui-dist, in memory, by their path under the mount. */
+export function loadAssets(dir: string = (require("swagger-ui-dist/absolute-path") as () => string)()): Map<string, { body: Buffer; type: string }> {
+  return new Map([...ASSETS].map((name) => [name, { body: fs.readFileSync(path.join(dir, name)), type: TYPES[path.extname(name)] ?? "application/octet-stream" }]));
+}
+
 /** Mounts the UI on the app (which is secured(): the mount carries its declaration). */
 export function mountSwagger(app: Express, auth: ExpressAuth, spec: object = loadSpec()): void {
   const page = swaggerUi.setup(spec, { customSiteTitle: "Agent Info Service API" });
@@ -55,11 +66,26 @@ export function mountSwagger(app: Express, auth: ExpressAuth, spec: object = loa
   };
   // swagger-ui-dist's own index.html and swagger-initializer.js (the Petstore demo), README, LICENSE and the
   // package's .js files sit in the same directory: only the page and the files it references are served.
-  const [initScript, files] = swaggerUi.serve as [RequestHandler, RequestHandler];
+  const [initScript] = swaggerUi.serve as [RequestHandler, RequestHandler];
+  // The assets are read once, here, and answered from memory: a file stream per request would hold a descriptor and
+  // buffers for every response a pipelining caller never reads.
+  const assets = loadAssets();
+  const asset: RequestHandler = (req, res) => {
+    const file = assets.get(req.path);
+    if (file === undefined) {
+      pageNotFound(res);
+      return;
+    }
+    res.statusCode = 200;
+    res.setHeader("Content-Type", file.type);
+    res.setHeader("Content-Length", file.body.length);
+    res.setHeader("Cache-Control", "public, max-age=0");
+    res.end(req.method === "HEAD" ? undefined : file.body);
+  };
   const docs: RequestHandler = (req, res, next) => {
     if (req.path === "/" || req.path === "/index.html") page(req, res, next);
     else if (req.path === "/swagger-ui-init.js") initScript(req, res, next);
-    else if (ASSETS.has(req.path)) files(req, res, next);
+    else if (ASSETS.has(req.path)) asset(req, res, next);
     else refuse(req, res, next);
   };
 

@@ -12,7 +12,7 @@
  *  - a caller who hangs up before the body is in is `CallerGone`: nobody is left to answer.
  */
 
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { CallerGone } from "../gateway/client";
 import { DecodeError, decodeFirstValue, type Decoded, type Schema } from "../gateway/decode";
 import { TextAnswer } from "./json";
@@ -29,6 +29,9 @@ export interface BodyRead {
 }
 
 export function readBody(req: IncomingMessage, limit: number = MAX_BODY_BYTES): Promise<BodyRead> {
+  // The body is wanted: a caller who asked to be told when to send it (Expect: 100-continue) is told now, not before auth.
+  const res = (req as { res?: ServerResponse }).res;
+  if (/100-continue/i.test(req.headers.expect ?? "") && res !== undefined && !res.headersSent) res.writeContinue();
   return new Promise<BodyRead>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;

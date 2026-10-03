@@ -135,8 +135,13 @@ strict 1:1 replacement, built in three PRs (#35 scaffold, #36 live reads, #37 wr
   * **The server** is `http.createServer` with `connectionsCheckingInterval: 1000` (Node's default of 30 s makes
     the 10 s header timeout 10 to 40 s) and `headersTimeout`/`requestTimeout` as Go's `ReadHeaderTimeout`/`ReadTimeout`;
     an answer that leaves the request body unread closes the connection like Go's (Node would read and discard
-    any amount: an endless chunked body was tens of GB); like Go, up to 256 KiB of an unread body is read to keep the
-    connection, then a FIN, 500 ms of discarding and a close (`closeWhenBodyUnread`). `connections.test.ts` pins both on real sockets.
+    any amount: an endless chunked body was tens of GB); like Go, up to 256 KiB of an unread body (and 1 s of waiting for it) is
+    read to keep the connection, then a FIN, 500 ms of discarding and a close (`closeWhenBodyUnread`: no listener on the
+    socket, which would detach it from the parser and wedge a connection that other callers share behind a proxy; the
+    request is resumed and `socket.bytesRead` polled). A caller that is too slow is closed without a 408, as Go does
+    (`clientError`), and `100 Continue` is never sent by Node itself: `http/body.ts` sends it when a handler starts
+    reading the body. The five Swagger assets are read into memory at startup and answered from there (a file stream
+    per response blows memory up when a caller pipelines requests and never reads). `connections.test.ts` pins both on real sockets.
     `mysql.integration.test.ts` runs against a real MySQL when `TEST_MYSQL_HOST` is set (CI does) with the server's
     global time zone moved to +05:00, so that a session not pinned to UTC fails in behaviour.
   * **History is best effort** (`persistence.ts`, invariant 5): a failed write is logged and the answer still goes

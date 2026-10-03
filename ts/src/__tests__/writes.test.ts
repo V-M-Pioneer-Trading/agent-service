@@ -130,7 +130,7 @@ describe("POST /contracts/{id}/accept and /fulfill", () => {
 
   it("reads no body at all: a body that is not JSON, or huge, changes nothing", async () => {
     const { app, seen } = await appWith({ "POST /proxy/my/contracts/C-1/accept": ok(CONTRACT_AND_AGENT) });
-    const res = await post(app, "/api/agent/v1/contracts/C-1/accept", "{not json" + "x".repeat(2_000));
+    const res = await post(app, "/api/agent/v1/contracts/C-1/accept", "{not json" + "x".repeat(200_000));
     expect(res.status).toBe(200);
     expect(seen[0]?.body).toBe("");
   });
@@ -723,6 +723,30 @@ describe("Swagger UI", () => {
       const res = await request(app).get(`${DOCS}${file}`);
       expect([file, res.status, res.text]).toEqual([file, 404, "404 page not found\n"]);
     }
+  });
+
+  it("answers the assets from memory: the bytes of the dist file, with their type and length, and no file is opened per request", async () => {
+    const { app } = createTestApp();
+    const dist = path.dirname(require.resolve("swagger-ui-dist/package.json"));
+    const open = jest.spyOn(fs, "createReadStream");
+    const openFile = jest.spyOn(fs, "open");
+    for (const [file, type] of [["swagger-ui.css", /^text\/css/], ["swagger-ui-bundle.js", /javascript/], ["favicon-16x16.png", /^image\/png/]] as const) {
+      const res = await request(app).get(`${DOCS}${file}`).buffer(true).parse((r, cb) => {
+        const chunks: Buffer[] = [];
+        r.on("data", (c: Buffer) => chunks.push(c));
+        r.on("end", () => cb(null, Buffer.concat(chunks)));
+      });
+      expect(res.headers["content-type"]).toMatch(type);
+      expect(Number(res.headers["content-length"])).toBe(fs.statSync(path.join(dist, file)).size);
+      expect((res.body as Buffer).equals(fs.readFileSync(path.join(dist, file)))).toBe(true);
+      expect(res.headers["cache-control"]).toBe("public, max-age=0");
+    }
+    const head = await request(app).head(`${DOCS}swagger-ui.css`);
+    expect([head.status, head.text ?? ""]).toEqual([200, ""]);
+    expect(open).not.toHaveBeenCalled();
+    expect(openFile).not.toHaveBeenCalled();
+    open.mockRestore();
+    openFile.mockRestore();
   });
 
   it("does not serve package.json", async () => {
