@@ -4,7 +4,7 @@ import { createExpressAuth } from "@v-m-pioneer-trading/clerk-client";
 import express from "express";
 import { declaring, routePolicy } from "../auth";
 import { createApp } from "../server";
-import { createTestApp, stubCentre, TEST_ORIGIN } from "../testSupport/createTestApp";
+import { createTestApp, noGateway, stubCentre, TEST_ORIGIN } from "../testSupport/createTestApp";
 
 const CORS = {
   "access-control-allow-origin": TEST_ORIGIN,
@@ -168,13 +168,14 @@ describe("every route is declared, or the service refuses to start", () => {
   const auth = () => createExpressAuth(stubCentre().introspector);
 
   it("the real routes all have a policy entry (startup succeeds)", () => {
-    expect(() => createApp({ corsAllowedOrigin: TEST_ORIGIN, auth: auth() })).not.toThrow();
+    expect(() => createApp({ corsAllowedOrigin: TEST_ORIGIN, gateway: noGateway, auth: auth() })).not.toThrow();
   });
 
   it("a route with no entry in the policy table refuses startup", () => {
     expect(() =>
       createApp({
         corsAllowedOrigin: TEST_ORIGIN,
+        gateway: noGateway,
         auth: auth(),
         registerRoutes: (r) => (r["get"] as (p: string, h: unknown) => void)("/api/agent/v1/undeclared", () => undefined),
       }),
@@ -185,6 +186,7 @@ describe("every route is declared, or the service refuses to start", () => {
     expect(() =>
       createApp({
         corsAllowedOrigin: TEST_ORIGIN,
+        gateway: noGateway,
         auth: auth(),
         registerRoutes: (_registrar, app) => {
           app.get("/sneaky", (_req, res) => res.end());
@@ -198,6 +200,7 @@ describe("every route is declared, or the service refuses to start", () => {
       expect(() =>
         createApp({
           corsAllowedOrigin: TEST_ORIGIN,
+        gateway: noGateway,
           auth: auth(),
           policy: { ...routePolicy, "POST /x": tier },
           registerRoutes: (r) => (r["post"] as (p: string, h: unknown) => void)("/x", () => undefined),

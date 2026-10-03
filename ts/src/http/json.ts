@@ -6,6 +6,7 @@
  */
 
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { stringifyJson } from "../gateway/json";
 
 export const goJson: RequestHandler = (_req: Request, res: Response, next: NextFunction) => {
   res.json = ((body: unknown) => {
@@ -22,4 +23,11 @@ export function sendText(res: Response, status: number, message: string): void {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.end(`${message}\n`);
+}
+
+/** Go's writeJSON for a decoded value: `application/json`, the value as lossless JSON, a newline. */
+export function sendJson(res: Response, value: unknown): void {
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "application/json");
+  res.end(`${stringifyJson(value)}\n`);
 }

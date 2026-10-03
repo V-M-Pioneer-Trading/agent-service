@@ -4,8 +4,9 @@
  *
  * Ports src/spacetraders/{errors,client}.go and writeUpstreamError. The shared
  * contract is meta/fixtures/gateway-errors.json (see contract/fixtures); it is
- * driven through this module by __tests__/gatewayErrors.test.ts. The route PRs
- * (live reads, writes) call `callGateway` and `writeUpstreamError`.
+ * driven through this module by __tests__/gatewayErrors.test.ts. The transport
+ * is client.ts; the route handlers let these errors reach the app's error
+ * handler (server.ts), which calls `writeUpstreamError`.
  *
  * The status and message are the gateway's own wherever it answered at all.
  * This service classifies exactly one condition itself, "the gateway did not
@@ -128,52 +129,6 @@ async function readCapped(res: globalThis.Response, limit: number): Promise<Uint
 export async function upstreamErrorFrom(res: globalThis.Response, method: string, endpoint: string): Promise<UpstreamError> {
   const body = await readCapped(res, MAX_ERROR_BODY);
   return new UpstreamError(res.status, upstreamMessage(body), `${method} ${endpoint}`, pacingHeaders(res.headers));
-}
-
-/**
- * One call through st-gateway: parsed JSON of a 2xx (undefined for an empty
- * body), or a thrown UpstreamError (504 for no answer, the gateway's own
- * status for >= 400) or UnreadableAnswer (502). The caller's Authorization is
- * passed in, never read from anywhere else.
- *
- * Typed decoding and redirect following belong to the route PRs.
- */
-export async function callGateway(
-  method: string,
-  url: string,
-  endpoint: string,
-  init: { authorization?: string; body?: string; fetchImpl?: typeof fetch } = {},
-): Promise<unknown> {
-  const headers: Record<string, string> = {};
-  if (init.authorization !== undefined && init.authorization !== "") headers["Authorization"] = init.authorization;
-  if (init.body !== undefined) headers["Content-Type"] = "application/json";
-
-  let res: globalThis.Response;
-  try {
-    res = await (init.fetchImpl ?? fetch)(url, {
-      method,
-      headers,
-      ...(init.body !== undefined ? { body: init.body } : {}),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch (err) {
-    throw gatewayDidNotAnswer(method, endpoint, err);
-  }
-  if (res.status >= 400) throw await upstreamErrorFrom(res, method, endpoint);
-
-  let text: string;
-  try {
-    text = await res.text();
-  } catch (err) {
-    // The body died mid-read: the answer never arrived.
-    throw gatewayDidNotAnswer(method, endpoint, err);
-  }
-  if (text.length === 0) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch (err) {
-    throw new UnreadableAnswer(err instanceof Error ? err.message : "invalid JSON");
-  }
 }
 
 /** Relays the verdict: the gateway's status (502 outside 400-599), its sentence, its pacing headers; text/plain. */
