@@ -325,9 +325,10 @@ func member(members map[string]json.RawMessage, key string, dst any) (present bo
 	return true, nil
 }
 
-// isScopeSeparator is the ASCII whitespace RFC 7662's scope list is split on
-// (space, tab, CR, LF). Unicode spaces are not separators: a scope string
-// carrying U+00A0 or U+2003 is one opaque scope, never two.
+// isScopeSeparator reports the four characters a scope string is split on:
+// space, tab, CR and LF (meta fixture version 6). Nothing else separates —
+// not VT or FF, not U+00A0 or U+2003 or any Unicode space: a scope string
+// carrying one of those between two scopes is one opaque scope, never two.
 func isScopeSeparator(r rune) bool {
 	return r == ' ' || r == '\t' || r == '\r' || r == '\n'
 }
@@ -372,7 +373,7 @@ func parseAnswer(raw []byte) (Answer, error) {
 		return unavailable, fmt.Errorf("%w: %v", errNotContract, err)
 	}
 	// Separator RUNS, empties discarded, as every verifier in the fleet did
-	// before decision 21 — but ASCII whitespace only.
+	// before decision 21 — but on space, tab, CR and LF only.
 	scopes := strings.FieldsFunc(scope, isScopeSeparator)
 	if scopes == nil {
 		scopes = []string{}

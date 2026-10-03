@@ -162,8 +162,9 @@ Changing any of these breaks a known consumer.
   service owns the transaction history.
 * **auth-service verifies, this service asks (decision 21).** `POST` form `token=` to
   `AUTH_INTROSPECTION_URL` verbatim, `X-Introspection-Secret` header. The answer's `scope` is
-  one string, split on whitespace runs; it is ABSENT for a scopeless session (auth-service
-  encodes it `omitempty`), which is the empty list, not a malformed answer.
+  one string, split on runs of space, tab, CR and LF only (fixture v6); it is ABSENT for a
+  scopeless session (auth-service encodes it `omitempty`), which is the empty list, not a
+  malformed answer.
 * **Agent credits exceed `INT`.** Money columns are `BIGINT` for that reason.
 * **MySQL is `mysql:9`, in compose and in production alike** (`infrastructure/agent-service/main.tf`).
   Both track the latest 9.x on purpose — minor upgrades are safe in place, and the tag still

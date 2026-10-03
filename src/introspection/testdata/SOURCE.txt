@@ -2,8 +2,8 @@ introspection.json in this directory is a VERBATIM copy. Do not edit it here.
 
   original: meta/fixtures/introspection.json
             (V-M-Pioneer-Trading/meta, repo root `fixtures/introspection.json`)
-  meta commit: 3cff53921b1e691997ef0c94b4d1945df17efa90 (fixture version 6)
-  sha256: 3918d6790d583f0346498a1f61482d0bb846f46a24706d4e9e09181eac5f62c0
+  meta commit: 72123814032f2207f1e407408304d365b6481e65 (fixture version 6)
+  sha256: f12d41d91b12cd4b8d6674a534ad718d90273aaa93becab4e836654467c43c7c
 
 The sha256 above is the hash of the LF bytes of introspection.json and is
 asserted by conformance_test.go, so the pin enforces itself instead of relying

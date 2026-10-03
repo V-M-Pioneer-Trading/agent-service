@@ -228,7 +228,8 @@ likely to differ.
     could not process this request`.
 17. **Auth runs before everything**: an unparseable body with no session is a 401, with
     a scopeless session a 403. `fleet:control` is exact membership in a list split on
-    ASCII whitespace runs only: a non-breaking space or em space does not split.
+    runs of space, tab, CR and LF only (fixture v6): VT, FF, a non-breaking space or
+    an em space does not split.
 18. **The center's answer is validated like the Go client does**: a contract key in
     the wrong case, a repeated key (in any case, at any depth), trailing data, a
     null/wrong-typed member, an `active` answer without `sub`/`exp`/`kind`, an

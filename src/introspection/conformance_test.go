@@ -98,8 +98,8 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			t.Fatal("testdata/SOURCE.txt records no sha256")
 		}
 		want := string(m[1])
-		if want != "3918d6790d583f0346498a1f61482d0bb846f46a24706d4e9e09181eac5f62c0" {
-			t.Fatalf("SOURCE.txt records %s; this test was written against fixture version 6 (3918d679…)", want)
+		if want != "f12d41d91b12cd4b8d6674a534ad718d90273aaa93becab4e836654467c43c7c" {
+			t.Fatalf("SOURCE.txt records %s; this test was written against fixture version 6 (f12d41d9…)", want)
 		}
 		got := fmt.Sprintf("%x", sha256.Sum256(raw))
 		if got != want {
@@ -110,8 +110,8 @@ func TestVendoredFixtureIsTheExactCopyItClaimsToBe(t *testing.T) {
 			t.Fatalf("fixture hashes to %s, SOURCE.txt records %s — testdata/introspection.json and meta have drifted; "+
 				"re-copy it from meta and update BOTH the commit and the sha256 in SOURCE.txt", got, want)
 		}
-		if len(raw) != 69322 {
-			t.Errorf("fixture is %d bytes, fixture version 6 is 69322", len(raw))
+		if len(raw) != 69287 {
+			t.Errorf("fixture is %d bytes, fixture version 6 is 69287", len(raw))
 		}
 	})
 
