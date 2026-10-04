@@ -9,7 +9,7 @@
 // visible diff in allowed-dependencies.txt, never a side effect of `npm install`.
 //
 // Also refused: `overrides` / `resolutions` (they rewrite what a name resolves to),
-// a .npmrc, bundled dependencies in any form, a lockfile entry installed under
+// a .npmrc, `workspaces` and lockfile `link` entries, bundled dependencies in any form, a lockfile entry installed under
 // another name than its path (bar five pinned aliases npm writes for jest), a
 // resolved URL of another package than the entry, and any entry without sha512 integrity.
 // Transitive packages are covered by `npm audit` and `npm ci --ignore-scripts`.
@@ -66,6 +66,8 @@ function check(pkg, lock, allowlistText, opts = {}) {
   for (const key of ["overrides", "resolutions"]) {
     if (key in pkg) problems.push(`package.json has ${key}; a name must resolve to itself`);
   }
+  // A workspace is installed from a local directory, outside everything this check pins.
+  if ("workspaces" in pkg) problems.push("package.json has workspaces; a workspace is installed from a local directory, not the registry");
   if (opts.npmrc) problems.push(".npmrc exists; it can redirect the registry or alias packages. Configure nothing there");
   const lockRoot = lock.packages?.[""] ?? {};
   for (const section of SECTIONS) {
@@ -95,19 +97,27 @@ function check(pkg, lock, allowlistText, opts = {}) {
     } else if (alias !== undefined && entry.version !== alias.version) {
       problems.push(`package-lock.json: ${label} is not the pinned alias ${alias.name}@${alias.version}`);
     }
-    const resolved = entry.resolved;
-    if (resolved === undefined) {
-      if (!entry.link) problems.push(`package-lock.json: ${label} has no resolved URL`);
+    // A link entry points at a directory outside node_modules (a workspace or `file:` link): nothing is downloaded or verified.
+    if (entry.link) {
+      problems.push(`package-lock.json: ${label} is a link entry; links and workspaces are not allowed`);
       continue;
     }
-    const clerk = CLERK_URL.test(resolved);
-    if (!resolved.startsWith("https://registry.npmjs.org/") && !clerk) {
-      problems.push(`package-lock.json: ${label} resolves from ${resolved}, which is neither registry.npmjs.org nor the clerk-client release`);
+    const resolved = entry.resolved;
+    if (resolved === undefined) {
+      problems.push(`package-lock.json: ${label} has no resolved URL`);
+      continue;
     }
-    if (!clerk) {
+    if (!CLERK_URL.test(resolved)) {
       const installedAs = entry.name ?? pathName;
-      if (!resolved.startsWith(`https://registry.npmjs.org/${installedAs}/-/`)) {
-        problems.push(`package-lock.json: ${label} is "${installedAs}" but resolves from ${resolved}`);
+      // The exact tarball URL, not a prefix: `registry.npmjs.org/debug/-/../../left-pad/-/left-pad-1.3.0.tgz` starts with
+      // debug's prefix yet installs left-pad as debug, and a prefix also lets another version than `version` install.
+      const expected = `https://registry.npmjs.org/${installedAs}/-/${installedAs.slice(installedAs.lastIndexOf("/") + 1)}-${entry.version}.tgz`;
+      if (/\.\.|[%?#\\]/.test(resolved)) {
+        problems.push(`package-lock.json: ${label} resolves from ${resolved}, which contains "..", "%", "?", "#" or a backslash`);
+      } else if (!resolved.startsWith("https://registry.npmjs.org/")) {
+        problems.push(`package-lock.json: ${label} resolves from ${resolved}, which is neither registry.npmjs.org nor the clerk-client release`);
+      } else if (resolved !== expected) {
+        problems.push(`package-lock.json: ${label} is "${installedAs}" but resolves from ${resolved}, not ${expected}`);
       }
     }
     if (!/^sha512-[A-Za-z0-9+/]+=*$/.test(entry.integrity ?? "")) problems.push(`package-lock.json: ${label} has no sha512 integrity`);

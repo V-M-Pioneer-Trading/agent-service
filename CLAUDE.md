@@ -251,6 +251,9 @@ timing without a two-orders-of-magnitude margin.
 * **A new config value:** read it once at startup in `config.ts`, never per request, and add it to the README's table.
 * **A new tunable:** a named constant with a comment saying what it bounds, plus a row in the README's table.
 * **A new dependency:** a line in `allowed-dependencies.txt`, justified in the PR; `npm ci --ignore-scripts` only.
+  The checker also refuses `workspaces`, lockfile `link` entries, and any `resolved` that is not exactly
+  `https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz` (or the clerk-client release). The Dockerfile's deps
+  stage installs with `--omit=dev --omit=optional` and fails the build on any compiled file (ELF, `*.node`, `*.so`, `*.wasm`, ...) in `node_modules`.
 
 ---
 
