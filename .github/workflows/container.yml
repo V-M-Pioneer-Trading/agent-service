@@ -45,32 +45,115 @@ jobs:
     # The concurrency group spans the whole workflow, so a hung test job holds
     # the deploy slot too. The suite takes a minute or two.
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: src
+    services:
+      # For mysql.integration.test.ts: a real MySQL whose global time zone the test moves off UTC.
+      mysql:
+        image: mysql:9
+        env:
+          MYSQL_ROOT_PASSWORD: example
+          MYSQL_DATABASE: vnm-agent-db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pexample"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-node@v4
         with:
-          go-version-file: src/go.mod
-          cache-dependency-path: src/go.sum
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Check formatting
-        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      # --ignore-scripts: no dependency's install script runs, here or in the image.
+      - run: npm ci --ignore-scripts
 
-      - name: Check the OpenAPI spec is current
-        # Same pinned command a developer runs (the //go:generate in
-        # app-runner.go). Needs the network only to fetch the swag CLI.
+      - name: Direct dependencies are exactly the allowlist
+        run: npm run check:deps
+
+      - name: Audit
+        run: npm audit --audit-level=high
+
+      # tsoa codegen, then tsc over sources and tests with the strict flag set.
+      - run: npm run typecheck
+
+      - run: npm run build
+
+      # The committed openapi.json must match the controllers. Regenerates it (no
+      # server, DB or network) and fails on any difference.
+      - name: Check openapi.json is up to date
         run: |
-          go generate ./...
-          # git status, not git diff: a new or deleted file under docs/ would
-          # otherwise get through.
-          test -z "$(git status --porcelain -- docs)" || { git status --porcelain -- docs; git diff -- docs; echo "::error::src/docs is stale. Run 'go generate ./...' from src/ and commit the result."; exit 1; }
+          npm run openapi
+          # git status, not git diff: a deleted or never-committed file shows as
+          # untracked, which git diff would let through.
+          test -z "$(git status --porcelain -- openapi.json)" || { git diff -- openapi.json; echo "::error file=openapi.json::openapi.json is out of date. Run 'npm run openapi' and commit the result."; exit 1; }
 
-      - run: go vet ./...
+      - run: npm test
+        env:
+          TEST_MYSQL_HOST: 127.0.0.1
+          TEST_MYSQL_PORT: "3306"
 
-      - run: go test ./... -race -shuffle=on
+  # The black-box HTTP contract suite (contract/) against the image this
+  # repository builds: the whole of it, nothing skipped (contract-skip.txt is
+  # empty), judged by scripts/run-contract.js. It is the parity record of the
+  # Go to TypeScript port and stays a gate. It never holds up the deploy job.
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      # Same major as compose and production (see CLAUDE.md). The image under
+      # test reaches it through host.docker.internal on the published port.
+      mysql:
+        image: mysql:9
+        env:
+          MYSQL_ROOT_PASSWORD: example
+          MYSQL_DATABASE: vnm-agent-db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pexample"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: contract/package-lock.json
+
+      - name: Build the image
+        run: docker build -t agent-service:contract .
+
+      - name: Install the suite's dev dependencies
+        working-directory: contract
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck the suite
+        working-directory: contract
+        run: npm run typecheck
+
+      - name: Run the contract suite against the image
+        env:
+          CONTRACT_IMAGE: agent-service:contract
+          CONTRACT_MYSQL_HOST: host.docker.internal
+          CONTRACT_MYSQL_PORT: "3306"
+          CONTRACT_MYSQL_USER: root
+          CONTRACT_MYSQL_PASSWORD: example
+          CONTRACT_MYSQL_DATABASE: vnm-agent-db
+        run: node scripts/run-contract.js
+
+      # The service's own log, for a run that failed. The suite writes it on the
+      # way out, before it removes the container.
+      - name: Show the service log
+        if: failure()
+        working-directory: contract
+        run: cat .out/service.log || true
 
   # The deploy job below builds the image and ships it to production in one
   # step, so without this a broken Dockerfile is first discovered mid-deploy.
@@ -103,7 +186,7 @@ jobs:
     # Deploy credentials live on this job alone. Declared at workflow level they
     # reached the test job too, and since that job runs on pushes to main its
     # OIDC token satisfies the deploy role's trust policy: dependency code and test
-    # code run by `go test` could have assumed the role that redeploys production.
+    # code run by `npm test` could have assumed the role that redeploys production.
     permissions:
       contents: read
       packages: write

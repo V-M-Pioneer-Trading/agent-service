@@ -1,26 +1,34 @@
-# Build stage: the Go toolchain and module cache never reach the published image.
-FROM golang:1.25-alpine AS build
+# agent-service (TypeScript, meta#103, decision 23). Build context is the
+# repository root. CI builds this file for the `image` and `contract` checks and
+# deploys it from the tip of main (.github/workflows/container.yml).
+#
+# `npm ci --ignore-scripts` everywhere: no dependency's install script runs.
 
-WORKDIR /src
+# Build: full dependencies, tsoa codegen, tsc.
+FROM node:24-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY tsconfig.json tsconfig.build.json tsoa.json ./
+COPY scripts ./scripts
+COPY src ./src
+RUN npm run build
 
-# Dependencies are cached separately from source, so a code-only change doesn't
-# re-download the module graph.
-COPY src/go.mod src/go.sum ./
-RUN go mod download
+# Production dependencies only.
+FROM node:24-slim AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --omit=dev
 
-COPY src/ ./
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agent-service .
-
-# Runtime stage: no compiler, no shell-accessible toolchain, ~10 MB instead of ~350 MB.
-FROM alpine:3.20
-
-# ca-certificates so outbound HTTPS (should st-gateway ever be fronted by TLS)
-# validates rather than failing with an opaque x509 error.
-RUN apk add --no-cache ca-certificates
-
-COPY --from=build /out/agent-service /usr/local/bin/agent-service
-
-# The container keeps listening on 80 — the port its deployment already
-# publishes. PORT overrides it for anyone running the image directly.
+# Runtime: no shell, no package manager. The entrypoint is `node`.
+FROM gcr.io/distroless/nodejs24-debian12
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json ./
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+# The spec Swagger UI serves (src/swagger.ts reads ../openapi.json relative to dist/).
+COPY openapi.json ./
+# The container keeps listening on 80, the port its deployment already publishes; PORT overrides it.
 EXPOSE 80
-ENTRYPOINT ["agent-service"]
+CMD ["dist/server.js"]

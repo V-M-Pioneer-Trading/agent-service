@@ -1,9 +1,12 @@
 .git
 .github
+.claude
+node_modules
+dist
+src/generated
 *.md
 docker-compose.yml
 Dockerfile
 .dockerignore
 contract
-
-ts
+contract-skip*

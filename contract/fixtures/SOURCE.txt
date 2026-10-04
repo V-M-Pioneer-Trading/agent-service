@@ -1,14 +1,21 @@
-gateway-errors.json in this directory is a VERBATIM copy. Do not edit it here.
+gateway-errors.json in this directory is a copy of meta's file, identical except for ONE line.
 
-  original: src/spacetraders/testdata/gateway-errors.json (this repository)
-            itself a vendored copy of meta/fixtures/gateway-errors.json
+  original: meta/fixtures/gateway-errors.json
             (V-M-Pioneer-Trading/meta, repo root `fixtures/gateway-errors.json`)
   sha256: 23307100109455e0fa20f976e3aebf2550b5bfbbeeee114682b0097ae1545196
 
-The sha256 above is the hash of the LF bytes. suites/upstream-errors.ts asserts it
-against this copy, and, when the original is present next to it (a checkout of
-this repository), against the original too, so the copy cannot drift from the
-original in either direction. When the Go service is deleted the original goes
-with it; keep this copy and its pin, and re-copy from meta/fixtures/ instead.
+The sha256 above is the hash of THIS directory's copy (LF bytes), not of meta's raw file. The
+two differ only in the `$comment` member on line 2, which here reads "VENDORED COPY - do not edit
+here except this line ...". Hashing meta's file gives 0eca278f...; that is expected, not drift.
+suites/pins.ts asserts the pin against this copy. (Until the Go service was deleted,
+agent-service#38, the suite also compared the copy with the Go tree's own vendored copy; that
+second copy is gone.)
 
-Change meta first, then re-copy both files and update the sha256 above.
+To re-vendor after meta changes (change meta first):
+  1. copy meta's fixtures/gateway-errors.json over this file;
+  2. replace line 2, the `$comment` member, with the VENDORED COPY comment, byte for byte as it
+     is now (git show HEAD:contract/fixtures/gateway-errors.json | sed -n 2p);
+  3. check that `diff <meta's file> <this file>` shows line 2 and nothing else;
+  4. recompute the pin:  tr -d '\r' < gateway-errors.json | sha256sum   and write it above;
+  5. run the contract suite (pins.ts) and `npm test` (gatewayErrors.test.ts drives the cases).
+Skipping step 2 or 4 fails pins.ts, which is the point of the pin.
