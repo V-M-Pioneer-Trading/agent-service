@@ -102,6 +102,78 @@ describe("the direct-dependency check", () => {
     expect(problems(pkg, lock)).toMatch(/node_modules\/body-parser is "body-parser" but resolves from .*left-pad/);
   });
 
+  it("refuses a resolved URL that only starts with the right prefix (path traversal to another package)", () => {
+    const { pkg, lock } = fresh();
+    const e = lock.packages["node_modules/body-parser"];
+    e.resolved = "https://registry.npmjs.org/body-parser/-/../../left-pad/-/left-pad-1.3.0.tgz";
+    expect(problems(pkg, lock)).toMatch(/node_modules\/body-parser resolves from .*which contains/);
+  });
+
+  it("refuses a resolved URL of the right package but another version than the entry says", () => {
+    const { pkg, lock } = fresh();
+    const e = lock.packages["node_modules/body-parser"];
+    e.resolved = "https://registry.npmjs.org/body-parser/-/body-parser-0.0.1.tgz";
+    expect(problems(pkg, lock)).toMatch(/node_modules\/body-parser is "body-parser" but resolves from .*body-parser-0\.0\.1\.tgz, not/);
+  });
+
+  it.each(["%2e%2e/", "?x=1", "#x", "\\x"])("refuses %s in a resolved URL", (junk) => {
+    const { pkg, lock } = fresh();
+    const e = lock.packages["node_modules/body-parser"];
+    e.resolved = e.resolved + junk;
+    expect(problems(pkg, lock)).toMatch(/node_modules\/body-parser resolves from .*which contains/);
+  });
+
+  it("accepts a scoped package and a pinned alias at their exact tarball URLs", () => {
+    const { pkg, lock } = fresh();
+    const scoped = Object.entries<any>(lock.packages).find(([k, e]) => /node_modules\/@[^/]+\/[^/]+$/.test(k) && e.resolved?.startsWith("https://registry"));
+    expect(scoped).toBeDefined();
+    expect(lock.packages["node_modules/string-width-cjs"].resolved).toBe("https://registry.npmjs.org/string-width/-/string-width-4.2.3.tgz");
+    expect(check(pkg, lock, allow)).toEqual([]);
+  });
+
+  it("refuses workspaces in package.json", () => {
+    for (const ws of [["packages/*"], { packages: ["x"] }, []]) {
+      const { pkg, lock } = fresh();
+      pkg.workspaces = ws;
+      expect(problems(pkg, lock)).toContain("package.json has workspaces");
+    }
+  });
+
+  it("refuses a link entry in the lockfile, with or without a resolved URL", () => {
+    const a = fresh();
+    a.lock.packages["node_modules/evil"] = { resolved: "packages/evil", link: true };
+    expect(problems(a.pkg, a.lock)).toMatch(/node_modules\/evil is a link entry/);
+    const b = fresh();
+    b.lock.packages["node_modules/evil"] = { link: true };
+    expect(problems(b.pkg, b.lock)).toMatch(/node_modules\/evil is a link entry/);
+  });
+
+  it("refuses clerk-client's lockfile resolved when it differs from package.json's URL (npm would then skip the integrity check)", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"].resolved = "https://github.com/V-M-Pioneer-Trading/clerk-client/releases/download/v9.9.9/x.tgz";
+    lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"].integrity = "sha512-AAAA";
+    expect(problems(pkg, lock)).toMatch(/clerk-client resolves from .*v9\.9\.9.*not from the URL package\.json declares/);
+  });
+
+  it("refuses clerk-client's lockfile version when it differs from the version in its release URL", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"].version = "2.0.0";
+    expect(problems(pkg, lock)).toMatch(/clerk-client is version 2\.0\.0 but its release URL is 2\.0\.1/);
+  });
+
+  it("refuses any other entry resolved to a clerk-client release asset", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/express"].resolved = lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"].resolved;
+    expect(problems(pkg, lock)).toMatch(/node_modules\/express resolves from .*not registry\.npmjs\.org/);
+  });
+
+  it("keeps the committed lockfile's clerk-client entry in step with package.json", () => {
+    const { pkg, lock } = fresh();
+    const e = lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"];
+    expect(e.resolved).toBe(pkg.dependencies["@v-m-pioneer-trading/clerk-client"]);
+    expect(e.resolved).toContain("/v" + e.version + "/");
+  });
+
   it("pins the five aliases by path, name and version", () => {
     const a = fresh();
     for (const where of Object.keys(KNOWN_ALIASES)) expect(a.lock.packages[where]).toBeDefined();
