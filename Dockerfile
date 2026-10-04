@@ -5,7 +5,7 @@
 # `npm ci --ignore-scripts` everywhere: no dependency's install script runs.
 
 # Build: full dependencies, tsoa codegen, tsc.
-FROM node:24-slim AS build
+FROM node:26-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
@@ -18,7 +18,7 @@ RUN npm run build
 # dependency (mysql2, express, swagger-ui-express, clerk-client) needs an optional one. Then proof there is no compiled code
 # in the tree: nothing here is a native addon or WebAssembly, so a compiled file (ELF or WebAssembly magic in any file, *.node, *.so, *.so.*, *.dylib,
 # *.dll, *.wasm, binding.gyp) is a dependency that should not be here, and the build fails naming it.
-FROM node:24-slim AS deps
+FROM node:26-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --omit=dev --omit=optional \
