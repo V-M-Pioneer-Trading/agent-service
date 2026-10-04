@@ -19,6 +19,7 @@ const fs = require("fs");
 const path = require("path");
 
 const CLERK = "@v-m-pioneer-trading/clerk-client";
+const CLERK_LOCK_PATH = "node_modules/@v-m-pioneer-trading/clerk-client";
 const CLERK_URL = /^https:\/\/github\.com\/V-M-Pioneer-Trading\/clerk-client\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[A-Za-z0-9._-]+\.tgz$/;
 const SEMVER_RANGE = /^[~^]?[0-9]+\.[0-9]+\.[0-9]+$/;
 // The aliases npm itself writes for jest's tree (react-is, string-width and friends under another name).
@@ -107,7 +108,16 @@ function check(pkg, lock, allowlistText, opts = {}) {
       problems.push(`package-lock.json: ${label} has no resolved URL`);
       continue;
     }
-    if (!CLERK_URL.test(resolved)) {
+    if (where === CLERK_LOCK_PATH) {
+      // The one entry that may leave the registry, and only for the exact URL package.json declares: npm downloads from
+      // package.json's URL and skips the integrity check when the lock's resolved differs, so the pin would protect nothing.
+      const declared = pkg.dependencies?.[CLERK];
+      if (resolved !== declared) problems.push(`package-lock.json: ${label} resolves from ${resolved}, not from the URL package.json declares (${declared})`);
+      const urlVersion = /\/download\/v([0-9]+\.[0-9]+\.[0-9]+)\//.exec(resolved)?.[1];
+      if (!CLERK_URL.test(resolved) || entry.version !== urlVersion) {
+        problems.push(`package-lock.json: ${label} is version ${entry.version} but its release URL is ${urlVersion ?? "not a clerk-client release"}`);
+      }
+    } else {
       const installedAs = entry.name ?? pathName;
       // The exact tarball URL, not a prefix: `registry.npmjs.org/debug/-/../../left-pad/-/left-pad-1.3.0.tgz` starts with
       // debug's prefix yet installs left-pad as debug, and a prefix also lets another version than `version` install.
@@ -115,7 +125,7 @@ function check(pkg, lock, allowlistText, opts = {}) {
       if (/\.\.|[%?#\\]/.test(resolved)) {
         problems.push(`package-lock.json: ${label} resolves from ${resolved}, which contains "..", "%", "?", "#" or a backslash`);
       } else if (!resolved.startsWith("https://registry.npmjs.org/")) {
-        problems.push(`package-lock.json: ${label} resolves from ${resolved}, which is neither registry.npmjs.org nor the clerk-client release`);
+        problems.push(`package-lock.json: ${label} resolves from ${resolved}, which is not registry.npmjs.org (only the clerk-client entry may leave it)`);
       } else if (resolved !== expected) {
         problems.push(`package-lock.json: ${label} is "${installedAs}" but resolves from ${resolved}, not ${expected}`);
       }

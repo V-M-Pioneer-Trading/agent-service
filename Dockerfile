@@ -16,14 +16,14 @@ RUN npm run build
 
 # Production dependencies only. --omit=optional as well: npm ci --omit=dev still installs devOptional entries, and no runtime
 # dependency (mysql2, express, swagger-ui-express, clerk-client) needs an optional one. Then proof there is no compiled code
-# in the tree: nothing here is a native addon or WebAssembly, so a compiled file (ELF magic, *.node, *.so, *.so.*, *.dylib,
+# in the tree: nothing here is a native addon or WebAssembly, so a compiled file (ELF or WebAssembly magic in any file, *.node, *.so, *.so.*, *.dylib,
 # *.dll, *.wasm, binding.gyp) is a dependency that should not be here, and the build fails naming it.
 FROM node:24-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --omit=dev --omit=optional \
  && found="$(find node_modules -type f \( -name '*.node' -o -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.dll' -o -name '*.wasm' -o -name 'binding.gyp' \))" \
- && elf="$(find node_modules -type f -size +3c -exec sh -c 'for f; do [ "$(head -c 4 "$f" | od -An -tx1 | tr -d " \n")" = 7f454c46 ] && echo "$f"; done; true' sh {} +)" \
+ && elf="$(find node_modules -type f -size +3c -exec sh -c 'for f; do case "$(head -c 4 "$f" | od -An -tx1 | tr -d " \n")" in 7f454c46|0061736d) echo "$f";; esac; done' sh {} +)" \
  && if [ -n "$found$elf" ]; then echo "compiled file in the production tree:" >&2; echo "$found" "$elf" >&2; exit 1; fi
 
 # Runtime: no shell, no package manager. The entrypoint is `node`.

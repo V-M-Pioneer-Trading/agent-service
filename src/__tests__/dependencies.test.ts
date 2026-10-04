@@ -148,6 +148,32 @@ describe("the direct-dependency check", () => {
     expect(problems(b.pkg, b.lock)).toMatch(/node_modules\/evil is a link entry/);
   });
 
+  it("refuses clerk-client's lockfile resolved when it differs from package.json's URL (npm would then skip the integrity check)", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"].resolved = "https://github.com/V-M-Pioneer-Trading/clerk-client/releases/download/v9.9.9/x.tgz";
+    lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"].integrity = "sha512-AAAA";
+    expect(problems(pkg, lock)).toMatch(/clerk-client resolves from .*v9\.9\.9.*not from the URL package\.json declares/);
+  });
+
+  it("refuses clerk-client's lockfile version when it differs from the version in its release URL", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"].version = "2.0.0";
+    expect(problems(pkg, lock)).toMatch(/clerk-client is version 2\.0\.0 but its release URL is 2\.0\.1/);
+  });
+
+  it("refuses any other entry resolved to a clerk-client release asset", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/express"].resolved = lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"].resolved;
+    expect(problems(pkg, lock)).toMatch(/node_modules\/express resolves from .*not registry\.npmjs\.org/);
+  });
+
+  it("keeps the committed lockfile's clerk-client entry in step with package.json", () => {
+    const { pkg, lock } = fresh();
+    const e = lock.packages["node_modules/@v-m-pioneer-trading/clerk-client"];
+    expect(e.resolved).toBe(pkg.dependencies["@v-m-pioneer-trading/clerk-client"]);
+    expect(e.resolved).toContain("/v" + e.version + "/");
+  });
+
   it("pins the five aliases by path, name and version", () => {
     const a = fresh();
     for (const where of Object.keys(KNOWN_ALIASES)) expect(a.lock.packages[where]).toBeDefined();
