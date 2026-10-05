@@ -274,7 +274,7 @@ jobs:
 
       - name: Configure AWS credentials
         if: steps.tip.outputs.deploy == 'true'
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::543292785457:role/github-actions-ssm-deploy
           aws-region: eu-central-1
