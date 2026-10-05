@@ -170,7 +170,7 @@ Syncing `openapi.json` to meta's `openapi/agent-service.json` waits for meta#26'
 ```bash
 npm test                              # jest; no network needed
 TEST_MYSQL_HOST=127.0.0.1 npm test    # also runs the real-MySQL integration test (what CI does)
-node scripts/run-contract.js          # the black-box contract suite against this build (needs MySQL; see contract/README.md)
+node scripts/run-contract.cjs          # the black-box contract suite against this build (needs MySQL; see contract/README.md)
 ```
 
 The DB layer is exercised through a fake `Sql` door, the gateway through a stub HTTP server and

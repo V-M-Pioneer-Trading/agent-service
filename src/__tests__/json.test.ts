@@ -111,7 +111,7 @@ describe("sendJson writes in pieces", () => {
         const set = listeners.get(event) ?? new Set();
         listeners.set(event, set.add(fn));
         this.maxListeners = Math.max(this.maxListeners, count());
-        if (event === "drain") setTimeout(() => listeners.get("drain")?.forEach((f) => f()), 0);
+        if (event === "drain") setTimeout(() => listeners.get("drain")?.forEach((f) => { f(); }), 0);
       },
       off(event: string, fn: () => void) {
         listeners.get(event)?.delete(fn);

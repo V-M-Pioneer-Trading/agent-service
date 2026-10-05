@@ -5,13 +5,13 @@ import { MysqlSql } from "../db/sql";
 // Against a real MySQL, when TEST_MYSQL_HOST is set (the `test` job of container.yml has one; locally: any MySQL 9 with the
 // root password `example`). The server's own time zone is moved away from UTC first, so that a session that is not
 // pinned to UTC shows in behaviour and not only in the text of a statement.
-const host = process.env["TEST_MYSQL_HOST"];
+const host = process.env.TEST_MYSQL_HOST;
 const config = {
   host: host ?? "",
-  port: process.env["TEST_MYSQL_PORT"] ?? "3306",
+  port: process.env.TEST_MYSQL_PORT ?? "3306",
   user: "root",
-  password: process.env["TEST_MYSQL_PASSWORD"] ?? "example",
-  database: process.env["TEST_MYSQL_DATABASE"] ?? "vnm-agent-db",
+  password: process.env.TEST_MYSQL_PASSWORD ?? "example",
+  database: process.env.TEST_MYSQL_DATABASE ?? "vnm-agent-db",
 };
 
 (host === undefined ? describe.skip : describe)("against a real MySQL, whose global time zone is not UTC", () => {
@@ -32,7 +32,7 @@ const config = {
     const sql = await setUpDatabase(config, { log: () => undefined });
     try {
       expect((await sql.execute("SELECT @@session.time_zone, @@global.time_zone"))[0]).toEqual(["+00:00", "+05:00"]);
-      const ship = `TZ-${Date.now()}`;
+      const ship = `TZ-${String(Date.now())}`;
       await new HistoryStore(sql).insertTransaction({
         type: "SELL", shipSymbol: ship, waypointSymbol: "W", shipType: null, tradeSymbol: "T", units: 1n, pricePerUnit: 1n,
         totalPrice: 9007199254740993n, agentCredits: 1n, occurredAt: "2026-03-04 05:06:07.600000",

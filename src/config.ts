@@ -48,10 +48,13 @@ const isGoSpace = (code: number): boolean =>
 
 /** Go's strings.TrimSpace. */
 export function goTrimSpace(s: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-misused-spread -- iterates by code point on purpose: Go ranges over runes, and a UTF-16 split would differ
   const cps = [...s];
   let start = 0;
   let end = cps.length;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is inside the array or string being walked, and a character from it has a code point
   while (start < end && isGoSpace(cps[start]!.codePointAt(0)!)) start++;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is inside the array or string being walked, and a character from it has a code point
   while (end > start && isGoSpace(cps[end - 1]!.codePointAt(0)!)) end--;
   return cps.slice(start, end).join("");
 }
@@ -63,8 +66,10 @@ const hostSafe = (c: string): boolean => /^[A-Za-z0-9_.~!$&'()*+,;=:[\]<>"-]$/.t
 
 /** Go's unescape(s, encodeHost) / encodePath, as a yes-or-no. */
 function validEscapes(s: string, mode: "host" | "zone" | "path"): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-misused-spread -- iterates by code point on purpose: Go ranges over runes, and a UTF-16 split would differ
   const chars = [...s];
   for (let i = 0; i < chars.length; i++) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is inside the array or string being walked, and a character from it has a code point
     const c = chars[i]!;
     if (c === "%") {
       const h = chars.slice(i + 1, i + 3).join("");
@@ -89,7 +94,7 @@ const validOptionalPort = (p: string): boolean => p === "" || /^:[0-9]*$/.test(p
  * optional, non-empty zone), not an IPv4 address, an IPvFuture or nothing.
  */
 function validHost(host: string): boolean {
-  if (host.indexOf("[", 1) !== -1) return false;
+  if (host.includes("[", 1)) return false;
   if (host.startsWith("[")) {
     const close = host.lastIndexOf("]");
     if (close < 0 || !validOptionalPort(host.slice(close + 1))) return false;
@@ -135,11 +140,13 @@ function fetchProblem(raw: string): string | null {
  */
 export function urlProblem(raw: string): string | null {
   const absolute = `${ENV_URL} must be an absolute URL, for example http://localhost:3005/auth/v1/introspect`;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is inside the array or string being walked, and a character from it has a code point
   for (const c of raw) if (isControl(c.codePointAt(0)!)) return `${ENV_URL} must not contain control characters`;
   // getScheme
   let scheme = "";
   let rest = raw;
   for (let i = 0; i < raw.length; i++) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is inside the array or string being walked, and a character from it has a code point
     const c = raw[i]!;
     if (isAlpha(c)) continue;
     if (/[0-9+.-]/.test(c) && i > 0) continue;
@@ -179,6 +186,7 @@ export function loadAuthConfig(env: Env): IntrospectionConfig {
   if (goTrimSpace(rawUrl) === "") throw new ConfigError(`${ENV_URL} is required — refusing to start without it`);
   const secret = env[ENV_SECRET] ?? "";
   if (goTrimSpace(secret) === "") throw new ConfigError(`${ENV_SECRET} is required — refusing to start without it`);
+  // eslint-disable-next-line @typescript-eslint/no-misused-spread, @typescript-eslint/no-non-null-assertion -- iterates by code point on purpose: Go ranges over runes, and a UTF-16 split would differ
   if (secret !== goTrimSpace(secret) || [...secret].some((c) => isControl(c.codePointAt(0)!))) {
     throw new ConfigError(`${ENV_SECRET} must not contain surrounding whitespace or control characters`);
   }

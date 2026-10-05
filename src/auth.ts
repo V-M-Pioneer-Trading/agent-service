@@ -14,7 +14,8 @@ import type { ExpressAuth } from "@v-m-pioneer-trading/clerk-client";
 
 export const SCOPE_FLEET_CONTROL = "fleet:control";
 
-export type Tier = "ignore" | "none" | "session" | string;
+// "ignore", "none" or "session", or a scope name (clerk-client's declaration vocabulary); a plain string, so no member of the union is redundant.
+export type Tier = string;
 export type Policy = Readonly<Record<string, Tier>>;
 
 /** Keyed "METHOD /path" exactly as tsoa registers it (Express syntax). */

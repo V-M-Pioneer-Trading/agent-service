@@ -52,7 +52,7 @@ export const SCHEMA: readonly string[] = [
  * migration is guarded by a catalogue lookup instead: a bare ALTER on every boot would rebuild the
  * table each time.
  */
-export const WIDENED_COLUMNS: ReadonlyArray<{ readonly table: string; readonly column: string; readonly definition: string }> = [
+export const WIDENED_COLUMNS: readonly { readonly table: string; readonly column: string; readonly definition: string }[] = [
   { table: "transactions", column: "total_price", definition: "BIGINT NOT NULL" },
   { table: "transactions", column: "agent_credits", definition: "BIGINT NOT NULL" },
 ];
@@ -62,7 +62,7 @@ export const WIDENED_COLUMNS: ReadonlyArray<{ readonly table: string; readonly c
  * ship or one contract. MySQL has no CREATE INDEX IF NOT EXISTS, so these are likewise guarded by
  * a catalogue lookup.
  */
-export const INDEXES: ReadonlyArray<{ readonly table: string; readonly name: string; readonly columns: string }> = [
+export const INDEXES: readonly { readonly table: string; readonly name: string; readonly columns: string }[] = [
   { table: "contract_deliveries", name: "idx_deliveries_contract", columns: "(contract_id, delivered_at)" },
   { table: "transactions", name: "idx_transactions_occurred", columns: "(occurred_at)" },
   { table: "transactions", name: "idx_transactions_ship", columns: "(ship_symbol, occurred_at)" },
@@ -83,6 +83,7 @@ async function columnType(sql: Sql, table: string, column: string): Promise<stri
   const rows = await sql.execute(COLUMN_TYPE_SQL, [table, column]);
   const value = rows[0]?.[0];
   // The catalogue's text columns may arrive as bytes.
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- null and undefined are handled above; the catalogue's text column is a string or a Buffer, whose String() is its UTF-8 text
   return value === undefined || value === null ? "" : String(value);
 }
 

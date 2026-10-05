@@ -1,4 +1,4 @@
-# See scripts/run-contract.js.
+# See scripts/run-contract.cjs.
 # suite   = every test of contract/, measured with nothing filtered
 # skipped = cases covered by contract-skip.txt (none)
 # pass    = cases outside the list, all of which pass

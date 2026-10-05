@@ -46,10 +46,10 @@ export class HistoryController extends Controller {
    * with a `;` or a bad escape is dropped, names are case sensitive), so Express' parser is off and
    * these parameters are documented only: nothing validates them before the handler runs. A bad `type`
    * is reported before a bad `limit`; both are 400 and need no session.
-   * @param shipSymbol Filter by ship symbol
-   * @param type Filter by transaction type
-   * @isInt limit
-   * @param limit Max results, 1-1000 (default 100; a larger value is capped at 1000)
+   * @param _shipSymbol Filter by ship symbol
+   * @param _type Filter by transaction type
+   * @isInt _limit
+   * @param _limit Max results, 1-1000 (default 100; a larger value is capped at 1000)
    */
   @Tags("ships")
   @Response<string>(400, "invalid query parameter")
@@ -57,9 +57,9 @@ export class HistoryController extends Controller {
   @Get("transactions")
   public async getTransactions(
     @Request() req: ExpressRequest,
-    @Query() shipSymbol?: string,
-    @Query() type?: TransactionType,
-    @Query() limit?: number,
+    @Query("shipSymbol") _shipSymbol?: string,
+    @Query("type") _type?: TransactionType,
+    @Query("limit") _limit?: number,
   ): Promise<Transaction[]> {
     const query = new GoQuery(rawQueryOf(req.url));
 

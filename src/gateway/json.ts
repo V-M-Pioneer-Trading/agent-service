@@ -35,7 +35,7 @@ export type JsonNode =
   /** `plain` is true when the source text had no escape and no byte above 0x7f, so `v` is also what stood between the quotes. */
   | { readonly t: "str"; readonly v: string; readonly plain: boolean }
   | { readonly t: "arr"; readonly items: JsonNode[] }
-  | { readonly t: "obj"; readonly members: Array<readonly [key: string, value: JsonNode]> };
+  | { readonly t: "obj"; readonly members: (readonly [key: string, value: JsonNode])[] };
 
 /** encoding/json's maxNestingDepth. */
 export const MAX_DEPTH = 10000;
@@ -50,7 +50,8 @@ const isDigit = (c: number | undefined): boolean => c !== undefined && c >= 0x30
  * Shortest form only, no surrogates, nothing above U+10FFFF.
  */
 export function validLength(b: Uint8Array, i: number): number {
-  const b0 = b[i] as number;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is below the buffer length: the caller or the loop condition has checked it
+  const b0 = b[i]!;
   if (b0 < 0x80) return 1;
   const cont = (k: number, lo = 0x80, hi = 0xbf): boolean => {
     const x = b[i + k];
@@ -68,7 +69,7 @@ const ESCAPES: Readonly<Record<number, string>> = { 0x22: '"', 0x5c: "\\", 0x2f:
 
 interface Frame {
   readonly obj: boolean;
-  readonly members: Array<readonly [string, JsonNode]>;
+  readonly members: (readonly [string, JsonNode])[];
   readonly items: JsonNode[];
   key: string;
 }
@@ -93,7 +94,8 @@ function parse(bytes: Uint8Array, ignoreRest: boolean): JsonNode {
   let i = 0;
 
   const fail = (what: string): never => {
-    throw new JsonSyntaxError(i >= n ? "unexpected end of JSON input" : `invalid character 0x${(buf[i] as number).toString(16)} ${what}`, i >= n);
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is below the buffer length: the caller or the loop condition has checked it
+    throw new JsonSyntaxError(i >= n ? "unexpected end of JSON input" : `invalid character 0x${(buf[i]!).toString(16)} ${what}`, i >= n);
   };
   const ws = (): void => {
     while (isWs(buf[i])) i++;
@@ -104,7 +106,8 @@ function parse(bytes: Uint8Array, ignoreRest: boolean): JsonNode {
     const start = ++i;
     // Fast path: printable ASCII up to the closing quote.
     while (i < n) {
-      const c = buf[i] as number;
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is below the buffer length: the caller or the loop condition has checked it
+      const c = buf[i]!;
       if (c === 0x22) {
         const v = buf.toString("latin1", start, i++);
         return { v, plain: true };
@@ -120,7 +123,8 @@ function parse(bytes: Uint8Array, ignoreRest: boolean): JsonNode {
       if (end > run) parts.push(buf.toString("utf8", run, end));
     };
     while (i < n) {
-      const c = buf[i] as number;
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the index is below the buffer length: the caller or the loop condition has checked it
+      const c = buf[i]!;
       if (c === 0x22) {
         flush(i++);
         return { v: parts.join(""), plain: false };
@@ -144,7 +148,7 @@ function parse(bytes: Uint8Array, ignoreRest: boolean): JsonNode {
           }
           parts.push(String.fromCodePoint(cp));
         } else if (e !== undefined && ESCAPES[e] !== undefined) {
-          parts.push(ESCAPES[e] as string);
+          parts.push(ESCAPES[e]);
           i += 2;
         } else {
           i++;

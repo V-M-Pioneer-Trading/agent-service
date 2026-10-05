@@ -356,7 +356,8 @@ export interface Transaction {
 
 // --- the models and the decoder describe the same thing -----------------------
 
-type Wire<T> = T extends bigint ? number : T extends Array<infer E> ? Array<Wire<E>> : T extends object ? { [K in keyof T]: Wire<T[K]> } : T;
+type Wire<T> = T extends bigint ? number : T extends (infer E)[] ? Wire<E>[] : T extends object ? { [K in keyof T]: Wire<T[K]> } : T;
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- the standard type-equality check: each T has to be a distinct generic for the two function types to be compared
 type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Assert<T extends true> = T;
 

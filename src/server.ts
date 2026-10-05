@@ -74,7 +74,7 @@ export function clientErrorAnswer(err: NodeJS.ErrnoException): string {
  */
 export function createHttpServer(app: express.Express): http.Server {
   const server = http.createServer({ connectionsCheckingInterval: 1000, headersTimeout: 10_000, requestTimeout: 30_000, keepAliveTimeout: 120_000 }, app);
-  server.on("checkContinue", (req, res) => app(req as never, res as never));
+  server.on("checkContinue", (req, res) => { app(req as never, res as never); });
   server.on("clientError", (err: NodeJS.ErrnoException, socket) => {
     // Node's default: a socket that cannot be written to is closed.
     if (!socket.writable || socket.destroyed) {
@@ -125,7 +125,7 @@ export function createApp(deps: AppDeps) {
   const app = secured(express());
   app.locals[GATEWAY_LOCAL] = deps.gateway;
   app.locals[HISTORY_LOCAL] = deps.history;
-  app.locals[ERROR_LOG_LOCAL] = deps.errorLog ?? ((line: string) => console.error(line));
+  app.locals[ERROR_LOG_LOCAL] = deps.errorLog ?? ((line: string) => { console.error(line); });
   app.disable("x-powered-by");
   app.set("etag", false);
   // mux is case sensitive and tolerates no trailing slash.
@@ -211,7 +211,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
       auth: createExpressAuth(config.introspection),
       gateway: new GatewayClient(config.gatewayProxyUrl),
       history: new HistoryStore(sql),
-      log: (line) => console.log(line),
+      log: (line) => { console.log(line); },
     });
   } catch (err) {
     console.error(err);
@@ -221,7 +221,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
   // Reading is bounded like the Go server's; writing deliberately is not. connectionsCheckingInterval (default 30 s)
   // is how often Node looks for requests past headersTimeout, so it is what makes 10 s mean 10 s.
   const server = createHttpServer(app);
-  server.listen(config.port, () => console.log(`agent-service listening on :${config.port}`));
+  server.listen(config.port, () => { console.log(`agent-service listening on :${String(config.port)}`); });
   server.on("error", (err) => {
     console.error(err);
     process.exit(1);
@@ -235,7 +235,7 @@ export async function main(env: NodeJS.ProcessEnv = process.env): Promise<void> 
     server.closeIdleConnections();
     setTimeout(() => process.exit(1), 10_000).unref();
   };
-  for (const signal of ["SIGTERM", "SIGINT"] as const) process.once(signal, () => shutdown(signal));
+  for (const signal of ["SIGTERM", "SIGINT"] as const) process.once(signal, () => { shutdown(signal); });
 }
 
 if (require.main === module) {

@@ -99,7 +99,7 @@ describe("the header timeout is 10 s, checked every second", () => {
     let got = "";
     const closed = await new Promise<number>((resolve) => {
       const s = net.connect(port, "127.0.0.1");
-      s.on("close", () => resolve(Date.now() - t0));
+      s.on("close", () => { resolve(Date.now() - t0); });
       s.on("data", (d) => (got += d.toString()));
       s.write("GET /health HTTP/1.1\r\nHost: x\r\n");
     });
@@ -114,14 +114,14 @@ describe("the header timeout is 10 s, checked every second", () => {
 async function listenSlowCentre(answer: Parameters<typeof stubCentre>[0]) {
   const centre = stubCentre(answer);
   const slow = { introspect: async (token: string) => (await new Promise((r) => setTimeout(r, 20)), centre.introspector.introspect(token)) };
-  const { app } = createTestApp({ history: new HistoryStore(new FakeSql()), auth: createExpressAuth(slow as never) }, centre);
+  const { app } = createTestApp({ history: new HistoryStore(new FakeSql()), auth: createExpressAuth(slow) }, centre);
   const server = createHttpServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   return { server, port: (server.address() as AddressInfo).port };
 }
 
 /** Writes `parts` in order, waits for `until` to be true of what came back (or the socket to close), and reports it. */
-function exchange(port: number, parts: Array<string | number>, until: (got: string) => boolean, limitMs = 5000) {
+function exchange(port: number, parts: (string | number)[], until: (got: string) => boolean, limitMs = 5000) {
   return new Promise<{ got: string; ms: number; closed: boolean }>((resolve) => {
     const s = net.connect(port, "127.0.0.1");
     const t0 = Date.now();
@@ -138,8 +138,8 @@ function exchange(port: number, parts: Array<string | number>, until: (got: stri
       got += d.toString("latin1");
       if (until(got)) finish(false);
     });
-    s.on("close", () => finish(true));
-    setTimeout(() => finish(false), limitMs).unref();
+    s.on("close", () => { finish(true); });
+    setTimeout(() => { finish(false); }, limitMs).unref();
     void (async () => {
       for (const p of parts) {
         if (typeof p === "number") await new Promise((r) => setTimeout(r, p));
@@ -149,7 +149,7 @@ function exchange(port: number, parts: Array<string | number>, until: (got: stri
   });
 }
 const BODY_200K = "x".repeat(200_000);
-const POST = (path: string, length: number) => `POST ${path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer t\r\nContent-Length: ${length}\r\n\r\n`;
+const POST = (path: string, length: number) => `POST ${path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer t\r\nContent-Length: ${String(length)}\r\n\r\n`;
 
 describe("an unread body does not wedge the connection (other callers share it behind a proxy)", () => {
   it.each([
@@ -245,7 +245,7 @@ describe("a caller who leaves before a history read answers", () => {
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     const port = (server.address() as AddressInfo).port;
     await new Promise<void>((resolve) => {
-      const s = net.connect(port, "127.0.0.1", () => s.write("GET /api/agent/v1/transactions HTTP/1.1\r\nHost: x\r\n\r\n", () => setTimeout(() => (s.destroy(), resolve()), 30)));
+      const s = net.connect(port, "127.0.0.1", () => s.write("GET /api/agent/v1/transactions HTTP/1.1\r\nHost: x\r\n\r\n", () => setTimeout(() => { s.destroy(); resolve(); }, 30)));
       s.on("error", () => undefined);
     });
     await new Promise((r) => setTimeout(r, 400));

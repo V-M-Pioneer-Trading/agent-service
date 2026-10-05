@@ -11,7 +11,8 @@
  * so it records a zero row.
  */
 
-import { UnencodableTime, stringifyJson, validLength } from "./gateway/json";
+import type { UnencodableTime } from "./gateway/json";
+import { stringifyJson, validLength } from "./gateway/json";
 import type { Contract, MarketTransactionResult, PurchaseShipResult } from "./gateway/schema";
 import type { HistoryStore, NewTransaction, TransactionType } from "./db/history";
 import { instantOfDate, instantOfTime, isZeroTime, toSqlTime, type Instant } from "./db/time";

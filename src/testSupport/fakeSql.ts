@@ -16,7 +16,7 @@ export class FakeSql implements Sql {
   readonly calls: Call[] = [];
   pings = 0;
   closed = false;
-  private readonly script: Array<{ match: RegExp; answer: Answer }> = [];
+  private readonly script: { match: RegExp; answer: Answer }[] = [];
   /** Fails every ping while positive, counting down. */
   failPings = 0;
 
@@ -26,6 +26,7 @@ export class FakeSql implements Sql {
     return this;
   }
 
+  /* eslint-disable @typescript-eslint/require-await -- these implement Promise-returning interfaces; async keeps a throw a rejection, as in the real implementations */
   async execute(sql: string, params: readonly SqlValue[] = []): Promise<SqlRow[]> {
     const call = { sql, params };
     this.calls.push(call);
@@ -47,6 +48,7 @@ export class FakeSql implements Sql {
     this.closed = true;
   }
 
+  /* eslint-enable @typescript-eslint/require-await -- end of the Promise-returning doubles */
   /** The statements, whitespace collapsed, in order. */
   statements(): string[] {
     return this.calls.map((c) => c.sql.replace(/\s+/g, " ").trim());

@@ -1,8 +1,8 @@
 # Direct dependencies of package.json, per package.json section, and nothing else.
-# scripts/check-dependencies.js fails CI on any difference, on a name in the
-# wrong section, on a spec that is not a plain semver range (the clerk-client
-# release tarball excepted), and on a lockfile entry not resolved from
-# registry.npmjs.org or that tarball. Adding a line is the review point for a
+# scripts/check-dependencies.cjs fails CI on any difference, on a name in the
+# wrong section, on a spec that is not a plain semver range (the clerk-client and
+# eslint-config release tarballs excepted), and on a lockfile entry not resolved
+# from registry.npmjs.org or those tarballs. Adding a line is the review point for a
 # new dependency: say why in the PR.
 
 [dependencies]
@@ -18,8 +18,11 @@ swagger-ui-express                     # Swagger UI at /api/agent/swagger/, serv
 @types/jest
 @types/node
 @types/supertest
+@v-m-pioneer-trading/eslint-config  # the shared lint rules (release tarball, meta#105)
+eslint                                 # lint runner, ^10 (the shared config's peer)
 jest
 supertest
 ts-jest
 tsoa                                   # spec and route generation
 typescript
+typescript-eslint                      # parser and rules, ^8 (the shared config's peer)

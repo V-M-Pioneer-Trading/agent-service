@@ -16,7 +16,7 @@ interface Seen {
   headers: http.IncomingHttpHeaders;
   body: string;
 }
-type Reply = { status?: number; body?: string; headers?: Record<string, string> };
+interface Reply { status?: number; body?: string; headers?: Record<string, string> }
 
 const servers: http.Server[] = [];
 beforeAll(() => {
@@ -35,7 +35,7 @@ async function gateway(script: Record<string, Reply | "hangup">) {
     req.on("end", () => {
       body = Buffer.concat(chunks).toString("utf8");
       seen.push({ method: req.method ?? "", url: req.url ?? "", headers: req.headers, body });
-      const reply = script[`${req.method} ${req.url}`];
+      const reply = script[`${String(req.method)} ${String(req.url)}`];
       if (reply === "hangup") {
         req.socket.destroy();
         return;
@@ -47,7 +47,7 @@ async function gateway(script: Record<string, Reply | "hangup">) {
   });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, seen };
+  return { url: `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`, seen };
 }
 
 const WRITER = { state: "active", identity: { sub: "u", kind: "operator", scopes: ["fleet:control"] } } as const;
@@ -121,7 +121,7 @@ describe("POST /contracts/{id}/accept and /fulfill", () => {
     expect(seen[0]?.method).toBe("POST");
     expect(seen[0]?.body).toBe("");
     expect(seen[0]?.headers["content-type"]).toBeUndefined();
-    expect(seen[0]?.headers["authorization"]).toBe(SESSION);
+    expect(seen[0]?.headers.authorization).toBe(SESSION);
     expect(centre.asked).toEqual(["a-session"]);
     expect(sql.calls).toHaveLength(1);
     expect(sql.calls[0]?.sql).toContain("INSERT INTO contracts");
@@ -181,7 +181,7 @@ describe("POST /contracts/{id}/accept and /fulfill", () => {
     const { app, sql } = await appWith({ "POST /proxy/my/contracts/C-1/accept": { status: 204 } });
     const res = await post(app, "/api/agent/v1/contracts/C-1/accept");
     expect(res.status).toBe(200);
-    expect(JSON.parse(res.text).contract.id).toBe("");
+    expect((JSON.parse(res.text) as { contract: { id: string } }).contract.id).toBe("");
     expect(sql.calls[0]?.params.slice(0, 3)).toEqual(["", "", ""]);
   });
 });
@@ -193,11 +193,11 @@ describe("POST /ships/purchase", () => {
     const { app, seen, sql } = await appWith({ "POST /proxy/my/ships": ok(PURCHASE) });
     const res = await post(app, route, '{"SHIPTYPE":"SHIP_REQUESTED","waypointsymbol":"X1-REQUESTED","extra":{"a":1}} trailing');
     expect(res.status).toBe(200);
-    expect(JSON.parse(res.text).ship.symbol).toBe("NEW-1");
+    expect((JSON.parse(res.text) as { ship: { symbol: string } }).ship.symbol).toBe("NEW-1");
     expect(res.text).toContain('"credits":9007199254740993');
     expect(seen[0]?.body).toBe('{"shipType":"SHIP_REQUESTED","waypointSymbol":"X1-REQUESTED"}');
     expect(seen[0]?.headers["content-type"]).toBe("application/json");
-    expect(seen[0]?.headers["authorization"]).toBe(SESSION);
+    expect(seen[0]?.headers.authorization).toBe(SESSION);
     expect(sql.calls[0]?.params).toEqual(["SHIP_PURCHASE", "NEW-1", "X1-C", "SHIP_PROBE", null, null, null, "55000", "9007199254740993", "2026-03-04 05:06:07"]);
   });
 
@@ -309,7 +309,7 @@ describe.each([
     expect(seen).toEqual([]);
     const fits = await post(app, route, JSON.stringify({ symbol: "k".repeat(900_000), units: 1 }));
     expect(fits.status).toBe(200);
-    expect(JSON.parse(seen[0]?.body ?? "").symbol).toHaveLength(900_000);
+    expect((JSON.parse(seen[0]?.body ?? "") as { symbol: string }).symbol).toHaveLength(900_000);
   });
 
   it("the gateway's verdict is relayed, with its pacing headers, and nothing is recorded", async () => {
@@ -358,14 +358,14 @@ describe("POST /contracts/{id}/deliveries", () => {
     const row = JSON.parse(res.text) as Record<string, unknown>;
     expect(Object.keys(row)).toEqual(["contractId", "shipSymbol", "tradeSymbol", "units", "deliveredAt"]);
     expect(row).toMatchObject({ contractId: "C-1", shipSymbol: "SHIP-1", tradeSymbol: "IRON", units: 5 });
-    expect(String(row["deliveredAt"])).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?Z$/);
-    expect(Math.abs(Date.parse(String(row["deliveredAt"])) - before)).toBeLessThan(60_000);
+    expect(String(row.deliveredAt)).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,9})?Z$/);
+    expect(Math.abs(Date.parse(String(row.deliveredAt)) - before)).toBeLessThan(60_000);
     expect(seen).toEqual([]);
     expect(sql.calls).toHaveLength(1);
     expect(sql.calls[0]?.sql).toContain("INSERT INTO contract_deliveries");
     expect(sql.calls[0]?.params.slice(0, 4)).toEqual(["C-1", "SHIP-1", "IRON", "5"]);
     // The stored time is the answered one, to the microsecond at most.
-    const answered = Date.parse(String(row["deliveredAt"]));
+    const answered = Date.parse(String(row.deliveredAt));
     expect(Math.abs(Date.parse(`${String(sql.calls[0]?.params[4]).replace(" ", "T")}Z`) - answered)).toBeLessThan(1);
   });
 
@@ -417,7 +417,7 @@ describe("redirects of a POST: what Go's client does", () => {
     expect(seen.map((s) => `${s.method} ${s.url}`)).toEqual(["POST /proxy/my/ships", "GET /proxy/moved"]);
     expect(seen[1]?.body).toBe("");
     expect(seen[1]?.headers["content-type"]).toBe("application/json");
-    expect(seen[1]?.headers["authorization"]).toBe(SESSION);
+    expect(seen[1]?.headers.authorization).toBe(SESSION);
   });
 
   it.each([[301], [303]])("a %s does the same", async (status) => {
@@ -734,7 +734,7 @@ describe("Swagger UI", () => {
       const res = await request(app).get(`${DOCS}${file}`).buffer(true).parse((r, cb) => {
         const chunks: Buffer[] = [];
         r.on("data", (c: Buffer) => chunks.push(c));
-        r.on("end", () => cb(null, Buffer.concat(chunks)));
+        r.on("end", () => { cb(null, Buffer.concat(chunks)); });
       });
       expect(res.headers["content-type"]).toMatch(type);
       expect(Number(res.headers["content-length"])).toBe(fs.statSync(path.join(dist, file)).size);
@@ -742,7 +742,7 @@ describe("Swagger UI", () => {
       expect(res.headers["cache-control"]).toBe("public, max-age=0");
     }
     const head = await request(app).head(`${DOCS}swagger-ui.css`);
-    expect([head.status, head.text ?? ""]).toEqual([200, ""]);
+    expect([head.status, head.text || ""]).toEqual([200, ""]);
     expect(open).not.toHaveBeenCalled();
     expect(openFile).not.toHaveBeenCalled();
     open.mockRestore();

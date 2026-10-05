@@ -1,7 +1,7 @@
 // Runs the contract suite (contract/) against the TypeScript service, whole and
 // unfiltered, and judges it against contract-skip.txt.
 //
-//   node scripts/run-contract.js     (from the repository root, after `npm run build`)
+//   node scripts/run-contract.cjs     (from the repository root, after `npm run build`)
 //
 // The suite is not modified and no case is removed from the run. Every leaf test's
 // full name (describe names and test name, joined by single spaces, which is what

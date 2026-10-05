@@ -119,7 +119,7 @@ async function readCapped(res: globalThis.Response, limit: number): Promise<Uint
   const chunks: Uint8Array[] = [];
   let size = 0;
   if (res.body === null) return new Uint8Array();
-  const reader = res.body.getReader();
+  const reader: ReadableStreamDefaultReader<Uint8Array> = res.body.getReader();
   try {
     while (size < limit) {
       const { done, value } = await reader.read();

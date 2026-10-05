@@ -9,7 +9,7 @@
 //        a test ended, an unhandled rejection), which does not fail the test
 //
 // --test-skip-pattern matches the space-joined path of a test or of any of its
-// ancestors, so run-contract.js can say which cases a skip pattern would have
+// ancestors, so run-contract.cjs can say which cases a skip pattern would have
 // removed without removing them from the run.
 const STRAY = /uncaught ?exception|unhandled ?rejection|asynchronous activity after the test ended/i;
 

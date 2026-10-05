@@ -10,7 +10,7 @@ interface Seen {
   url: string;
   headers: http.IncomingHttpHeaders;
 }
-type Reply = { status?: number; body?: string; headers?: Record<string, string>; delay?: number };
+interface Reply { status?: number; body?: string; headers?: Record<string, string>; delay?: number }
 
 jest.setTimeout(20000);
 
@@ -23,14 +23,14 @@ async function gateway(script: Record<string, Reply>) {
   const seen: Seen[] = [];
   const server = http.createServer((req, res) => {
     seen.push({ method: req.method ?? "", url: req.url ?? "", headers: req.headers });
-    const reply = script[`${req.method} ${req.url}`];
+    const reply = script[`${String(req.method)} ${String(req.url)}`];
     res.statusCode = reply?.status ?? (reply === undefined ? 599 : 200);
     for (const [k, v] of Object.entries(reply?.headers ?? {})) res.setHeader(k, v);
     setTimeout(() => res.end(reply?.body ?? (reply === undefined ? "nothing scripted" : "")), reply?.delay ?? 0);
   });
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const url = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
   return { url, seen };
 }
 
@@ -53,9 +53,9 @@ describe("GET /api/agent/v1/agent", () => {
     expect(res.headers["content-type"]).toBe("application/json");
     expect(res.text).toBe(`${agentOut}\n`);
     expect(seen).toHaveLength(1);
-    expect(seen[0]?.headers["authorization"]).toBe(SESSION);
+    expect(seen[0]?.headers.authorization).toBe(SESSION);
     expect(seen[0]?.headers["content-type"]).toBeUndefined();
-    expect(seen[0]?.headers["cookie"]).toBeUndefined();
+    expect(seen[0]?.headers.cookie).toBeUndefined();
   });
 
   it("is a 401 for a visitor, and the gateway is never called", async () => {
@@ -87,7 +87,7 @@ describe("GET /api/agent/v1/agent", () => {
     const { app, seen } = await appWith({ "GET /proxy/my/agent": { body: agent } });
     const res = await request(app).head("/api/agent/v1/agent").set("Authorization", SESSION);
     expect(res.status).toBe(200);
-    expect(res.text ?? "").toBe("");
+    expect(res.text || "").toBe("");
     expect(seen.map((s) => s.method)).toEqual(["GET"]);
   });
 });
@@ -130,7 +130,7 @@ describe("GET /api/agent/v1/ships and /contracts", () => {
       "GET /proxy/my/ships": { body: '{"data":[{"SYMBOL":"S1","extra":1,"cooldown":{"expiration":"2026-01-02T03:04:05.120+02:00"},"cargo":{"units":2}}]}' },
     });
     const res = await request(app).get("/api/agent/v1/ships").set("Authorization", SESSION);
-    const [ship] = JSON.parse(res.text) as Array<Record<string, any>>;
+    const [ship] = JSON.parse(res.text) as { symbol?: string; extra?: unknown; cooldown?: unknown; modules?: unknown; cargo?: unknown; nav: { route: { arrival: string } } }[];
     expect(ship?.symbol).toBe("S1");
     expect(ship?.extra).toBeUndefined();
     expect(ship?.cooldown).toEqual({ shipSymbol: "", totalSeconds: 0, remainingSeconds: 0, expiration: "2026-01-02T03:04:05.12+02:00" });
@@ -190,7 +190,7 @@ describe("redirects from the gateway", () => {
     const { app, seen } = await appWith({ "GET /proxy/my/agent": { status: 302, headers: { Location: "/proxy/moved" } }, "GET /proxy/moved": { body: agent } });
     const res = await request(app).get("/api/agent/v1/agent").set("Authorization", SESSION);
     expect(res.status).toBe(200);
-    expect(seen[1]?.headers["authorization"]).toBe(SESSION);
+    expect(seen[1]?.headers.authorization).toBe(SESSION);
   });
 
   it("stop after ten requests: 504", async () => {
@@ -212,7 +212,7 @@ describe("redirects from the gateway", () => {
     const to = `http://localhost:${new URL(other.url).port}/elsewhere`;
     const { app } = await appWith({ "GET /proxy/my/agent": { status: 307, headers: { Location: to } } });
     expect((await request(app).get("/api/agent/v1/agent").set("Authorization", SESSION)).status).toBe(200);
-    expect(other.seen[0]?.headers["authorization"]).toBeUndefined();
+    expect(other.seen[0]?.headers.authorization).toBeUndefined();
   });
 
   it("a Location that is no URL is a 504", async () => {
@@ -231,16 +231,16 @@ describe("answers Go cannot encode, and answers too big for one string", () => {
   it("a lenient time is normalised, and the offset recomputed", async () => {
     const { app } = await appWith({ "GET /proxy/my/contracts/C1": { body: '{"data":{"expiration":"2026-01-02T3:04:05,5+00:60"}}' } });
     const res = await request(app).get("/api/agent/v1/contracts/C1").set("Authorization", SESSION);
-    expect(JSON.parse(res.text).expiration).toBe("2026-01-02T03:04:05.5+01:00");
+    expect((JSON.parse(res.text) as { expiration: string }).expiration).toBe("2026-01-02T03:04:05.5+01:00");
   });
 
   it("a long list goes out in pieces, whole", async () => {
-    const items = Array.from({ length: 30000 }, (_, k) => `{"symbol":"S${k}","registration":{"name":"${"x".repeat(60)}"}}`).join(",");
+    const items = Array.from({ length: 30000 }, (_, k) => `{"symbol":"S${String(k)}","registration":{"name":"${"x".repeat(60)}"}}`).join(",");
     const { app } = await appWith({ "GET /proxy/my/ships": { body: `{"data":[${items}]}` } });
     const res = await request(app).get("/api/agent/v1/ships").set("Authorization", SESSION);
     expect(res.status).toBe(200);
     expect(res.text.length).toBeGreaterThan(3 << 20);
-    const ships = JSON.parse(res.text) as Array<{ symbol: string }>;
+    const ships = JSON.parse(res.text) as { symbol: string }[];
     expect(ships).toHaveLength(30000);
     expect(ships[29999]?.symbol).toBe("S29999");
   });

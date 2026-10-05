@@ -40,7 +40,7 @@ export type Schema =
   | { readonly kind: "list"; readonly of: Schema }
   | { readonly kind: "struct"; readonly fields: Readonly<Record<string, Schema>>; readonly lookup: FieldLookup };
 
-type FieldLookup = { readonly exact: ReadonlyMap<string, string>; readonly folded: ReadonlyMap<string, string> };
+interface FieldLookup { readonly exact: ReadonlyMap<string, string>; readonly folded: ReadonlyMap<string, string> }
 
 export const text = { kind: "string" } as const;
 export const int64 = { kind: "int" } as const;
@@ -64,13 +64,14 @@ export type Decoded<S> = S extends { kind: "string" | "time" }
     : S extends { kind: "bool" }
       ? boolean
       : S extends { kind: "list"; of: infer E }
-        ? Array<Decoded<E>> | null
+        ? Decoded<E>[] | null
         : S extends { kind: "struct"; fields: infer F }
           ? { -readonly [K in keyof F]: Decoded<F[K]> }
           : never;
 
 // --- member names ----------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the string is not empty here (length 1 or 2), or the name came from the lookup whose values are keys of schema.fields
 const single = (s: string): string | undefined => (s.length === 1 || (s.length === 2 && s.codePointAt(0)! > 0xffff) ? s : undefined);
 
 /**
@@ -119,7 +120,9 @@ export function normaliseTime(text: string): string | UnencodableTime {
   if (offset >= 86400) return new UnencodableTime(text);
   const fraction = (m[7] ?? "").slice(0, 9).replace(/0+$/, "");
   const two = (n: number): string => String(n).padStart(2, "0");
+  // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- every group read here is mandatory in TIME_RE (the sign is defined whenever the offset is not zero); only the fraction is optional and it is read through ??
   const zone = offset === 0 ? "Z" : `${m[8]}${two(Math.floor(offset / 3600))}:${two((offset % 3600) / 60)}`;
+  // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- every group read here is mandatory in TIME_RE (the sign is defined whenever the offset is not zero); only the fraction is optional and it is read through ??
   return `${m[1]}-${m[2]}-${m[3]}T${two(hour)}:${m[5]}:${m[6]}${fraction === "" ? "" : `.${fraction}`}${zone}`;
 }
 
@@ -189,7 +192,7 @@ function bind(node: JsonNode, schema: Schema, existing: unknown): unknown {
       if (node.t !== "str") throw mismatch(node, "time.Time");
       if (!node.plain) throw new DecodeError("parsing time: an escape or a non-ASCII character is not RFC 3339");
       // An UnencodableTime travels in the field in place of its string; only the writer ever meets it (json.ts).
-      return normaliseTime(node.v) as string;
+      return normaliseTime(node.v);
     case "list": {
       if (node.t !== "arr") throw mismatch(node, "array");
       const before = Array.isArray(existing) ? (existing as unknown[]) : [];
@@ -200,7 +203,8 @@ function bind(node: JsonNode, schema: Schema, existing: unknown): unknown {
       const into = (existing ?? zero(schema)) as Record<string, unknown>;
       for (const [key, value] of node.members) {
         const name = schema.lookup.exact.get(key) ?? schema.lookup.folded.get(foldName(key));
-        if (name !== undefined) into[name] = bind(value, schema.fields[name] as Schema, into[name]);
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- the string is not empty here (length 1 or 2), or the name came from the lookup whose values are keys of schema.fields
+        if (name !== undefined) into[name] = bind(value, schema.fields[name]!, into[name]);
       }
       return into;
     }

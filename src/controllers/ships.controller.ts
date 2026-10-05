@@ -33,7 +33,7 @@ export class ShipsController extends Controller {
   /** Calls SpaceTraders' purchase-ship, then records the transaction in the history. */
   @Tags("ships")
   @Post("ships/purchase")
-  public async purchaseShip(@Request() req: ExpressRequest, @Body() purchase?: PurchaseShipRequest): Promise<PurchaseShipResult> {
+  public async purchaseShip(@Request() req: ExpressRequest, @Body() _purchase?: PurchaseShipRequest): Promise<PurchaseShipResult> {
     const body = await decodeBody(req, purchaseShipRequestSchema);
     if (body.shipType === "" || body.waypointSymbol === "") {
       throw new TextAnswer(400, "shipType and waypointSymbol are required");
@@ -49,7 +49,7 @@ export class ShipsController extends Controller {
    */
   @Tags("ships")
   @Post("ships/{shipSymbol}/purchase")
-  public async purchaseCargo(@Path() shipSymbol: string, @Request() req: ExpressRequest, @Body() trade?: CargoTransactionRequest): Promise<MarketTransactionResult> {
+  public async purchaseCargo(@Path() shipSymbol: string, @Request() req: ExpressRequest, @Body() _trade?: CargoTransactionRequest): Promise<MarketTransactionResult> {
     return await this.tradeCargo(req, "PURCHASE", (gateway, caller, ship, good, units) => gateway.purchaseCargo(caller, ship, good, units));
   }
 
@@ -59,7 +59,7 @@ export class ShipsController extends Controller {
    */
   @Tags("ships")
   @Post("ships/{shipSymbol}/sell")
-  public async sellCargo(@Path() shipSymbol: string, @Request() req: ExpressRequest, @Body() trade?: CargoTransactionRequest): Promise<MarketTransactionResult> {
+  public async sellCargo(@Path() shipSymbol: string, @Request() req: ExpressRequest, @Body() _trade?: CargoTransactionRequest): Promise<MarketTransactionResult> {
     return await this.tradeCargo(req, "SELL", (gateway, caller, ship, good, units) => gateway.sellCargo(caller, ship, good, units));
   }
 

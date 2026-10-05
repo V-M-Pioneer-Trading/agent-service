@@ -38,7 +38,7 @@ const pad = (n: number, width: number): string => String(n).padStart(width, "0")
 function fields(t: Instant): { date: string; clock: string } {
   const d = new Date(t.seconds * 1000);
   const year = d.getUTCFullYear();
-  if (year < 1 || year > 9999) throw new RangeError(`time.Time year must be in range [1,9999], got ${year}`);
+  if (year < 1 || year > 9999) throw new RangeError(`time.Time year must be in range [1,9999], got ${String(year)}`);
   return {
     date: `${pad(year, 4)}-${pad(d.getUTCMonth() + 1, 2)}-${pad(d.getUTCDate(), 2)}`,
     clock: `${pad(d.getUTCHours(), 2)}:${pad(d.getUTCMinutes(), 2)}:${pad(d.getUTCSeconds(), 2)}`,
@@ -63,5 +63,6 @@ export function toRfc3339(t: Instant): string {
 export function fromSqlTime(text: string): string {
   const m = /^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d)(?:\.0+)?$/.exec(text);
   if (m === null) throw new Error(`unexpected TIMESTAMP value ${JSON.stringify(text)}`);
+  // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- groups 1 and 2 are not optional in the pattern, so both are defined after a match
   return `${m[1]}T${m[2]}Z`;
 }

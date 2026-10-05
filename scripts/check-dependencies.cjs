@@ -3,9 +3,10 @@
 // package.json's dependencies and devDependencies must be exactly the names in
 // the matching section of allowed-dependencies.txt ([dependencies] and
 // [devDependencies]); a name moved between sections fails. Every spec must be a
-// plain semver range (no npm: alias, git, file or URL spec) except the one
-// clerk-client release tarball. Every `resolved` in the lockfile must be the
-// npm registry or that release URL. A new direct dependency is therefore a
+// plain semver range (no npm: alias, git, file or URL spec) except two release
+// tarballs: clerk-client in dependencies and the shared eslint-config in
+// devDependencies (RELEASES below). Every `resolved` in the lockfile must be the
+// npm registry or, for those two entries alone, the URL package.json declares. A new direct dependency is therefore a
 // visible diff in allowed-dependencies.txt, never a side effect of `npm install`.
 //
 // Also refused: `overrides` / `resolutions` (they rewrite what a name resolves to),
@@ -14,13 +15,31 @@
 // resolved URL of another package than the entry, and any entry without sha512 integrity.
 // Transitive packages are covered by `npm audit` and `npm ci --ignore-scripts`.
 //
-//   node scripts/check-dependencies.js
+//   node scripts/check-dependencies.cjs
 const fs = require("fs");
 const path = require("path");
 
+// The packages installed from a GitHub release tarball instead of the registry (clerk-client: meta#103; the shared
+// eslint-config: meta#105). Each is admitted in one section only, at one lock path only, from its own repository's releases.
 const CLERK = "@v-m-pioneer-trading/clerk-client";
-const CLERK_LOCK_PATH = "node_modules/@v-m-pioneer-trading/clerk-client";
-const CLERK_URL = /^https:\/\/github\.com\/V-M-Pioneer-Trading\/clerk-client\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[A-Za-z0-9._-]+\.tgz$/;
+const ESLINT_CONFIG = "@v-m-pioneer-trading/eslint-config";
+const RELEASES = {
+  [CLERK]: {
+    section: "dependencies",
+    lockPath: "node_modules/@v-m-pioneer-trading/clerk-client",
+    url: /^https:\/\/github\.com\/V-M-Pioneer-Trading\/clerk-client\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[A-Za-z0-9._-]+\.tgz$/,
+    describe: "a clerk-client GitHub release tarball URL in dependencies",
+    notARelease: "not a clerk-client release",
+  },
+  [ESLINT_CONFIG]: {
+    section: "devDependencies",
+    lockPath: "node_modules/@v-m-pioneer-trading/eslint-config",
+    url: /^https:\/\/github\.com\/V-M-Pioneer-Trading\/eslint-config\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/[A-Za-z0-9._-]+\.tgz$/,
+    describe: "an eslint-config GitHub release tarball URL in devDependencies",
+    notARelease: "not an eslint-config release",
+  },
+};
+const RELEASE_BY_LOCK_PATH = new Map(Object.entries(RELEASES).map(([name, r]) => [r.lockPath, { name, ...r }]));
 const SEMVER_RANGE = /^[~^]?[0-9]+\.[0-9]+\.[0-9]+$/;
 // The aliases npm itself writes for jest's tree (react-is, string-width and friends under another name).
 // Pinned by lock path, name and version: a new alias, or a changed one, is a reviewed diff here.
@@ -75,8 +94,9 @@ function check(pkg, lock, allowlistText, opts = {}) {
     const declared = pkg[section] ?? {};
     for (const [name, spec] of Object.entries(declared)) {
       if (!allowed[section].has(name)) problems.push(`${name} is in ${section} but not in the [${section}] section of allowed-dependencies.txt`);
-      if (name === CLERK) {
-        if (section !== "dependencies" || !CLERK_URL.test(spec)) problems.push(`${CLERK} must be a clerk-client GitHub release tarball URL in dependencies`);
+      const release = Object.hasOwn(RELEASES, name) ? RELEASES[name] : undefined;
+      if (release !== undefined) {
+        if (section !== release.section || !release.url.test(spec)) problems.push(`${name} must be ${release.describe}`);
       } else if (!SEMVER_RANGE.test(spec)) {
         problems.push(`${name}: "${spec}" is not a plain semver range (no npm: alias, git, file or URL spec)`);
       }
@@ -108,14 +128,16 @@ function check(pkg, lock, allowlistText, opts = {}) {
       problems.push(`package-lock.json: ${label} has no resolved URL`);
       continue;
     }
-    if (where === CLERK_LOCK_PATH) {
-      // The one entry that may leave the registry, and only for the exact URL package.json declares: npm downloads from
-      // package.json's URL and skips the integrity check when the lock's resolved differs, so the pin would protect nothing.
-      const declared = pkg.dependencies?.[CLERK];
+    const release = RELEASE_BY_LOCK_PATH.get(where);
+    if (release !== undefined) {
+      // The only entries that may leave the registry, each at its own lock path and only for the exact URL package.json declares
+      // in the one section it is admitted in: npm downloads from package.json's URL and skips the integrity check when the
+      // lock's resolved differs, so the pin would protect nothing.
+      const declared = pkg[release.section]?.[release.name];
       if (resolved !== declared) problems.push(`package-lock.json: ${label} resolves from ${resolved}, not from the URL package.json declares (${declared})`);
       const urlVersion = /\/download\/v([0-9]+\.[0-9]+\.[0-9]+)\//.exec(resolved)?.[1];
-      if (!CLERK_URL.test(resolved) || entry.version !== urlVersion) {
-        problems.push(`package-lock.json: ${label} is version ${entry.version} but its release URL is ${urlVersion ?? "not a clerk-client release"}`);
+      if (!release.url.test(resolved) || entry.version !== urlVersion) {
+        problems.push(`package-lock.json: ${label} is version ${entry.version} but its release URL is ${urlVersion ?? release.notARelease}`);
       }
     } else {
       const installedAs = entry.name ?? pathName;
@@ -125,7 +147,7 @@ function check(pkg, lock, allowlistText, opts = {}) {
       if (/\.\.|[%?#\\]/.test(resolved)) {
         problems.push(`package-lock.json: ${label} resolves from ${resolved}, which contains "..", "%", "?", "#" or a backslash`);
       } else if (!resolved.startsWith("https://registry.npmjs.org/")) {
-        problems.push(`package-lock.json: ${label} resolves from ${resolved}, which is not registry.npmjs.org (only the clerk-client entry may leave it)`);
+        problems.push(`package-lock.json: ${label} resolves from ${resolved}, which is not registry.npmjs.org (only the clerk-client and eslint-config entries may leave it)`);
       } else if (resolved !== expected) {
         problems.push(`package-lock.json: ${label} is "${installedAs}" but resolves from ${resolved}, not ${expected}`);
       }

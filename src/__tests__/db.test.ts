@@ -1,5 +1,5 @@
 import { HistoryStore, INSERT_DELIVERY_SQL, INSERT_TRANSACTION_SQL, UPSERT_CONTRACT_SQL } from "../db/history";
-import { COLUMN_TYPE_SQL, INDEX_EXISTS_SQL, INDEXES, migrate, SCHEMA, WIDENED_COLUMNS } from "../db/migrate";
+import { COLUMN_TYPE_SQL, INDEX_EXISTS_SQL, migrate, SCHEMA } from "../db/migrate";
 import { PING_ATTEMPTS, PING_DELAY_MS, setUpDatabase, waitForDatabase } from "../db/setup";
 import { fromSqlTime, instantOfDate, instantOfTime, isZeroTime, toRfc3339, toSqlTime } from "../db/time";
 import { UnencodableTime } from "../gateway/json";
@@ -23,7 +23,7 @@ describe("migrate", () => {
   const database = (types: Record<string, string | null>, existing: string[]) =>
     new FakeSql()
       .on(/information_schema\.COLUMNS/, (c) => {
-        const type = types[`${c.params[0]}.${c.params[1]}`];
+        const type = types[`${String(c.params[0])}.${String(c.params[1])}`];
         return type === undefined || type === null ? [] : [[type]];
       })
       .on(/information_schema\.STATISTICS/, (c) => [[existing.includes(String(c.params[1])) ? "1" : "0"]]);
@@ -98,7 +98,7 @@ describe("setUpDatabase", () => {
     sql.failPings = 3;
     const sleeps: number[] = [];
     const log: string[] = [];
-    const out = await setUpDatabase(config, { open: () => sql, sleep: async (ms) => void sleeps.push(ms), log: (l) => log.push(l) });
+    const out = await setUpDatabase(config, { open: () => sql, sleep: (ms) => { sleeps.push(ms); return Promise.resolve(); }, log: (l) => log.push(l) });
     expect(out).toBe(sql);
     expect(sql.pings).toBe(4);
     expect(sleeps).toEqual([2000, 2000, 2000]);
@@ -119,7 +119,7 @@ describe("setUpDatabase", () => {
     const sql = new FakeSql();
     sql.failPings = 100;
     const sleeps: number[] = [];
-    await expect(setUpDatabase(config, { open: () => sql, sleep: async (ms) => void sleeps.push(ms), log: () => undefined })).rejects.toThrow("connection refused");
+    await expect(setUpDatabase(config, { open: () => sql, sleep: (ms) => { sleeps.push(ms); return Promise.resolve(); }, log: () => undefined })).rejects.toThrow("connection refused");
     expect(sql.pings).toBe(15);
     expect(sleeps).toHaveLength(14);
     expect(sql.calls).toEqual([]);
@@ -128,14 +128,14 @@ describe("setUpDatabase", () => {
 
   it("a migration that fails closes the pool and fails the start", async () => {
     const sql = new FakeSql().on(/CREATE TABLE/, new Error("denied"));
-    await expect(setUpDatabase(config, { open: () => sql, sleep: async () => undefined, log: () => undefined })).rejects.toThrow("denied");
+    await expect(setUpDatabase(config, { open: () => sql, sleep: () => Promise.resolve(), log: () => undefined })).rejects.toThrow("denied");
     expect(sql.closed).toBe(true);
   });
 
   it("waitForDatabase succeeds on the last attempt", async () => {
     const sql = new FakeSql();
     sql.failPings = 14;
-    await waitForDatabase(sql, () => undefined, async () => undefined);
+    await waitForDatabase(sql, () => undefined, () => Promise.resolve());
     expect(sql.pings).toBe(15);
   });
 });
