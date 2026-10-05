@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { check, KNOWN_ALIASES } from "../../scripts/check-dependencies.cjs";
+import { check, devFlagProblems, KNOWN_ALIASES } from "../../scripts/check-dependencies.cjs";
 
 interface Entry {
   version?: string;
@@ -9,6 +9,12 @@ interface Entry {
   integrity?: string;
   name?: string;
   link?: boolean;
+  dev?: boolean;
+  optional?: boolean;
+  peer?: boolean;
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 }
 interface Pkg {
   dependencies: Record<string, string>;
@@ -311,5 +317,129 @@ describe("the direct-dependency check", () => {
     if (integrity === undefined) delete entry(lock, "node_modules/express").integrity;
     else entry(lock, "node_modules/express").integrity = integrity;
     expect(problems(pkg, lock)).toMatch(/node_modules\/express has no sha512 integrity/);
+  });
+});
+
+describe("the lockfile dev flags (issue #58)", () => {
+  /** A lockfile path at which `dev: true` is committed. */
+  const devOnly = (lock: Lock, where: string): Entry => {
+    const e = entry(lock, where);
+    expect(e.dev).toBe(true);
+    return e;
+  };
+
+  it("refuses the eslint-config entry once its dev flag is deleted (npm ci --omit=dev would install it)", () => {
+    const { pkg, lock } = fresh();
+    delete devOnly(lock, "node_modules/@v-m-pioneer-trading/eslint-config").dev;
+    expect(problems(pkg, lock)).toMatch(/node_modules\/@v-m-pioneer-trading\/eslint-config is reachable only from devDependencies but has no "dev": true/);
+  });
+
+  it("refuses a registry dev package once its dev flag is deleted", () => {
+    const { pkg, lock } = fresh();
+    delete devOnly(lock, "node_modules/typescript").dev;
+    expect(problems(pkg, lock)).toMatch(/node_modules\/typescript is reachable only from devDependencies but has no "dev": true/);
+  });
+
+  it("refuses a transitive dev package once its dev flag is deleted", () => {
+    const { pkg, lock } = fresh();
+    delete devOnly(lock, "node_modules/@jest/core").dev;
+    expect(problems(pkg, lock)).toMatch(/node_modules\/@jest\/core is reachable only from devDependencies but has no "dev": true/);
+  });
+
+  it.each(["node_modules/express", "node_modules/mysql2", "node_modules/@v-m-pioneer-trading/clerk-client", "node_modules/body-parser"])(
+    "refuses a runtime package flagged dev: %s (the image would lack it)",
+    (where) => {
+      const { pkg, lock } = fresh();
+      expect(entry(lock, where).dev).toBeUndefined();
+      entry(lock, where).dev = true;
+      expect(problems(pkg, lock)).toContain(`${where} is reachable from dependencies but is flagged "dev": true`);
+    },
+  );
+
+  it("refuses a lockfile entry nothing reaches", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/orphan"] = { ...entry(lock, "node_modules/typescript"), resolved: "https://registry.npmjs.org/orphan/-/orphan-5.9.3.tgz" };
+    expect(problems(pkg, lock)).toMatch(/node_modules\/orphan is not reachable from package\.json/);
+  });
+
+  describe("on a small graph", () => {
+    const base = (): { pkg: Pkg; lock: Lock } => ({
+      pkg: { dependencies: { a: "^1.0.0" }, devDependencies: { d: "^1.0.0" } },
+      lock: {
+        packages: {
+          "": {},
+          "node_modules/a": { dependencies: { shared: "^1.0.0" } },
+          "node_modules/d": { dev: true, dependencies: { shared: "^1.0.0", onlyDev: "^1.0.0" } },
+          "node_modules/shared": {},
+          "node_modules/onlyDev": { dev: true },
+        },
+      },
+    });
+    const flags = (pkg: Pkg, lock: Lock) => devFlagProblems(pkg, lock).join("\n");
+
+    it("accepts the graph as npm writes it: shared packages are runtime, dev-only ones are dev", () => {
+      const { pkg, lock } = base();
+      expect(devFlagProblems(pkg, lock)).toEqual([]);
+    });
+
+    it("treats a package reachable from both sections as runtime", () => {
+      const { pkg, lock } = base();
+      lock.packages["node_modules/shared"] = { dev: true };
+      expect(flags(pkg, lock)).toContain('node_modules/shared is reachable from dependencies but is flagged "dev": true');
+    });
+
+    it("resolves a dependency to the nearest nested copy, then to each parent's", () => {
+      const { pkg, lock } = base();
+      // a needs its own x@2 (nested), d uses the hoisted x@1. Each copy takes the flag of whoever reaches it.
+      lock.packages["node_modules/a"] = { dependencies: { shared: "^1.0.0", x: "^2.0.0" } };
+      lock.packages["node_modules/a/node_modules/x"] = {};
+      lock.packages["node_modules/x"] = { dev: true };
+      lock.packages["node_modules/d"] = { dev: true, dependencies: { shared: "^1.0.0", onlyDev: "^1.0.0", x: "^1.0.0" } };
+      expect(devFlagProblems(pkg, lock)).toEqual([]);
+      delete entry(lock, "node_modules/x").dev;
+      expect(flags(pkg, lock)).toContain("node_modules/x is reachable only from devDependencies");
+      expect(flags(pkg, lock)).not.toContain("a/node_modules/x");
+      lock.packages["node_modules/x"] = { dev: true };
+      lock.packages["node_modules/a/node_modules/x"] = { dev: true };
+      expect(flags(pkg, lock)).toContain("node_modules/a/node_modules/x is reachable from dependencies but is flagged");
+    });
+
+    it("walks up out of a nested scope, scoped names included", () => {
+      const { pkg, lock } = base();
+      lock.packages["node_modules/a/node_modules/@s/mid"] = { dependencies: { shared: "^1.0.0", "@s/leaf": "^1.0.0" } };
+      lock.packages["node_modules/a"] = { dependencies: { "@s/mid": "^1.0.0" } };
+      lock.packages["node_modules/@s/leaf"] = {};
+      expect(devFlagProblems(pkg, lock)).toEqual([]);
+      lock.packages["node_modules/@s/leaf"] = { dev: true };
+      expect(flags(pkg, lock)).toContain('node_modules/@s/leaf is reachable from dependencies but is flagged "dev": true');
+    });
+
+    it("follows an optional dependency of a runtime package: it is runtime, not dev", () => {
+      const { pkg, lock } = base();
+      lock.packages["node_modules/a"] = { dependencies: { shared: "^1.0.0" }, optionalDependencies: { native: "^1.0.0" } };
+      lock.packages["node_modules/native"] = { optional: true };
+      expect(devFlagProblems(pkg, lock)).toEqual([]);
+      lock.packages["node_modules/native"] = { optional: true, dev: true };
+      expect(flags(pkg, lock)).toContain('node_modules/native is reachable from dependencies but is flagged "dev": true');
+    });
+
+    it("follows a peer dependency, and skips one that is not installed", () => {
+      const { pkg, lock } = base();
+      lock.packages["node_modules/a"] = { dependencies: { shared: "^1.0.0" }, peerDependencies: { peer: "^1.0.0", absent: "^1.0.0" } };
+      lock.packages["node_modules/peer"] = { peer: true };
+      expect(devFlagProblems(pkg, lock)).toEqual([]);
+      lock.packages["node_modules/peer"] = { peer: true, dev: true };
+      expect(flags(pkg, lock)).toContain("node_modules/peer is reachable from dependencies");
+      // Reached only from a dev package, a peer is a dev package.
+      lock.packages["node_modules/a"] = { dependencies: { shared: "^1.0.0" } };
+      lock.packages["node_modules/d"] = { dev: true, dependencies: { shared: "^1.0.0", onlyDev: "^1.0.0" }, peerDependencies: { peer: "^1.0.0" } };
+      expect(devFlagProblems(pkg, lock)).toEqual([]);
+    });
+
+    it("terminates on a dependency cycle", () => {
+      const { pkg, lock } = base();
+      lock.packages["node_modules/shared"] = { dependencies: { a: "^1.0.0" } };
+      expect(devFlagProblems(pkg, lock)).toEqual([]);
+    });
   });
 });

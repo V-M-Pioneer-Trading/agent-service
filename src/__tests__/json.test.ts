@@ -1,4 +1,4 @@
-import { JsonSyntaxError, MAX_DEPTH, parseJson, stringifyJson, type JsonNode } from "../gateway/json";
+import { JsonSyntaxError, MAX_DEPTH, parseJson, stringifyJson, validLength, type JsonNode } from "../gateway/json";
 
 const parse = (s: string | number[]): JsonNode => parseJson(typeof s === "string" ? Buffer.from(s) : Uint8Array.from(s));
 const str = (s: string | number[]): string => {
@@ -160,5 +160,23 @@ describe("sendJson writes in pieces", () => {
     expect(writes).toHaveLength(1);
     // One pass for the check that Go could encode it (60000 reads), then only as many as were written.
     expect(reads).toBeLessThan(100000);
+  });
+});
+
+describe("validLength", () => {
+  it("is 1 for ASCII, 2 to 4 for well-formed sequences, and 0 for what is not a start byte", () => {
+    expect(validLength(Uint8Array.of(0x00), 0)).toBe(1);
+    expect(validLength(Uint8Array.of(0x7f), 0)).toBe(1);
+    expect(validLength(Uint8Array.of(0xc3, 0xa9), 0)).toBe(2);
+    expect(validLength(Uint8Array.of(0xe2, 0x82, 0xac), 0)).toBe(3);
+    expect(validLength(Uint8Array.of(0xf0, 0x9f, 0x98, 0x80), 0)).toBe(4);
+    expect(validLength(Uint8Array.of(0xc0, 0x80), 0)).toBe(0);
+    expect(validLength(Uint8Array.of(0xff), 0)).toBe(0);
+  });
+
+  // 0x80 is the first byte that is not ASCII: a continuation byte with no lead before it is invalid, and `b0 <= 0x80` in the ASCII test would call it one character.
+  it.each([0x80, 0x81, 0xbf])("says a lone continuation byte %i is not a character", (byte) => {
+    expect(validLength(Uint8Array.of(byte), 0)).toBe(0);
+    expect(validLength(Uint8Array.of(0x41, byte, 0x41), 1)).toBe(0);
   });
 });

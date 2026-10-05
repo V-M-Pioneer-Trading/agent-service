@@ -15,6 +15,10 @@
 // resolved URL of another package than the entry, and any entry without sha512 integrity.
 // Transitive packages are covered by `npm audit` and `npm ci --ignore-scripts`.
 //
+// The lockfile's `dev` flag is checked against the dependency graph itself (issue #58): every entry reachable only from
+// devDependencies must carry `dev: true`, and every entry reachable from dependencies must not. `npm ci --omit=dev`
+// trusts the flag, so a lockfile-only edit that deletes it from a dev-only entry would ship that package in the image.
+//
 //   node scripts/check-dependencies.cjs
 const fs = require("fs");
 const path = require("path");
@@ -69,6 +73,63 @@ function parseAllowlist(text) {
     }
   }
   return out;
+}
+
+/** The lockfile path a dependency `name` of the package at `from` resolves to (node's lookup: nested first, then each parent), or undefined. */
+function resolveDep(packages, from, name) {
+  let base = from;
+  for (;;) {
+    const candidate = base === "" ? `node_modules/${name}` : `${base}/node_modules/${name}`;
+    if (Object.hasOwn(packages, candidate)) return candidate;
+    if (base === "") return undefined;
+    const i = base.lastIndexOf("node_modules/");
+    base = i <= 0 ? "" : base.slice(0, i - 1);
+  }
+}
+
+/**
+ * Lock paths reachable from the given root dependency names. Every edge npm installs is followed: dependencies,
+ * optionalDependencies (installed unless --omit=optional, and then still part of the runtime graph) and peerDependencies
+ * (npm 7+ installs them). An edge that resolves to nothing (an optional peer that is not installed) is skipped.
+ */
+function reachable(packages, rootNames) {
+  const seen = new Set();
+  const queue = [];
+  const visit = (from, name) => {
+    const to = resolveDep(packages, from, name);
+    if (to !== undefined && !seen.has(to)) {
+      seen.add(to);
+      queue.push(to);
+    }
+  };
+  for (const name of rootNames) visit("", name);
+  while (queue.length > 0) {
+    const where = queue.pop();
+    const entry = packages[where];
+    for (const key of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+      for (const name of Object.keys(entry[key] ?? {})) visit(where, name);
+    }
+  }
+  return seen;
+}
+
+/** Problems with the lockfile's `dev` flags: dev-only entries must have `dev: true`, runtime-reachable ones must not. */
+function devFlagProblems(pkg, lock) {
+  const packages = lock.packages ?? {};
+  const runtime = reachable(packages, [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.optionalDependencies ?? {})]);
+  const dev = reachable(packages, Object.keys(pkg.devDependencies ?? {}));
+  const problems = [];
+  for (const [where, entry] of Object.entries(packages)) {
+    if (where === "" || entry.link) continue;
+    if (runtime.has(where)) {
+      if (entry.dev === true) problems.push(`package-lock.json: ${where} is reachable from dependencies but is flagged "dev": true`);
+    } else if (dev.has(where)) {
+      if (entry.dev !== true) problems.push(`package-lock.json: ${where} is reachable only from devDependencies but has no "dev": true, so npm ci --omit=dev would install it into the production tree`);
+    } else {
+      problems.push(`package-lock.json: ${where} is not reachable from package.json's dependencies or devDependencies`);
+    }
+  }
+  return problems;
 }
 
 function check(pkg, lock, allowlistText, opts = {}) {
@@ -154,10 +215,11 @@ function check(pkg, lock, allowlistText, opts = {}) {
     }
     if (!/^sha512-[A-Za-z0-9+/]+=*$/.test(entry.integrity ?? "")) problems.push(`package-lock.json: ${label} has no sha512 integrity`);
   }
+  problems.push(...devFlagProblems(pkg, lock));
   return problems;
 }
 
-module.exports = { check, parseAllowlist, KNOWN_ALIASES };
+module.exports = { check, devFlagProblems, parseAllowlist, KNOWN_ALIASES };
 
 if (require.main === module) {
   const root = path.join(__dirname, "..");
