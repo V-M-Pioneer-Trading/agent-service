@@ -14,6 +14,7 @@
     "start": "node dist/server.js",
     "openapi": "node scripts/codegen.cjs && node scripts/write-openapi.cjs",
     "check:deps": "node scripts/check-dependencies.cjs",
+    "snapshot:deps": "node scripts/check-dependencies.cjs --write-snapshot",
     "lint": "eslint . --max-warnings 0",
     "pretest": "node scripts/codegen.cjs",
     "test": "jest"

@@ -251,7 +251,7 @@ timing without a two-orders-of-magnitude margin.
   or `INDEXES` for existing databases. Money columns are `BIGINT`; time columns are read back as UTC.
 * **A new config value:** read it once at startup in `config.ts`, never per request, and add it to the README's table.
 * **A new tunable:** a named constant with a comment saying what it bounds, plus a row in the README's table.
-* **A new dependency:** a line in `allowed-dependencies.txt`, justified in the PR; `npm ci --ignore-scripts` only. The shared lint config is the one other release tarball (`devDependencies`, v1.1.0+); a bump is `npm install --save-dev <release URL>` and then `npm run lint`.
+* **A new dependency:** a line in `allowed-dependencies.txt`, justified in the PR; `npm ci --ignore-scripts` only. Any lockfile change (a new or upgraded package, a moved dev flag) also needs `npm run snapshot:deps` and the resulting `dependency-snapshot.txt` diff committed: `check:deps` compares every lockfile entry with it. The shared lint config is the one other release tarball (`devDependencies`, v1.1.0+); a bump is `npm install --save-dev <release URL>` and then `npm run lint`.
   The checker also refuses `workspaces`, lockfile `link` entries, and any `resolved` that is not exactly
   `https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz` (or, at its own lock path only, the clerk-client release in `dependencies` or the eslint-config release in `devDependencies`, resolved exactly where package.json says and at the version its URL names). The Dockerfile's deps
   stage installs with `--omit=dev --omit=optional` and fails the build on any compiled file (ELF, `*.node`, `*.so`, `*.wasm`, ...) in `node_modules`.
