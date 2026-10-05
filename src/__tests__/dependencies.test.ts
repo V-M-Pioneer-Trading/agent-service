@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { check, devFlagProblems, KNOWN_ALIASES } from "../../scripts/check-dependencies.cjs";
+import { check, computeSnapshot, devFlagProblems, KNOWN_ALIASES, renderSnapshot } from "../../scripts/check-dependencies.cjs";
 
 interface Entry {
   version?: string;
@@ -15,6 +15,8 @@ interface Entry {
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+  devOptional?: boolean;
 }
 interface Pkg {
   dependencies: Record<string, string>;
@@ -28,8 +30,10 @@ interface Lock {
 const root = path.join(__dirname, "..", "..");
 const read = (f: string) => fs.readFileSync(path.join(root, f), "utf8");
 const allow = read("allowed-dependencies.txt");
+// A Windows checkout with autocrlf has CRLF; the checker reads both, the tests below split on LF.
+const snapshot = read("dependency-snapshot.txt").replaceAll("\r\n", "\n");
 const fresh = () => ({ pkg: JSON.parse(read("package.json")) as Pkg, lock: JSON.parse(read("package-lock.json")) as Lock });
-const problems = (pkg: Pkg, lock: Lock, opts?: { npmrc?: boolean }) => check(pkg, lock, allow, opts).join("\n");
+const problems = (pkg: Pkg, lock: Lock, opts?: { npmrc?: boolean }) => check(pkg, lock, allow, snapshot, opts).join("\n");
 /** The lockfile entry at a path, which the committed lockfile must have. */
 const entry = (lock: Lock, where: string): Entry => {
   const e = lock.packages[where];
@@ -44,7 +48,7 @@ const must = <T>(value: T | undefined): T => {
 describe("the direct-dependency check", () => {
   it("passes on the repository as committed", () => {
     const { pkg, lock } = fresh();
-    expect(check(pkg, lock, allow)).toEqual([]);
+    expect(check(pkg, lock, allow, snapshot)).toEqual([]);
   });
 
   it("refuses an npm: alias spec for an allowed name", () => {
@@ -107,7 +111,7 @@ describe("the direct-dependency check", () => {
   it("refuses an .npmrc", () => {
     const { pkg, lock } = fresh();
     expect(problems(pkg, lock, { npmrc: true })).toMatch(/\.npmrc exists/);
-    expect(check(pkg, lock, allow, { npmrc: false })).toEqual([]);
+    expect(check(pkg, lock, allow, snapshot, { npmrc: false })).toEqual([]);
   });
 
   it.each([true, ["express"], { express: "^4" }, "express"])("refuses bundleDependencies / bundledDependencies in any truthy form: %j", (form) => {
@@ -157,7 +161,7 @@ describe("the direct-dependency check", () => {
     const scoped = Object.entries(lock.packages).find(([k, e]) => /node_modules\/@[^/]+\/[^/]+$/.test(k) && e.resolved?.startsWith("https://registry"));
     expect(scoped).toBeDefined();
     expect(entry(lock, "node_modules/string-width-cjs").resolved).toBe("https://registry.npmjs.org/string-width/-/string-width-4.2.3.tgz");
-    expect(check(pkg, lock, allow)).toEqual([]);
+    expect(check(pkg, lock, allow, snapshot)).toEqual([]);
   });
 
   it("refuses workspaces in package.json", () => {
@@ -215,7 +219,7 @@ describe("the direct-dependency check", () => {
       const e = entry(lock, ESLINT_PATH);
       expect(pkg.devDependencies[ESLINT]).toBe(e.resolved);
       expect(e.resolved).toContain("/v" + must(e.version) + "/");
-      expect(check(pkg, lock, allow)).toEqual([]);
+      expect(check(pkg, lock, allow, snapshot)).toEqual([]);
     });
 
     it.each([
@@ -356,10 +360,49 @@ describe("the lockfile dev flags (issue #58)", () => {
     },
   );
 
-  it("refuses a lockfile entry nothing reaches", () => {
+  const orphan = (lock: Lock, extra: Partial<Entry>) => {
+    lock.packages["node_modules/orphan"] = {
+      version: "1.0.0",
+      resolved: "https://registry.npmjs.org/orphan/-/orphan-1.0.0.tgz",
+      integrity: "sha512-" + "A".repeat(86) + "==",
+      ...extra,
+    };
+  };
+
+  it("accepts an orphan dev entry, which is what a no-op npm install leaves (@emnapi/wasi-threads: dev, optional)", () => {
     const { pkg, lock } = fresh();
-    lock.packages["node_modules/orphan"] = { ...entry(lock, "node_modules/typescript"), resolved: "https://registry.npmjs.org/orphan/-/orphan-5.9.3.tgz" };
-    expect(problems(pkg, lock)).toMatch(/node_modules\/orphan is not reachable from package\.json/);
+    orphan(lock, { dev: true, optional: true });
+    expect(devFlagProblems(pkg, lock)).toEqual([]);
+    // Only the snapshot, which `npm run snapshot:deps` rewrites, has anything to say about the new line.
+    expect(problems(pkg, lock)).not.toMatch(/reachable|extraneous/);
+  });
+
+  it("refuses an orphan without dev: true, which --omit=dev would install, and says to regenerate the lockfile", () => {
+    const { pkg, lock } = fresh();
+    orphan(lock, {});
+    expect(problems(pkg, lock)).toMatch(/node_modules\/orphan is not reachable from package\.json.*npm left an extraneous entry; regenerate the lockfile/);
+  });
+
+  it.each([
+    ["optional", { optional: true }],
+    ["devOptional", { devOptional: true }],
+  ] as const)("refuses %s on a package the image needs, which --omit=optional would drop", (flag, extra) => {
+    const { pkg, lock } = fresh();
+    Object.assign(entry(lock, "node_modules/body-parser"), extra);
+    expect(problems(pkg, lock)).toContain(`node_modules/body-parser is reachable from dependencies, which package.json does not declare optional, but is flagged "${flag}"`);
+  });
+
+  it("allows optional on a package only an optionalDependency reaches (npm writes it, and no mandatory edge needs it)", () => {
+    const pkg: Pkg = { dependencies: { a: "^1.0.0" }, devDependencies: {} };
+    const lock: Lock = {
+      packages: {
+        "": {},
+        "node_modules/a": { optionalDependencies: { native: "^1.0.0" }, peerDependencies: { maybe: "^1.0.0" }, peerDependenciesMeta: { maybe: { optional: true } } },
+        "node_modules/native": { optional: true },
+        "node_modules/maybe": { optional: true },
+      },
+    };
+    expect(devFlagProblems(pkg, lock)).toEqual([]);
   });
 
   describe("on a small graph", () => {
@@ -441,5 +484,93 @@ describe("the lockfile dev flags (issue #58)", () => {
       lock.packages["node_modules/shared"] = { dependencies: { a: "^1.0.0" } };
       expect(devFlagProblems(pkg, lock)).toEqual([]);
     });
+  });
+});
+
+describe("the transitive snapshot (dependency-snapshot.txt)", () => {
+  it("is exactly what the lockfile computes to, byte for byte (so `npm run snapshot:deps` is a no-op)", () => {
+    const { lock } = fresh();
+    expect(renderSnapshot(computeSnapshot(lock))).toBe(snapshot);
+  });
+
+  it("separates runtime from dev: what express brings is runtime, what jest brings is dev", () => {
+    const runtime = snapshot.slice(snapshot.indexOf("\n[runtime]\n"), snapshot.indexOf("\n[dev]\n"));
+    expect(runtime).toMatch(/^express@4\./m);
+    expect(runtime).toMatch(/^body-parser@/m);
+    expect(runtime).not.toMatch(/^jest@/m);
+    expect(runtime).not.toMatch(/^typescript@/m);
+    expect(snapshot.slice(snapshot.indexOf("\n[dev]\n"))).toMatch(/^typescript@5\./m);
+  });
+
+  // The reviewer's attack on the graph rule alone: the graph is read from the lockfile, so one edit adds the edge and
+  // another drops the flag, and the graph agrees that typescript is a runtime package. npm ci --omit=dev installs it.
+  it("fails the edge-plus-flag attack: typescript added to express's dependencies and its dev flag deleted", () => {
+    const { pkg, lock } = fresh();
+    const express = entry(lock, "node_modules/express");
+    express.dependencies = { ...express.dependencies, typescript: "^5.0.0" };
+    delete entry(lock, "node_modules/typescript").dev;
+
+    expect(devFlagProblems(pkg, lock)).toEqual([]); // the graph rule is satisfied by construction
+    const out = problems(pkg, lock);
+    expect(out).toMatch(/package-lock\.json gained typescript@[0-9.]+ \[runtime\], which is not in dependency-snapshot\.txt/);
+    expect(out).toMatch(/dependency-snapshot\.txt lists typescript@[0-9.]+ \[dev\], which package-lock\.json no longer has/);
+  });
+
+  it("passes the same attack once the snapshot is regenerated, which is then a committed diff moving typescript into [runtime]", () => {
+    const { pkg, lock } = fresh();
+    const express = entry(lock, "node_modules/express");
+    express.dependencies = { ...express.dependencies, typescript: "^5.0.0" };
+    delete entry(lock, "node_modules/typescript").dev;
+    const regenerated = renderSnapshot(computeSnapshot(lock));
+    expect(check(pkg, lock, allow, regenerated)).toEqual([]);
+    const runtime = regenerated.slice(regenerated.indexOf("\n[runtime]\n"), regenerated.indexOf("\n[dev]\n"));
+    expect(runtime).toMatch(/^typescript@/m);
+    expect(snapshot).not.toBe(regenerated);
+  });
+
+  it("fails when the lockfile gains a package that is not in the snapshot", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/left-pad"] = {
+      version: "1.3.0",
+      resolved: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+      integrity: "sha512-" + "A".repeat(86) + "==",
+    };
+    expect(problems(pkg, lock)).toMatch(/package-lock\.json gained left-pad@1\.3\.0 \[runtime\], which is not in dependency-snapshot\.txt/);
+  });
+
+  it("fails when a package moves between sections in the lockfile only (flag removed from eslint-config, or added to express)", () => {
+    const a = fresh();
+    delete entry(a.lock, "node_modules/@v-m-pioneer-trading/eslint-config").dev;
+    expect(problems(a.pkg, a.lock)).toMatch(/gained @v-m-pioneer-trading\/eslint-config@[0-9.]+ \[runtime\]/);
+
+    const b = fresh();
+    entry(b.lock, "node_modules/express").dev = true;
+    expect(problems(b.pkg, b.lock)).toMatch(/gained express@[0-9.]+ \[dev\]/);
+  });
+
+  it("fails when the snapshot lists a package the lockfile dropped, or an entry's integrity changes", () => {
+    const a = fresh();
+    delete a.lock.packages["node_modules/supertest"];
+    expect(problems(a.pkg, a.lock)).toMatch(/dependency-snapshot\.txt lists supertest@[0-9.]+ \[dev\], which package-lock\.json no longer has/);
+
+    const b = fresh();
+    entry(b.lock, "node_modules/express").integrity = "sha512-" + "B".repeat(86) + "==";
+    expect(problems(b.pkg, b.lock)).toMatch(/express@[0-9.]+ \[runtime\] has a different integrity/);
+  });
+
+  it("fails on a snapshot that is hand-edited into something unreadable, or lists a name twice", () => {
+    const { pkg, lock } = fresh();
+    expect(check(pkg, lock, allow, snapshot + "\nleft-pad\n").join("\n")).toMatch(/is not "name@version integrity"/);
+    const twice = snapshot.replace("\n[dev]\n", "\n[runtime]\nexpress@4.0.0 sha512-x\nexpress@4.0.0 sha512-x\n[dev]\n");
+    expect(check(pkg, lock, allow, twice).join("\n")).toMatch(/listed twice/);
+  });
+
+  it("refuses one name and version with two integrities at two lock paths", () => {
+    const { pkg, lock } = fresh();
+    lock.packages["node_modules/express/node_modules/body-parser"] = {
+      ...entry(lock, "node_modules/body-parser"),
+      integrity: "sha512-" + "C".repeat(86) + "==",
+    };
+    expect(problems(pkg, lock)).toMatch(/has different integrity at node_modules\/body-parser and at node_modules\/express\/node_modules\/body-parser/);
   });
 });
