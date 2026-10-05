@@ -12,6 +12,7 @@ import { createApp, type AppDeps } from "../server";
 export const TEST_ORIGIN = "https://contract.example.test";
 
 /** An introspector that records the tokens it was asked about and answers `answer`. */
+/* eslint-disable @typescript-eslint/require-await -- these implement Promise-returning interfaces; async keeps a throw a rejection, as in the real implementations */
 /** A gateway client that fails loudly if it is ever used. */
 export const noGateway = new GatewayClient("http://gateway.invalid/proxy", async () => {
   throw new Error("the test app has no st-gateway");
@@ -37,6 +38,7 @@ export function stubCentre(answer: CenterAnswer = { state: "unavailable" }) {
   return { asked, introspector };
 }
 
+/* eslint-enable @typescript-eslint/require-await -- end of the Promise-returning doubles */
 export function createTestApp(overrides: Partial<AppDeps> = {}, centre = stubCentre()) {
   const app = createApp({
     corsAllowedOrigin: TEST_ORIGIN,

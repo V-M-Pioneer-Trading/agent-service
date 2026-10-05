@@ -27,32 +27,32 @@ function stub(quirk: Quirk): Promise<http.Server> {
       res.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
       res.end(body);
     };
-    const refuse = () => json(401, { error: { message: "a bearer token is required" } });
+    const refuse = () => { json(401, { error: { message: "a bearer token is required" } }); };
     const p = url.pathname;
     if (req.method === "OPTIONS") {
       res.writeHead(204, { "access-control-allow-headers": "Content-Type, Authorization" });
       return void res.end();
     }
-    if (/^\/api\/[a-z-]+\/health$/.test(p)) return json(200, { status: "ok" });
+    if (/^\/api\/[a-z-]+\/health$/.test(p)) { json(200, { status: "ok" }); return; }
     if (p === "/api/agent/v1/transactions") {
-      if (who === "bad") return refuse();
+      if (who === "bad") { refuse(); return; }
       if (quirk === "html-fallback") {
         res.writeHead(200, { "content-type": "text/html" });
         return void res.end("<html>dashboard</html>");
       }
-      return url.searchParams.get("type") === "NOPE" ? text(400, "type must be one of: PURCHASE") : json(200, []);
+      if (url.searchParams.get("type") === "NOPE") text(400, "type must be one of: PURCHASE"); else json(200, []); return;
     }
-    if (/^\/api\/agent\/v1\/contracts\/[^/]+\/deliveries$/.test(p) && req.method === "GET") return json(200, []);
-    if (/^\/api\/agent\/v1\/(current-agent|agent|ships|contracts)$/.test(p)) return who === "none" || who === "bad" ? refuse() : json(200, p.endsWith("current-agent") ? { agent: {} } : []);
+    if (/^\/api\/agent\/v1\/contracts\/[^/]+\/deliveries$/.test(p) && req.method === "GET") { json(200, []); return; }
+    if (/^\/api\/agent\/v1\/(current-agent|agent|ships|contracts)$/.test(p)) { if (who === "none" || who === "bad") refuse(); else json(200, p.endsWith("current-agent") ? { agent: {} } : []); return; }
     if (req.method === "POST" && p.startsWith("/api/agent/v1/")) {
-      if (who === "none" || who === "bad") return refuse();
-      if (who === "noscope") return json(403, { error: { message: "missing scope" } });
-      return quirk === "validation-skipped" ? json(201, {}) : text(400, "shipType and waypointSymbol are required");
+      if (who === "none" || who === "bad") { refuse(); return; }
+      if (who === "noscope") { json(403, { error: { message: "missing scope" } }); return; }
+      if (quirk === "validation-skipped") json(201, {}); else text(400, "shipType and waypointSymbol are required"); return;
     }
-    if (p === "/api/automation/v1/autopilot/status") return json(200, { status: "armed", mode: "live" });
-    if (p === "/api/automation/v1/autopilot/events") return json(200, { events: [{ type: quirk === "no-snapshot" ? "planner_assignment" : "agent_credits_snapshot", occurredAt: new Date().toISOString(), detail: { secret: OPERATOR } }] });
-    if (p === "/api/automation/v1/events") return refuse();
-    if (p.startsWith("/api/fleet/v1/")) return who === "none" || who === "bad" ? refuse() : json(404, { error: { message: "no such ship" } });
+    if (p === "/api/automation/v1/autopilot/status") { json(200, { status: "armed", mode: "live" }); return; }
+    if (p === "/api/automation/v1/autopilot/events") { json(200, { events: [{ type: quirk === "no-snapshot" ? "planner_assignment" : "agent_credits_snapshot", occurredAt: new Date().toISOString(), detail: { secret: OPERATOR } }] }); return; }
+    if (p === "/api/automation/v1/events") { refuse(); return; }
+    if (p.startsWith("/api/fleet/v1/")) { if (who === "none" || who === "bad") refuse(); else json(404, { error: { message: "no such ship" } }); return; }
     if (p === "/api/agent/swagger/") {
       res.writeHead(200, { "content-type": "text/html" });
       return void res.end("<html>swagger-ui</html>");
@@ -63,7 +63,7 @@ function stub(quirk: Quirk): Promise<http.Server> {
     }
     text(404, "404 page not found");
   });
-  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => { resolve(server); }));
 }
 
 function probe(env: Record<string, string>, args: string[] = []): Promise<{ code: number; out: string }> {
@@ -75,7 +75,7 @@ function probe(env: Record<string, string>, args: string[] = []): Promise<{ code
   });
 }
 
-const urlOf = (s: http.Server): string => `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
+const urlOf = (s: http.Server): string => `http://127.0.0.1:${String((s.address() as AddressInfo).port)}`;
 const open: http.Server[] = [];
 afterAll(() => Promise.all(open.map((s) => new Promise((r) => s.close(r)))));
 const serve = async (q: Quirk) => {

@@ -73,7 +73,7 @@ export class ContractsController extends Controller {
   @Response<string>(400, "invalid request body, or a member is missing")
   @Response<string>(500, "failed to record delivery")
   @Post("contracts/{contractId}/deliveries")
-  public async recordDelivery(@Path() contractId: string, @Request() req: ExpressRequest, @Body() delivery?: DeliveryRequest): Promise<Delivery> {
+  public async recordDelivery(@Path() contractId: string, @Request() req: ExpressRequest, @Body() _delivery?: DeliveryRequest): Promise<Delivery> {
     const body = await decodeBody(req, deliveryRequestSchema);
     if (body.shipSymbol === "" || body.tradeSymbol === "" || body.units <= 0n) {
       throw new TextAnswer(400, "shipSymbol, tradeSymbol and units (>0) are required");

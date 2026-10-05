@@ -146,8 +146,8 @@ export class GatewayClient {
   private async send(method: string, endpoint: string, authorization: string, body?: string, callerGone?: AbortSignal): Promise<Uint8Array> {
     // One deadline for every hop and the body; cleared when the call is over, not left to fire later.
     const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), REQUEST_TIMEOUT_MS);
-    const onGone = (): void => deadline.abort();
+    const timer = setTimeout(() => { deadline.abort(); }, REQUEST_TIMEOUT_MS);
+    const onGone = (): void => { deadline.abort(); };
     callerGone?.addEventListener("abort", onGone, { once: true });
     if (callerGone?.aborted === true) deadline.abort();
     try {
@@ -184,7 +184,7 @@ export class GatewayClient {
     for (let requests = 1; ; requests++) {
       const headers: Record<string, string> = {};
       // Go sends the header when the caller's is non-empty, and only then.
-      if (authorization !== "" && !stripped) headers["Authorization"] = authorization;
+      if (authorization !== "" && !stripped) headers.Authorization = authorization;
       if (contentType) headers["Content-Type"] = "application/json";
       try {
         res = await this.fetchImpl(target.url, { method: verb, headers, ...(payload !== undefined ? { body: payload } : {}), redirect: "manual", signal });
@@ -197,7 +197,7 @@ export class GatewayClient {
       await res.body?.cancel().catch(() => undefined);
       const next = resolveReference(target, fromHeaderValue(location));
       if (next === null) throw noAnswer(new Error("failed to parse Location header"));
-      if (requests >= MAX_REQUESTS) throw noAnswer(new Error(`stopped after ${MAX_REQUESTS} redirects`));
+      if (requests >= MAX_REQUESTS) throw noAnswer(new Error(`stopped after ${String(MAX_REQUESTS)} redirects`));
       // Authorization stays only where BOTH views agree it may go: Go's (the host as written, compared byte for byte)
       // and the one of the URL that is actually fetched.
       const goSame = next.host === first.host || sameDomain(asciiHostname(hostnameOf(next.host)), firstName);

@@ -1,7 +1,7 @@
-import net from "node:net";
+import net, { type AddressInfo } from "node:net";
 import request from "supertest";
 import { createExpressAuth } from "@v-m-pioneer-trading/clerk-client";
-import express from "express";
+import type express from "express";
 import { declaring, routePolicy } from "../auth";
 import { createApp } from "../server";
 import { createTestApp, noGateway, noHistory, stubCentre, TEST_ORIGIN } from "../testSupport/createTestApp";
@@ -40,7 +40,7 @@ describe("health", () => {
     const res = await request(app).head("/health");
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toBe("application/json");
-    expect(res.text ?? "").toBe("");
+    expect(res.text || "").toBe("");
   });
 });
 
@@ -53,7 +53,7 @@ describe("the router answers like gorilla/mux", () => {
       expect(res.status).toBe(405);
       expect(res.text).toBe("");
       expect(res.headers["content-type"]).toBeUndefined();
-      expect(res.headers["allow"]).toBeUndefined();
+      expect(res.headers.allow).toBeUndefined();
       expect(corsOf(res.headers)).toEqual([]);
     }
   });
@@ -88,7 +88,7 @@ describe("the router answers like gorilla/mux", () => {
     for (const method of ["get", "post", "options"] as const) {
       const res = await request(app)[method](path);
       expect(res.status).toBe(301);
-      expect(res.headers["location"]).toBe(location);
+      expect(res.headers.location).toBe(location);
       expect(res.text).toBe("");
       expect(corsOf(res.headers)).toEqual([]);
     }
@@ -106,7 +106,7 @@ describe("the router answers like gorilla/mux", () => {
     expect(res.status).toBe(400);
     expect(res.text).toBe("400 Bad Request");
     expect(res.headers["content-type"]).toBe("text/plain; charset=utf-8");
-    expect(res.headers["connection"]).toBe("close");
+    expect(res.headers.connection).toBe("close");
     expect(corsOf(res.headers)).toEqual([]);
   });
 
@@ -140,13 +140,13 @@ describe("request targets in absolute form", () => {
     const { app } = createTestApp();
     const server = app.listen(0, "127.0.0.1");
     await new Promise((r) => server.once("listening", r));
-    const { port } = server.address() as import("node:net").AddressInfo;
+    const { port } = server.address() as AddressInfo;
     try {
       return await new Promise<string>((resolve, reject) => {
         const socket = net.connect(port, "127.0.0.1", () => socket.write(`GET ${target} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`));
         let data = "";
-        socket.on("data", (c) => (data += c));
-        socket.on("end", () => resolve(data));
+        socket.on("data", (c) => { data += c.toString(); });
+        socket.on("end", () => { resolve(data); });
         socket.on("error", reject);
       });
     } finally {
@@ -179,7 +179,7 @@ describe("every route is declared, or the service refuses to start", () => {
         gateway: noGateway,
         history: noHistory,
         auth: auth(),
-        registerRoutes: (r) => (r["get"] as (p: string, h: unknown) => void)("/api/agent/v1/undeclared", () => undefined),
+        registerRoutes: (r) => { (r.get as (p: string, h: unknown) => void)("/api/agent/v1/undeclared", () => undefined); },
       }),
     ).toThrow(/GET \/api\/agent\/v1\/undeclared declares no credential requirement/);
   });
@@ -207,7 +207,7 @@ describe("every route is declared, or the service refuses to start", () => {
         history: noHistory,
           auth: auth(),
           policy: { ...routePolicy, "POST /x": tier },
-          registerRoutes: (r) => (r["post"] as (p: string, h: unknown) => void)("/x", () => undefined),
+          registerRoutes: (r) => { (r.post as (p: string, h: unknown) => void)("/x", () => undefined); },
         }),
       ).toThrow(/mutating method but declares no session or scope/);
     }
@@ -216,8 +216,7 @@ describe("every route is declared, or the service refuses to start", () => {
   it("a declared route is enforced: 'session' is a 401 without a credential and never reaches its handler", async () => {
     const { app } = createTestApp({
       policy: { ...routePolicy, "GET /api/agent/v1/probe": "session" },
-      registerRoutes: (r) =>
-        (r["get"] as (p: string, h: unknown) => void)("/api/agent/v1/probe", (_q: unknown, s: express.Response) => s.json({ reached: true })),
+      registerRoutes: (r) => { (r.get as (p: string, h: unknown) => void)("/api/agent/v1/probe", (_q: unknown, s: express.Response) => s.json({ reached: true })); },
     });
     const res = await request(app).get("/api/agent/v1/probe");
     expect(res.status).toBe(401);
@@ -233,11 +232,10 @@ describe("every route is declared, or the service refuses to start", () => {
       const { app } = createTestApp(
         {
           policy: { ...routePolicy, "POST /api/agent/v1/probe": "fleet:control" },
-          registerRoutes: (r) =>
-            (r["post"] as (p: string, h: unknown) => void)("/api/agent/v1/probe", (_q: unknown, s: express.Response) => {
+          registerRoutes: (r) => { (r.post as (p: string, h: unknown) => void)("/api/agent/v1/probe", (_q: unknown, s: express.Response) => {
               reached++;
               s.json({ reached: true });
-            }),
+            }); },
         },
         centre,
       );
@@ -275,7 +273,7 @@ describe("every route is declared, or the service refuses to start", () => {
   it("the registrar hands the declaration to Express as the first handler", () => {
     const calls: unknown[][] = [];
     const reg = declaring({ get: (...a: unknown[]) => calls.push(a) }, auth(), { "GET /a": "session" });
-    (reg["get"] as (...a: unknown[]) => void)("/a", "handler");
+    (reg.get as (...a: unknown[]) => void)("/a", "handler");
     expect(calls).toHaveLength(1);
     expect(typeof calls[0]?.[1]).toBe("function");
     expect(calls[0]?.[2]).toBe("handler");

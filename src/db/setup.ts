@@ -36,14 +36,14 @@ export async function waitForDatabase(
     } catch (err) {
       last = err;
     }
-    log(`DB not ready yet (attempt ${attempt}/${PING_ATTEMPTS}): ${last instanceof Error ? last.message : String(last)}`);
+    log(`DB not ready yet (attempt ${String(attempt)}/${String(PING_ATTEMPTS)}): ${last instanceof Error ? last.message : String(last)}`);
     if (attempt < PING_ATTEMPTS) await sleep(PING_DELAY_MS);
   }
   throw last;
 }
 
 export async function setUpDatabase(config: MySqlConfig, deps: SetUpDeps = {}): Promise<Sql> {
-  const log = deps.log ?? ((line: string) => console.log(line));
+  const log = deps.log ?? ((line: string) => { console.log(line); });
   log("Establishing connection to MySql DB...");
   const sql = (deps.open ?? ((c: MySqlConfig) => new MysqlSql(c)))(config);
   try {

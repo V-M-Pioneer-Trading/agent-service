@@ -45,5 +45,5 @@ export function callerOf(req: Request): Caller {
  */
 export async function answer<Model>(req: Request, value: unknown): Promise<Model> {
   await sendJson(req.res as Response, value);
-  return value as unknown as Model;
+  return value as Model;
 }

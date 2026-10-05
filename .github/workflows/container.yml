@@ -80,6 +80,11 @@ jobs:
       # tsoa codegen, then tsc over sources and tests with the strict flag set.
       - run: npm run typecheck
 
+      # The shared ESLint config (@v-m-pioneer-trading/eslint-config, meta#105), after the typecheck: tsoa's output in
+      # src/generated/ has to exist for the type-aware rules, and is itself ignored. Warnings fail like errors.
+      - name: Lint
+        run: npm run lint
+
       - run: npm run build
 
       # The committed openapi.json must match the controllers. Regenerates it (no
@@ -98,7 +103,7 @@ jobs:
 
   # The black-box HTTP contract suite (contract/) against the image this
   # repository builds: the whole of it, nothing skipped (contract-skip.txt is
-  # empty), judged by scripts/run-contract.js. It is the parity record of the
+  # empty), judged by scripts/run-contract.cjs. It is the parity record of the
   # Go to TypeScript port and stays a gate. It never holds up the deploy job.
   contract:
     runs-on: ubuntu-latest
@@ -146,7 +151,7 @@ jobs:
           CONTRACT_MYSQL_USER: root
           CONTRACT_MYSQL_PASSWORD: example
           CONTRACT_MYSQL_DATABASE: vnm-agent-db
-        run: node scripts/run-contract.js
+        run: node scripts/run-contract.cjs
 
       # The service's own log, for a run that failed. The suite writes it on the
       # way out, before it removes the container.

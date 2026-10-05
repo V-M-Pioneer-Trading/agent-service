@@ -6,4 +6,4 @@
 # starting with "#" are ignored. This file stays empty: never add a line for a case that fails (a red case
 # must mean a defect), and never edit contract/ to make the port pass.
 #
-# scripts/run-contract.js refuses a run whose number of tests does not match contract-skip.expected.
+# scripts/run-contract.cjs refuses a run whose number of tests does not match contract-skip.expected.

@@ -32,7 +32,8 @@ export function unescapeBytes(raw: string): Buffer | null {
   const out: number[] = [];
   const bytes = Buffer.from(raw, "latin1");
   for (let i = 0; i < bytes.length; i++) {
-    const c = bytes[i] as number;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- i is below bytes.length, the loop condition
+    const c = bytes[i]!;
     if (c !== 0x25) {
       out.push(c);
       continue;

@@ -8,13 +8,14 @@
     "node": ">=24"
   },
   "scripts": {
-    "codegen": "node scripts/codegen.js",
-    "build": "node scripts/codegen.js && tsc -p tsconfig.build.json",
-    "typecheck": "node scripts/codegen.js && tsc -p tsconfig.json --noEmit",
+    "codegen": "node scripts/codegen.cjs",
+    "build": "node scripts/codegen.cjs && tsc -p tsconfig.build.json",
+    "typecheck": "node scripts/codegen.cjs && tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "openapi": "node scripts/codegen.js && node scripts/write-openapi.js",
-    "check:deps": "node scripts/check-dependencies.js",
-    "pretest": "node scripts/codegen.js",
+    "openapi": "node scripts/codegen.cjs && node scripts/write-openapi.cjs",
+    "check:deps": "node scripts/check-dependencies.cjs",
+    "lint": "eslint . --max-warnings 0",
+    "pretest": "node scripts/codegen.cjs",
     "test": "jest"
   },
   "dependencies": {
@@ -29,10 +30,13 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
     "@types/supertest": "^6.0.2",
+    "@v-m-pioneer-trading/eslint-config": "https://github.com/V-M-Pioneer-Trading/eslint-config/releases/download/v1.1.0/v-m-pioneer-trading-eslint-config-1.1.0.tgz",
+    "eslint": "^10.12.0",
     "jest": "^30.5.2",
     "supertest": "^6.3.4",
     "ts-jest": "^29.2.5",
     "tsoa": "^6.6.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.71.0"
   }
 }

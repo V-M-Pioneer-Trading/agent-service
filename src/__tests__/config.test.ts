@@ -10,7 +10,7 @@ describe("the introspection variables are validated exactly as the Go service do
   // Every case below is one clerk-client's own loader accepts or words differently
   // (it trims the secret, accepts userinfo, an empty "?", a fragment, "http:///x"),
   // and one the contract suite (suites/startup.ts) pins as a refusal.
-  const refused: Array<[string, Env]> = [
+  const refused: [string, Env][] = [
     ["no URL", { AUTH_INTROSPECTION_URL: undefined }],
     ["an empty URL", { AUTH_INTROSPECTION_URL: "" }],
     ["a blank URL", { AUTH_INTROSPECTION_URL: "   " }],
@@ -43,7 +43,7 @@ describe("the introspection variables are validated exactly as the Go service do
         loadConfig(withEnv({ AUTH_INTROSPECTION_SECRET: secret }));
         throw new Error("should have refused");
       } catch (err) {
-        expect(String((err as Error).message)).not.toContain(secret.trim());
+        expect((err as Error).message).not.toContain(secret.trim());
       }
     }
   });
@@ -61,7 +61,7 @@ describe("159 URL and secret inputs: Go's verdict, and whether fetch sends the U
   // (the patched parser; golang:1.25-alpine builds the image). "fetch" is whether
   // new URL(raw).href equals the input but for the case of scheme and host and a "/" for an empty path.
   // The service accepts an input only if Go accepts it AND fetch sends it as written: stricter than Go on purpose.
-  const verdicts: Array<[string, string, "accept" | "refuse", "same" | "rewritten" | "n/a"]> = [
+  const verdicts: [string, string, "accept" | "refuse", "same" | "rewritten" | "n/a"][] = [
     ["http://center.internal:3005/auth/v1/introspect", "s", "accept", "same"],
     ["http://center.internal:3005/auth/v1/introspect ", "s", "accept", "rewritten"],
     [" http://center.internal:3005/auth/v1/introspect", "s", "refuse", "n/a"],

@@ -46,12 +46,13 @@ async function stub(handler: http.RequestListener): Promise<string> {
   const server = http.createServer(handler);
   servers.push(server);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
 }
 
 /** The smallest route that does what a route PR's handler will: call the gateway, relay the verdict. */
 function appFor(url: string) {
   const app = express();
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Express 4 ignores the returned promise, and the handler catches everything itself
   app.get("/probe", async (_req, res) => {
     try {
       res.status(200).json(await new GatewayClient(`${url}/proxy`).getMyAgent({ authorization: "Bearer t" }).then(() => ({})));
@@ -75,7 +76,8 @@ describe("the shared upstream-error contract", () => {
     if (c.gateway.transport === "no-response") {
       // A server that is already gone: connection refused.
       const dead = await stub(() => undefined);
-      const server = servers.pop() as http.Server;
+      const server = servers.pop();
+      if (server === undefined) throw new Error("the stub server is missing");
       await new Promise((r) => server.close(r));
       url = dead;
     } else {
@@ -95,6 +97,7 @@ describe("the shared upstream-error contract", () => {
     if (c.expect.message !== undefined) expect(message).toBe(c.expect.message);
     if (c.expect.messageContains !== undefined) expect(message).toContain(c.expect.messageContains);
     if (c.expect.messageNotEmpty === true) expect(message.trim()).not.toBe("");
+    // eslint-disable-next-line @typescript-eslint/no-misused-spread -- counts code points on purpose: the fixture measures messageMaxLength in characters, as Go counts runes
     if (c.expect.messageMaxLength !== undefined) expect([...message].length).toBeLessThanOrEqual(c.expect.messageMaxLength);
     for (const [name, value] of Object.entries(c.expect.headers ?? {})) expect(res.headers[name.toLowerCase()]).toBe(value);
     expect(res.headers["content-type"]).toBe("text/plain; charset=utf-8");
@@ -178,8 +181,8 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
     const client = new GatewayClient(`${url}/proxy`);
     await client.getMyAgent({ authorization: "Bearer   tok" });
     await client.getMyAgent({ authorization: "" });
-    expect(seen[0]?.["authorization"]).toBe("Bearer   tok");
-    expect(seen[1]?.["authorization"]).toBeUndefined();
+    expect(seen[0]?.authorization).toBe("Bearer   tok");
+    expect(seen[1]?.authorization).toBeUndefined();
   });
 
   it("reads at most 64 KiB of an error body: an envelope cut in half is raw text", async () => {
@@ -209,7 +212,7 @@ describe("what the fixture leaves open (contract/suites/upstream-errors.ts pins 
   it("the transport error stays in the chain for logs but not in the message", () => {
     const err = gatewayDidNotAnswer("GET", "/my/agent", new Error("connect ECONNREFUSED 10.0.0.7:3002"));
     expect(err.message).toBe(NO_ANSWER);
-    expect(String((err.cause as Error).message)).toContain("10.0.0.7");
+    expect((err.cause as Error).message).toContain("10.0.0.7");
   });
 });
 
@@ -234,7 +237,7 @@ describe("a raw body that is not UTF-8 goes out as it came, like Go's string(bod
     const res = await request(appFor(url)).get("/probe").buffer(true).parse((r, cb) => {
       const parts: Buffer[] = [];
       r.on("data", (c: Buffer) => parts.push(c));
-      r.on("end", () => cb(null, Buffer.concat(parts)));
+      r.on("end", () => { cb(null, Buffer.concat(parts)); });
     });
     expect(Buffer.from(res.body as Buffer).equals(Buffer.from([0x62, 0x61, 0x64, 0xff, 0xfe, 0x0a]))).toBe(true);
   });

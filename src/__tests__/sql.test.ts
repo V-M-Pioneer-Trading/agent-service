@@ -3,7 +3,7 @@ import { CONN_MAX_LIFETIME_MS, MAX_OPEN_CONNS, MysqlSql, poolOptions } from "../
 // mysql2 is replaced by a pool that hands out scripted connections: what is under test is the
 // options we ask for, the session setup, and the lifetime rule, not the driver.
 interface FakeCore {
-  query: jest.Mock;
+  query: jest.Mock<void, [string, (err: Error | null) => void]>;
   destroy: jest.Mock;
 }
 interface FakeConn {
@@ -32,11 +32,13 @@ jest.mock("mysql2/promise", () => ({
             if (event === "connection") state.onConnection = handler;
           },
         },
+        // eslint-disable-next-line @typescript-eslint/require-await -- stands in for the mysql2 promise API; async keeps the throw a rejection
         getConnection: async () => {
           const next = state.queue.shift();
           if (next === undefined) throw new Error("no connection scripted");
           return next;
         },
+        // eslint-disable-next-line @typescript-eslint/require-await -- stands in for the mysql2 promise API
         end: async () => {
           state.ended = true;
         },
@@ -49,9 +51,9 @@ const config = { host: "db", port: "3307", user: "u", password: "p", database: "
 
 function connection(): FakeConn {
   return {
-    connection: { query: jest.fn(), destroy: jest.fn() },
-    execute: jest.fn(async () => [[["row"]], []]),
-    ping: jest.fn(async () => undefined),
+    connection: { query: jest.fn() as FakeCore["query"], destroy: jest.fn() },
+    execute: jest.fn(() => Promise.resolve([[["row"]], []])),
+    ping: jest.fn(() => Promise.resolve(undefined)),
     release: jest.fn(),
     destroy: jest.fn(),
   };
@@ -112,9 +114,9 @@ describe("MysqlSql", () => {
   it("a connection whose time zone could not be set is closed", () => {
     const { open } = pool();
     const c = open();
-    (c.connection.query.mock.calls[0]?.[1] as (err: Error | null) => void)(null);
+    c.connection.query.mock.calls[0]?.[1](null);
     expect(c.connection.destroy).not.toHaveBeenCalled();
-    (c.connection.query.mock.calls[0]?.[1] as (err: Error | null) => void)(new Error("nope"));
+    c.connection.query.mock.calls[0]?.[1](new Error("nope"));
     expect(c.connection.destroy).toHaveBeenCalledTimes(1);
   });
 

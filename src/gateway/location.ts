@@ -72,8 +72,10 @@ function hostAcceptable(host: string): boolean {
   if (!HOST_OK.test(host)) return false;
   // A percent sign in a host is only allowed as %25 or as part of an encoded non-ASCII byte.
   for (const m of host.matchAll(/%(.?)(.?)/g)) {
+    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- (.?) takes part in every match, as an empty string at worst, so the group is defined
     if (!/^[0-9A-Fa-f]{2}$/.test(`${m[1]}${m[2]}`)) return false;
-    if (Number.parseInt(m[1] as string, 16) < 8 && `${m[1]}${m[2]}` !== "25") return false;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion, @typescript-eslint/restrict-template-expressions -- (.?) takes part in every match, as an empty string at worst, so the group is defined
+    if (Number.parseInt(m[1]!, 16) < 8 && `${m[1]}${m[2]}` !== "25") return false;
   }
   if (host.startsWith("[")) {
     const close = host.indexOf("]");

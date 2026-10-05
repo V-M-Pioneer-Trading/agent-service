@@ -15,10 +15,11 @@ code pass.
 |---|---|
 | Install | `npm ci --ignore-scripts` (never plain `npm ci`, never `npm install` in CI) |
 | Typecheck / build / test | `npm run typecheck` / `npm run build` / `npm test` |
+| Lint | `npm run lint` (`eslint . --max-warnings 0`, the shared `@v-m-pioneer-trading/eslint-config`, meta#105; a step of the `test` job after the typecheck). No baseline: fix the code, or add an `eslint-disable-next-line <rule> -- <why>` that says why (a disable with no reason, or one that disables nothing, is itself an error). `contract/` and `src/generated/` are not linted. A script that uses `require()` is named `.cjs` (with a `.d.cts` for the tests that import it), not disabled |
 | Real-MySQL integration test | `TEST_MYSQL_HOST=127.0.0.1 npm test` (CI does; `docker compose up -d mysql` locally) |
 | Regenerate the OpenAPI spec | `npm run openapi` (CI fails on drift in `openapi.json`) |
 | Dependency allowlist | `npm run check:deps`; a new direct dependency needs a line in `allowed-dependencies.txt` |
-| Contract suite against this build | `npm run build`, then `node scripts/run-contract.js` (runs `contract/` unchanged with `CONTRACT_COMMAND`; set `CONTRACT_IMAGE` to use an image). Needs a MySQL: `CONTRACT_MYSQL_*` as in `contract/README.md`, and a fresh database |
+| Contract suite against this build | `npm run build`, then `node scripts/run-contract.cjs` (runs `contract/` unchanged with `CONTRACT_COMMAND`; set `CONTRACT_IMAGE` to use an image). Needs a MySQL: `CONTRACT_MYSQL_*` as in `contract/README.md`, and a fresh database |
 | Production probe | `node scripts/cutover-probe.mjs --dry-run` lists the checks; a real run needs `OPERATOR_TOKEN` (see the script header). Prints status codes and member names only, never a token. `cutoverProbe.test.ts` runs it against a stub |
 | Run locally | `PORT=8080 AUTH_INTROSPECTION_URL=http://localhost:8082/auth/v1/introspect AUTH_INTROSPECTION_SECRET=local-dev-introspection-secret npm start` (after `npm run build`) |
 | Start MySQL only | `docker compose up -d mysql` |
@@ -31,7 +32,7 @@ needs `test`, builds the root `Dockerfile` for arm64, and only on the tip of `ma
 * **Skip list.** `contract-skip.txt` is empty: the whole contract suite runs and has to pass, bar the
   one case the suite skips itself (`dynamic-skips=1` in `contract-skip.expected`: the swagger page
   names no spec URL because the spec is embedded in it). The mechanism stays: a listed pattern is a
-  regex matched like `--test-skip-pattern`, `scripts/run-contract.js` runs the whole suite unfiltered
+  regex matched like `--test-skip-pattern`, `scripts/run-contract.cjs` runs the whole suite unfiltered
   and judges it, a case off the list must pass, a case on it must not (bar the vacuous ones in
   `contract-skip-passing.txt`), a pattern that matches nothing fails, and the measured numbers must
   equal `contract-skip.expected`. Never add a line for a case that fails for another reason.
@@ -235,7 +236,7 @@ Changing any of these breaks a known consumer.
 | Connections | `connections.test.ts` | real sockets |
 | Real MySQL | `mysql.integration.test.ts` | runs when `TEST_MYSQL_HOST` is set |
 | Tooling | `dependencies.test.ts`, `runContract.test.ts` | the dependency checker and the contract judge, pure |
-| Black box | `contract/`, via `scripts/run-contract.js` | the built image or process, MySQL, stubs it plays itself |
+| Black box | `contract/`, via `scripts/run-contract.cjs` | the built image or process, MySQL, stubs it plays itself |
 
 Tests sign nothing: tokens are opaque strings a stub auth-service answers for. Never assert on wall-clock
 timing without a two-orders-of-magnitude margin.
@@ -250,9 +251,9 @@ timing without a two-orders-of-magnitude margin.
   or `INDEXES` for existing databases. Money columns are `BIGINT`; time columns are read back as UTC.
 * **A new config value:** read it once at startup in `config.ts`, never per request, and add it to the README's table.
 * **A new tunable:** a named constant with a comment saying what it bounds, plus a row in the README's table.
-* **A new dependency:** a line in `allowed-dependencies.txt`, justified in the PR; `npm ci --ignore-scripts` only.
+* **A new dependency:** a line in `allowed-dependencies.txt`, justified in the PR; `npm ci --ignore-scripts` only. The shared lint config is the one other release tarball (`devDependencies`, v1.1.0+); a bump is `npm install --save-dev <release URL>` and then `npm run lint`.
   The checker also refuses `workspaces`, lockfile `link` entries, and any `resolved` that is not exactly
-  `https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz` (or the clerk-client release). The Dockerfile's deps
+  `https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz` (or, at its own lock path only, the clerk-client release in `dependencies` or the eslint-config release in `devDependencies`, resolved exactly where package.json says and at the version its URL names). The Dockerfile's deps
   stage installs with `--omit=dev --omit=optional` and fails the build on any compiled file (ELF, `*.node`, `*.so`, `*.wasm`, ...) in `node_modules`.
 
 ---

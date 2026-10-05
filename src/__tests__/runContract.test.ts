@@ -2,21 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-type Event =
-  | { kind: "test"; path: string[]; outcome: "pass" | "fail" | "skip" }
-  | { kind: "suite"; path: string[]; failureType: string }
-  | { kind: "diagnostic"; message: string };
-
-const { judge, runSuite } = require("../../scripts/run-contract") as {
-  judge: (
-    events: Event[],
-    patterns: string[],
-    vacuous: Set<string>,
-    expected: Record<string, number>,
-    status?: number,
-  ) => { problems: string[]; counts: Record<string, number> };
-  runSuite: (dir: string) => { status: number; output: string; events: Event[] };
-};
+import { judge, runSuite, type Event } from "../../scripts/run-contract.cjs";
 
 const r = (outcome: "pass" | "fail" | "skip", ...path: string[]): Event => ({ kind: "test", path, outcome });
 const expected = { suite: 4, skipped: 2, pass: 2, "dynamic-skips": 0 };
@@ -29,7 +15,7 @@ describe("the contract skip-list judge", () => {
   });
 
   it("a failure outside the list is a defect", () => {
-    const out = judge([base[0]!, r("fail", "routing", "404"), ...base.slice(2)], patterns, new Set(), expected);
+    const out = judge([...base.slice(0, 1), r("fail", "routing", "404"), ...base.slice(2)], patterns, new Set(), expected);
     expect(out.problems.join("\n")).toMatch(/FAILED and not on the skip list: routing 404/);
   });
 
@@ -84,7 +70,7 @@ describe("the contract skip-list judge", () => {
 // The same rules, end to end: a real node:test run of a small suite through the real reporter.
 describe("the judge on a real run of a mock suite", () => {
   const dirs: string[] = [];
-  afterAll(() => dirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true })));
+  afterAll(() => { dirs.forEach((d) => { fs.rmSync(d, { recursive: true, force: true }); }); });
 
   function mock(source: string) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mock-contract-"));

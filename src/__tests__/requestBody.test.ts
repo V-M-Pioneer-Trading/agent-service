@@ -129,8 +129,8 @@ describe("readBody", () => {
   async function serve(limit: number | undefined, handler: (body: { bytes: Buffer; exceeded: boolean } | Error, res: http.ServerResponse) => void) {
     const server = http.createServer((req, res) => {
       (limit === undefined ? readBody(req) : readBody(req, limit)).then(
-        (body) => handler(body, res),
-        (err: Error) => handler(err, res),
+        (body) => { handler(body, res); },
+        (err: unknown) => { handler(err as Error, res); },
       );
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -143,22 +143,22 @@ describe("readBody", () => {
     new Promise<{ status: number; text: string }>((resolve, reject) => {
       const req = http.request({ port, host: "127.0.0.1", method: "POST", headers }, (res) => {
         let text = "";
-        res.on("data", (d) => (text += d));
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, text }));
+        res.on("data", (d) => { text += String(d); });
+        res.on("end", () => { resolve({ status: res.statusCode ?? 0, text }); });
       });
       req.on("error", reject);
       req.end(body);
     });
 
   it("reads the whole body, whatever the Content-Type says", async () => {
-    const s = await serve(undefined, (body, res) => res.end(body instanceof Error ? "error" : `${body.exceeded}:${body.bytes.toString()}`));
+    const s = await serve(undefined, (body, res) => res.end(body instanceof Error ? "error" : `${String(body.exceeded)}:${body.bytes.toString()}`));
     expect((await post(s.port, "hello", { "Content-Type": "application/x-www-form-urlencoded" })).text).toBe("false:hello");
     expect((await post(s.port, "")).text).toBe("false:");
     await s.close();
   });
 
   it("stops at the cap: the first `limit` bytes and a flag", async () => {
-    const s = await serve(10, (body, res) => res.end(body instanceof Error ? "error" : `${body.exceeded}:${body.bytes.toString()}`));
+    const s = await serve(10, (body, res) => res.end(body instanceof Error ? "error" : `${String(body.exceeded)}:${body.bytes.toString()}`));
     expect((await post(s.port, "0123456789")).text).toBe("false:0123456789");
     expect((await post(s.port, "0123456789A")).text).toBe("true:0123456789");
     expect((await post(s.port, "x".repeat(100_000))).text).toBe("true:xxxxxxxxxx");

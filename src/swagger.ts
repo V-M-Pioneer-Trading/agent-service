@@ -49,6 +49,7 @@ const TYPES: Readonly<Record<string, string>> = {
 };
 
 /** The whitelisted files of swagger-ui-dist, in memory, by their path under the mount. */
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- swagger-ui-dist/absolute-path is a CommonJS module with no types or ESM entry; require is how it is loaded
 export function loadAssets(dir: string = (require("swagger-ui-dist/absolute-path") as () => string)()): Map<string, { body: Buffer; type: string }> {
   return new Map([...ASSETS].map((name) => [name, { body: fs.readFileSync(path.join(dir, name)), type: TYPES[path.extname(name)] ?? "application/octet-stream" }]));
 }
@@ -58,7 +59,7 @@ export function mountSwagger(app: Express, auth: ExpressAuth, spec: object = loa
   const page = swaggerUi.setup(spec, { customSiteTitle: "Agent Info Service API" });
 
   // Same answer as any path under /api/agent that no route takes.
-  const refuse: RequestHandler = (_req, res) => pageNotFound(res);
+  const refuse: RequestHandler = (_req, res) => { pageNotFound(res); };
   const gate: RequestHandler = (req, res, next) => {
     const bare = decodedPathOf(req).toString("latin1") === SWAGGER_PATH;
     if (bare || (req.method !== "GET" && req.method !== "HEAD")) refuse(req, res, next);

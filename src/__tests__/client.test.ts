@@ -10,20 +10,20 @@ interface Seen {
 }
 
 /** A gateway client whose fetch answers from a script: hop i answers [status, Location]; the end is a 200. */
-function scripted(hops: Array<[number, string]>, base = "http://gw:3002/proxy") {
+function scripted(hops: [number, string][], base = "http://gw:3002/proxy") {
   const seen: Seen[] = [];
-  const fetchImpl = (async (url: URL, init: RequestInit) => {
-    seen.push({ method: init.method ?? "", url: String(url), auth: (init.headers as Record<string, string>)["Authorization"] !== undefined });
+  const fetchImpl = ((url: URL, init: RequestInit) => {
+    seen.push({ method: init.method ?? "", url: String(url), auth: (init.headers as Record<string, string>).Authorization !== undefined });
     const hop = hops[seen.length - 1];
-    return new Response("{}", { status: hop?.[0] ?? 200, headers: hop === undefined ? {} : { Location: hop[1] } });
+    return Promise.resolve(new Response("{}", { status: hop?.[0] ?? 200, headers: hop === undefined ? {} : { Location: hop[1] } }));
   }) as unknown as typeof fetch;
   return { seen, client: new GatewayClient(base, fetchImpl) };
 }
-const run = async (hops: Array<[number, string]>, base?: string) => {
+const run = async (hops: [number, string][], base?: string) => {
   const { seen, client } = scripted(hops, base);
   const outcome = await client.getMyAgent({ authorization: "Bearer x" }).then(
     () => "ok",
-    (e: Error) => e.message,
+    (e: unknown) => (e as Error).message,
   );
   return { outcome, seen: seen.map((s) => `${s.method} ${s.url}${s.auth ? " +auth" : ""}`) };
 };
@@ -183,7 +183,7 @@ describe("the caller's Authorization never reaches another listener (real fetch,
   };
 
   it("holds for every Location that WHATWG and Go read differently", async () => {
-    const evilSaw: Array<string | undefined> = [];
+    const evilSaw: (string | undefined)[] = [];
     const evilPort = await listen((req, res) => {
       evilSaw.push(req.headers.authorization);
       res.end("{}");
@@ -194,16 +194,16 @@ describe("the caller's Authorization never reaches another listener (real fetch,
       if (req.url?.startsWith("/proxy/")) {
         res.writeHead(302, { Location: location });
       } else {
-        gwSaw.push(`${req.url}`);
+        gwSaw.push(String(req.url));
         res.setHeader("content-type", "application/json");
       }
       res.end("{}");
     });
-    const client = new GatewayClient(`http://127.0.0.1:${gwPort}/proxy`);
-    const evil = `localhost:${evilPort}`;
+    const client = new GatewayClient(`http://127.0.0.1:${String(gwPort)}/proxy`);
+    const evil = `localhost:${String(evilPort)}`;
     const locations = [
       `///${evil}/x`, `////${evil}/x`, `https:/${evil}/x`, `HTTPS:/${evil}/x`, `http:/${evil}/x`, `http:///${evil}/x`, `//${evil}/x`, `http://${evil}/x`,
-      `http://${evil}\\x@127.0.0.1:${gwPort}/x`, `http://127.0.0.1:${gwPort}\\@${evil}/x`, `http://x\\@${evil}/x`, `http://u:p@${evil}/x`, `\\\\${evil}\\x`, `/\\${evil}/x`, `//${evil}\\x`,
+      `http://${evil}\\x@127.0.0.1:${String(gwPort)}/x`, `http://127.0.0.1:${String(gwPort)}\\@${evil}/x`, `http://x\\@${evil}/x`, `http://u:p@${evil}/x`, `\\\\${evil}\\x`, `/\\${evil}/x`, `//${evil}\\x`,
       `http://127.0.0.1.${evil}/x`, `http://x${evil}/x`, `//?@${evil}`, `//#@${evil}`,
     ];
     for (const l of locations) {
@@ -215,18 +215,18 @@ describe("the caller's Authorization never reaches another listener (real fetch,
   });
 
   it("and stays off at the gateway after a hop to another host and back", async () => {
-    const seen: Array<string | undefined> = [];
+    const seen: (string | undefined)[] = [];
     let gwPort = 0;
     const evilPort = await listen((_req, res) => {
-      res.writeHead(302, { Location: `http://127.0.0.1:${gwPort}/back` });
+      res.writeHead(302, { Location: `http://127.0.0.1:${String(gwPort)}/back` });
       res.end();
     });
     gwPort = await listen((req, res) => {
-      if (req.url?.startsWith("/proxy/")) res.writeHead(302, { Location: `http://localhost:${evilPort}/x` });
+      if (req.url?.startsWith("/proxy/")) res.writeHead(302, { Location: `http://localhost:${String(evilPort)}/x` });
       else seen.push(req.headers.authorization);
       res.end("{}");
     });
-    await new GatewayClient(`http://127.0.0.1:${gwPort}/proxy`).getMyAgent({ authorization: "Bearer SECRET" });
+    await new GatewayClient(`http://127.0.0.1:${String(gwPort)}/proxy`).getMyAgent({ authorization: "Bearer SECRET" });
     expect(seen).toEqual([undefined]);
   });
 });
@@ -235,12 +235,12 @@ describe("a caller who hangs up", () => {
   const abortable = ((_url: URL, init: RequestInit) =>
     new Promise((_resolve, reject) => {
       if (init.signal?.aborted) reject(new Error("aborted"));
-      init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      init.signal?.addEventListener("abort", () => { reject(new Error("aborted")); });
     })) as unknown as typeof fetch;
 
   it("cancels the call, and it is not the gateway's fault", async () => {
     const gone = new AbortController();
-    setTimeout(() => gone.abort(), 5);
+    setTimeout(() => { gone.abort(); }, 5);
     await expect(new GatewayClient("http://gw/proxy", abortable).getMyAgent({ authorization: "", signal: gone.signal })).rejects.toBeInstanceOf(CallerGone);
   });
 
@@ -256,10 +256,10 @@ describe("a finished call leaves no timer behind", () => {
 
   it("clears the 30 s deadline when the answer is in, and when the call fails", async () => {
     jest.useFakeTimers();
-    const ok = new GatewayClient("http://gw/proxy", (async () => new Response("{}")) as unknown as typeof fetch);
+    const ok = new GatewayClient("http://gw/proxy", () => Promise.resolve(new Response("{}")));
     await ok.getMyAgent({ authorization: "" });
     expect(jest.getTimerCount()).toBe(0);
-    const failing = new GatewayClient("http://gw/proxy", (async () => new Response("no", { status: 500 })) as unknown as typeof fetch);
+    const failing = new GatewayClient("http://gw/proxy", () => Promise.resolve(new Response("no", { status: 500 })));
     await expect(failing.getMyAgent({ authorization: "" })).rejects.toThrow();
     expect(jest.getTimerCount()).toBe(0);
   });
