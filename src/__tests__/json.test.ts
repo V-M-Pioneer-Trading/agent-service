@@ -1,3 +1,4 @@
+import { decode, float64, struct } from "../gateway/decode";
 import { JsonSyntaxError, MAX_DEPTH, parseJson, stringifyJson, validLength, type JsonNode } from "../gateway/json";
 
 const parse = (s: string | number[]): JsonNode => parseJson(typeof s === "string" ? Buffer.from(s) : Uint8Array.from(s));
@@ -83,8 +84,39 @@ describe("stringifyJson", () => {
   it("writes bigints as integers of any size, in key order", () => {
     expect(stringifyJson({ b: 9223372036854775807n, a: [null, true, "x\n", -5n], c: {} })).toBe('{"b":9223372036854775807,"a":[null,true,"x\\n",-5],"c":{}}');
   });
-  it("refuses what it cannot write exactly", () => {
-    expect(() => stringifyJson({ n: 1 })).toThrow(TypeError);
+  it("refuses what Go could not write", () => {
+    expect(() => stringifyJson({ n: NaN })).toThrow(TypeError);
+    expect(() => stringifyJson({ n: Infinity })).toThrow(TypeError);
+    expect(() => stringifyJson({ n: -Infinity })).toThrow(TypeError);
+    expect(() => stringifyJson({ n: undefined })).toThrow(TypeError);
+  });
+  // What Go 1.22's json.Marshal writes for a float64 decoded from each literal (go run, recorded): the
+  // 'f'/'e' switch at 1e-6 and 1e21, the shortest digits, "e-07" cut to "e-7", negative zero as "-0".
+  it.each([
+    ["0.999", "0.999"],
+    ["0.5", "0.5"],
+    ["1", "1"],
+    ["100", "100"],
+    ["1E2", "100"],
+    ["0.1", "0.1"],
+    ["-0", "-0"],
+    ["0", "0"],
+    ["1e-400", "0"],
+    ["0.000001", "0.000001"],
+    ["0.0000009999", "9.999e-7"],
+    ["1e-7", "1e-7"],
+    ["1.5e-7", "1.5e-7"],
+    ["2.5e-10", "2.5e-10"],
+    ["5e-324", "5e-324"],
+    ["1e20", "100000000000000000000"],
+    ["999999999999999999999", "1e+21"],
+    ["1e21", "1e+21"],
+    ["123456789012345678901234", "1.2345678901234569e+23"],
+    ["1e100", "1e+100"],
+    ["1.7976931348623157e308", "1.7976931348623157e+308"],
+    ["9007199254740993", "9007199254740992"],
+  ])("writes a float64 read from %s as Go does: %s", (literal, go) => {
+    expect(stringifyJson({ c: decode(struct({ c: float64 }), Buffer.from(`{"c":${literal}}`)).c })).toBe(`{"c":${go}}`);
   });
 });
 
