@@ -24,6 +24,7 @@ interface Pkg {
   [key: string]: unknown;
 }
 interface Lock {
+  lockfileVersion?: number;
   packages: Record<string, Entry>;
 }
 
@@ -487,19 +488,42 @@ describe("the lockfile dev flags (issue #58)", () => {
   });
 });
 
+describe("the lockfile version", () => {
+  it("refuses a lockfile that is not version 3 (the graph and snapshot logic read the v3 packages map)", () => {
+    const { pkg, lock } = fresh();
+    expect(problems(pkg, lock)).not.toMatch(/lockfileVersion/);
+    for (const version of [1, 2, 4]) {
+      lock.lockfileVersion = version;
+      expect(problems(pkg, lock)).toMatch(new RegExp(`lockfileVersion ${String(version)}; only 3 is checked`));
+    }
+  });
+});
+
 describe("the transitive snapshot (dependency-snapshot.txt)", () => {
   it("is exactly what the lockfile computes to, byte for byte (so `npm run snapshot:deps` is a no-op)", () => {
     const { lock } = fresh();
     expect(renderSnapshot(computeSnapshot(lock))).toBe(snapshot);
   });
 
+  it("prefixes every package line with its section, with no [runtime] / [dev] header lines", () => {
+    const lines = snapshot.split("\n").filter((l) => l !== "" && !l.startsWith("#"));
+    expect(lines.length).toBeGreaterThan(100);
+    for (const line of lines) expect(line).toMatch(/^(runtime|dev) \S+@\S+ sha512-\S+$/);
+    expect(snapshot).not.toMatch(/^\[/m);
+  });
+
+  it("rejects the old header format, so a stale snapshot cannot pass as the new one", () => {
+    const { pkg, lock } = fresh();
+    const old = "[runtime]\nexpress@4.0.0 sha512-x\n\n[dev]\njest@30.0.0 sha512-y\n";
+    expect(check(pkg, lock, allow, old).join("\n")).toMatch(/is not "section name@version integrity"/);
+  });
+
   it("separates runtime from dev: what express brings is runtime, what jest brings is dev", () => {
-    const runtime = snapshot.slice(snapshot.indexOf("\n[runtime]\n"), snapshot.indexOf("\n[dev]\n"));
-    expect(runtime).toMatch(/^express@4\./m);
-    expect(runtime).toMatch(/^body-parser@/m);
-    expect(runtime).not.toMatch(/^jest@/m);
-    expect(runtime).not.toMatch(/^typescript@/m);
-    expect(snapshot.slice(snapshot.indexOf("\n[dev]\n"))).toMatch(/^typescript@5\./m);
+    expect(snapshot).toMatch(/^runtime express@4\./m);
+    expect(snapshot).toMatch(/^runtime body-parser@/m);
+    expect(snapshot).not.toMatch(/^runtime jest@/m);
+    expect(snapshot).not.toMatch(/^runtime typescript@/m);
+    expect(snapshot).toMatch(/^dev typescript@5\./m);
   });
 
   // The reviewer's attack on the graph rule alone: the graph is read from the lockfile, so one edit adds the edge and
@@ -516,15 +540,15 @@ describe("the transitive snapshot (dependency-snapshot.txt)", () => {
     expect(out).toMatch(/dependency-snapshot\.txt lists typescript@[0-9.]+ \[dev\], which package-lock\.json no longer has/);
   });
 
-  it("passes the same attack once the snapshot is regenerated, which is then a committed diff moving typescript into [runtime]", () => {
+  it("passes the same attack once the snapshot is regenerated, which is then a committed diff moving typescript into runtime", () => {
     const { pkg, lock } = fresh();
     const express = entry(lock, "node_modules/express");
     express.dependencies = { ...express.dependencies, typescript: "^5.0.0" };
     delete entry(lock, "node_modules/typescript").dev;
     const regenerated = renderSnapshot(computeSnapshot(lock));
     expect(check(pkg, lock, allow, regenerated)).toEqual([]);
-    const runtime = regenerated.slice(regenerated.indexOf("\n[runtime]\n"), regenerated.indexOf("\n[dev]\n"));
-    expect(runtime).toMatch(/^typescript@/m);
+    expect(regenerated).toMatch(/^runtime typescript@/m);
+    expect(regenerated).not.toMatch(/^dev typescript@/m);
     expect(snapshot).not.toBe(regenerated);
   });
 
@@ -560,9 +584,12 @@ describe("the transitive snapshot (dependency-snapshot.txt)", () => {
 
   it("fails on a snapshot that is hand-edited into something unreadable, or lists a name twice", () => {
     const { pkg, lock } = fresh();
-    expect(check(pkg, lock, allow, snapshot + "\nleft-pad\n").join("\n")).toMatch(/is not "name@version integrity"/);
-    const twice = snapshot.replace("\n[dev]\n", "\n[runtime]\nexpress@4.0.0 sha512-x\nexpress@4.0.0 sha512-x\n[dev]\n");
-    expect(check(pkg, lock, allow, twice).join("\n")).toMatch(/listed twice/);
+    const bad = (text: string) => check(pkg, lock, allow, text).join("\n");
+    expect(bad(snapshot + "\nleft-pad\n")).toMatch(/is not "section name@version integrity"/);
+    expect(bad(snapshot + "\nleft-pad@1.0.0 sha512-x\n")).toMatch(/is not "section name@version integrity"/);
+    expect(bad(snapshot + "\nbogus left-pad@1.0.0 sha512-x\n")).toMatch(/unknown section "bogus"/);
+    const twice = snapshot + "\nruntime express@4.0.0 sha512-x\nruntime express@4.0.0 sha512-x\n";
+    expect(bad(twice)).toMatch(/listed twice/);
   });
 
   it("refuses one name and version with two integrities at two lock paths", () => {
