@@ -218,12 +218,12 @@
             "type": "string"
           },
           "condition": {
-            "type": "integer",
-            "format": "int64"
+            "type": "number",
+            "format": "double"
           },
           "integrity": {
-            "type": "integer",
-            "format": "int64"
+            "type": "number",
+            "format": "double"
           },
           "moduleSlots": {
             "type": "integer",
@@ -267,12 +267,12 @@
             "type": "string"
           },
           "condition": {
-            "type": "integer",
-            "format": "int64"
+            "type": "number",
+            "format": "double"
           },
           "integrity": {
-            "type": "integer",
-            "format": "int64"
+            "type": "number",
+            "format": "double"
           },
           "powerOutput": {
             "type": "integer",
@@ -306,12 +306,12 @@
             "type": "string"
           },
           "condition": {
-            "type": "integer",
-            "format": "int64"
+            "type": "number",
+            "format": "double"
           },
           "integrity": {
-            "type": "integer",
-            "format": "int64"
+            "type": "number",
+            "format": "double"
           },
           "speed": {
             "type": "integer",

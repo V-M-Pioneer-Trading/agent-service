@@ -1,11 +1,15 @@
 /**
  * @file The wire types for the SpaceTraders API: the former Go service's src/spacetraders/schema/*.go (deleted in agent-service#38; see 65bb4b2),
  * member for member, in the same order (the order is the order of the answer).
- * Every Go `int` and `int64` is int64 here (bigint). The write routes' results
+ * Every Go `int` and `int64` is int64 here (bigint). The one deliberate departure: what the
+ * SpaceTraders spec (SpaceTradersAPI/api-docs, models/*.json) types as `number` rather than
+ * `integer` is float64 (a JavaScript number), not int64 as Go had it. That is a ship component's
+ * `condition` and `integrity` (ShipComponentCondition/Integrity, 0..1) on frame, reactor and
+ * engine; a worn ship's 0.999 was a 502 (agent-service#62). The write routes' results
  * (contract and agent, purchase, market transaction) are at the end.
  */
 
-import { bool, int64, list, struct, text, time, type Decoded } from "./decode";
+import { bool, float64, int64, list, struct, text, time, type Decoded } from "./decode";
 
 export const agentSchema = struct({
   accountId: text,
@@ -42,15 +46,15 @@ export const shipSchema = struct({
     symbol: text,
     name: text,
     description: text,
-    condition: int64,
-    integrity: int64,
+    condition: float64,
+    integrity: float64,
     moduleSlots: int64,
     mountingPoints: int64,
     fuelCapacity: int64,
     requirements,
   }),
-  reactor: struct({ symbol: text, name: text, description: text, condition: int64, integrity: int64, powerOutput: int64, requirements }),
-  engine: struct({ symbol: text, name: text, description: text, condition: int64, integrity: int64, speed: int64, requirements }),
+  reactor: struct({ symbol: text, name: text, description: text, condition: float64, integrity: float64, powerOutput: int64, requirements }),
+  engine: struct({ symbol: text, name: text, description: text, condition: float64, integrity: float64, speed: int64, requirements }),
   cooldown: struct({ shipSymbol: text, totalSeconds: int64, remainingSeconds: int64, expiration: time }),
   modules: list(module_),
   mounts: list(mount),
