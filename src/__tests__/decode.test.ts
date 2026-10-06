@@ -1,6 +1,6 @@
 import { hasUnencodable, UnencodableTime } from "../gateway/json";
 import { getMyContractResponse, getMyShipResponse, getMyShipsResponse } from "../gateway/schema";
-import { bool, DecodeError, decode, foldName, int64, list, normaliseTime, struct, text, time, ZERO_TIME, type Schema } from "../gateway/decode";
+import { bool, DecodeError, decode, float64, foldName, int64, list, normaliseTime, struct, text, time, ZERO_TIME, type Schema } from "../gateway/decode";
 
 const decodeAs = <S extends Schema>(schema: S, body: string) => decode(schema, Buffer.from(body));
 const dec = <S extends Schema>(schema: S, body: string) => decode(schema, Buffer.from(body));
@@ -80,6 +80,46 @@ describe("integers are int64", () => {
   });
   it.each(["1.5", "5.0", "1e3", "1E3", "9223372036854775808", "-9223372036854775809", '"5"', "true", "{}", "[]"])("%s is not an int64", (v) => {
     expect(() => dec(thing, `{"count":${v}}`)).toThrow(DecodeError);
+  });
+});
+
+describe("floats are float64, read like Go's strconv.ParseFloat", () => {
+  const f = struct({ v: float64 });
+  it.each([
+    ["0.999", 0.999],
+    ["0.5", 0.5],
+    ["1", 1],
+    ["0", 0],
+    ["1E2", 100],
+    ["1.5e-7", 1.5e-7],
+    ["2.5E+3", 2500],
+    ["9007199254740993", 9007199254740992],
+    ["1.7976931348623157e308", Number.MAX_VALUE],
+    ["5e-324", 5e-324],
+    ["1e-400", 0],
+  ])("%s is %d", (raw, want) => {
+    expect(dec(f, `{"v":${raw}}`).v).toBe(want);
+  });
+  it("-0 stays negative zero; absent and null are 0, null keeps an earlier repeat", () => {
+    expect(Object.is(dec(f, '{"v":-0}').v, -0)).toBe(true);
+    expect(Object.is(dec(f, "{}").v, 0)).toBe(true);
+    expect(dec(f, '{"v":null}').v).toBe(0);
+    expect(dec(f, '{"v":0.25,"v":null}').v).toBe(0.25);
+  });
+  it.each([
+    ["1e400", "cannot unmarshal number 1e400 into a float64"],
+    ["-1e400", "cannot unmarshal number -1e400 into a float64"],
+    ['"0.5"', "cannot unmarshal string into a value of type float64"],
+    ["true", "cannot unmarshal bool into a value of type float64"],
+    ["{}", "cannot unmarshal object into a value of type float64"],
+    ["[]", "cannot unmarshal array into a value of type float64"],
+  ])("%s is refused: %s", (raw, message) => {
+    expect(() => dec(f, `{"v":${raw}}`)).toThrow(new DecodeError(message));
+  });
+  it("a worn ship decodes: condition and integrity are fractions on frame, reactor and engine", () => {
+    const part = '{"condition":0.999,"integrity":0.5}';
+    const ship = dec(getMyShipResponse, `{"data":{"symbol":"RADOMSKY-1","frame":${part},"reactor":${part},"engine":${part}}}`).data;
+    for (const c of [ship.frame, ship.reactor, ship.engine]) expect([c.condition, c.integrity]).toEqual([0.999, 0.5]);
   });
 });
 

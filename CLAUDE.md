@@ -64,7 +64,9 @@ needs `test`, builds the root `Dockerfile` for arm64, and only on the tip of `ma
   WHATWG reads several of them differently. A caller who hangs up cancels the call (`CallerGone`: nothing
   is answered or logged as a gateway failure) and `/current-agent` makes no further calls. Answers are
   decoded by `gateway/decode.ts` (schemas in `gateway/schema.ts`) on top of the lossless parser
-  `gateway/json.ts`: int64 is bigint, a missing list is null, names fold like Go's. Stricter than the old
+  `gateway/json.ts`: int64 is bigint, a missing list is null, names fold like Go's. What the SpaceTraders spec
+  types as `number` (a ship component's `condition`/`integrity`, 0..1) is `float64`, a JavaScript number
+  written back as Go writes a float64 (`goFloat`); Go had it as int64 and 502'd every worn ship (#62). Stricter than the old
   implementation, on purpose: with a single-label or IP-literal gateway host only that exact host gets
   Authorization, and a hop from https to http never carries it. Times follow Go 1.25's lenient
   `time.Parse` (see `decode.ts`); an offset of a day or more is read but unencodable, and the answer is
@@ -110,7 +112,8 @@ needs `test`, builds the root `Dockerfile` for arm64, and only on the tip of `ma
   method but GET and HEAD. The slash path serves the page itself, `HEAD` is served, the spec is embedded in
   `swagger-ui-init.js`. Only our page, `swagger-ui-init.js` and the files in `ASSETS` are served;
   swagger-ui-dist's own `index.html` and `swagger-initializer.js` (the Petstore demo) are `404`.
-* **Known deviations** from the old implementation: `deliveredAt` has millisecond precision; MySQL's error text
+* **Known deviations** from the old implementation: ship component `condition`/`integrity` are float64 (#62);
+  `deliveredAt` has millisecond precision; MySQL's error text
   in a 500 body or log line is mysql2's; forwarded JSON is not HTML-escaped; three or more repeats of one list
   key with a shorter middle one decode differently (stale-slice quirk, not reproduced).
 
