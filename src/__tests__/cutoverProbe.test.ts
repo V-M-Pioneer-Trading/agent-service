@@ -12,7 +12,19 @@ const part = (o: object): string => Buffer.from(JSON.stringify(o)).toString("bas
 const OPERATOR = `${part({ alg: "RS256" })}.${part({ sub: "user_VALUE_MUST_NOT_PRINT", iat: 1, exp: 4102444800 })}.signature-part-EEEEEEEEEEEE`;
 const NO_SCOPE = "scopeless-session-token-DDDDDDDDDDDDDDDDDDD";
 
-type Quirk = "validation-skipped" | "html-fallback" | "go-image" | "no-snapshot" | "none";
+type Quirk = "validation-skipped" | "html-fallback" | "go-image" | "none" | keyof typeof AUTOPILOT;
+
+// What GET /autopilot/status and the one event in the log say, per autopilot quirk. "none" is armed live with a credits snapshot.
+const AUTOPILOT = {
+  "live-assignment": { status: "armed", mode: "live", event: "planner_assignment" },
+  "live-shadow-evidence": { status: "armed", mode: "live", event: "planner_shadow_assignment" },
+  shadow: { status: "armed", mode: "shadow", event: "planner_shadow_assignment" },
+  "shadow-live-evidence": { status: "armed", mode: "shadow", event: "agent_credits_snapshot" },
+  "shadow-other-event": { status: "armed", mode: "shadow", event: "planner_assignment" },
+  disarmed: { status: "disarmed", mode: null, event: "planner_shadow_assignment" },
+  paused: { status: "paused", mode: "shadow", event: "planner_shadow_assignment" },
+} as const;
+const autopilotOf = (q: Quirk) => (q in AUTOPILOT ? AUTOPILOT[q as keyof typeof AUTOPILOT] : { status: "armed", mode: "live", event: "agent_credits_snapshot" });
 
 function stub(quirk: Quirk): Promise<http.Server> {
   const server = http.createServer((req, res) => {
@@ -49,8 +61,8 @@ function stub(quirk: Quirk): Promise<http.Server> {
       if (who === "noscope") { json(403, { error: { message: "missing scope" } }); return; }
       if (quirk === "validation-skipped") json(201, {}); else text(400, "shipType and waypointSymbol are required"); return;
     }
-    if (p === "/api/automation/v1/autopilot/status") { json(200, { status: "armed", mode: "live" }); return; }
-    if (p === "/api/automation/v1/autopilot/events") { json(200, { events: [{ type: quirk === "no-snapshot" ? "planner_assignment" : "agent_credits_snapshot", occurredAt: new Date().toISOString(), detail: { secret: OPERATOR } }] }); return; }
+    if (p === "/api/automation/v1/autopilot/status") { json(200, { status: autopilotOf(quirk).status, mode: autopilotOf(quirk).mode }); return; }
+    if (p === "/api/automation/v1/autopilot/events") { json(200, { events: [{ type: autopilotOf(quirk).event, occurredAt: new Date().toISOString(), detail: { secret: OPERATOR } }] }); return; }
     if (p === "/api/automation/v1/events") { refuse(); return; }
     if (p.startsWith("/api/fleet/v1/")) { if (who === "none" || who === "bad") refuse(); else json(404, { error: { message: "no such ship" } }); return; }
     if (p === "/api/agent/swagger/") {
@@ -131,11 +143,34 @@ describe("scripts/cutover-probe.mjs", () => {
     expect(out).toContain("Agent Info Service API");
   });
 
-  it("requires agent_credits_snapshot for the cycle, not just any planner event", async () => {
-    const base = await serve("no-snapshot");
-    const { code, out } = await probe({ BASE_URL: base, OPERATOR_TOKEN: OPERATOR });
-    expect(code).toBe(1);
-    expect(out).toContain("no agent_credits_snapshot event");
+  it("takes the cycle evidence the reported mode writes: live agent_credits_snapshot or planner_assignment, shadow planner_shadow_assignment", async () => {
+    for (const quirk of ["none", "live-assignment", "shadow"] as const) {
+      const { code, out } = await probe({ BASE_URL: await serve(quirk), OPERATOR_TOKEN: OPERATOR, NO_SCOPE_TOKEN: NO_SCOPE });
+      expect([quirk, out]).toEqual([quirk, expect.stringContaining(`armed (${String(autopilotOf(quirk).mode)}); events since SINCE`)]);
+      expect([quirk, code]).toEqual([quirk, 0]);
+    }
+  });
+
+  it("refuses the other mode's evidence, or any other event, as proof of the cycle", async () => {
+    const cases = [
+      ["live-shadow-evidence", "armed (live) but no agent_credits_snapshot or planner_assignment event (the planner_shadow_assignment in the window predate"],
+      ["shadow-live-evidence", "armed (shadow) but no planner_shadow_assignment event (the agent_credits_snapshot in the window predate"],
+      ["shadow-other-event", "armed (shadow) but no planner_shadow_assignment event (the planner_assignment in the window predate"],
+    ] as const;
+    for (const [quirk, why] of cases) {
+      const { code, out } = await probe({ BASE_URL: await serve(quirk), OPERATOR_TOKEN: OPERATOR, NO_SCOPE_TOKEN: NO_SCOPE });
+      expect([quirk, code]).toEqual([quirk, 1]);
+      expect(out).toContain(why);
+    }
+  });
+
+  it("fails, with how to arm it, when the autopilot is not armed", async () => {
+    for (const quirk of ["disarmed", "paused"] as const) {
+      const { code, out } = await probe({ BASE_URL: await serve(quirk), OPERATOR_TOKEN: OPERATOR, NO_SCOPE_TOKEN: NO_SCOPE });
+      expect([quirk, code]).toEqual([quirk, 1]);
+      expect(out).toMatch(/FAIL .*autopilot is (disarmed|paused \(shadow\)), not armed/);
+      expect(out).toContain('POST /api/automation/v1/autopilot/arm {"mode":"shadow"}');
+    }
   });
 
   it("fails when a write with an empty body is accepted, and says so without printing the token", async () => {
