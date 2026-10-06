@@ -588,6 +588,8 @@ describe("the transitive snapshot (dependency-snapshot.txt)", () => {
     expect(bad(snapshot + "\nleft-pad\n")).toMatch(/is not "section name@version integrity"/);
     expect(bad(snapshot + "\nleft-pad@1.0.0 sha512-x\n")).toMatch(/is not "section name@version integrity"/);
     expect(bad(snapshot + "\nbogus left-pad@1.0.0 sha512-x\n")).toMatch(/unknown section "bogus"/);
+    expect(bad(snapshot + "\nRuntime left-pad@1.0.0 sha512-x\n")).toMatch(/unknown section "Runtime"/);
+    expect(bad(snapshot + "\nruntime left-pad@1.0.0 sha512-x junk\n")).toMatch(/is not "section name@version integrity"/);
     const twice = snapshot + "\nruntime express@4.0.0 sha512-x\nruntime express@4.0.0 sha512-x\n";
     expect(bad(twice)).toMatch(/listed twice/);
   });
