@@ -258,6 +258,11 @@ likely to differ.
     beyond 2^53 survive exactly in both directions, so read them with a parser that
     keeps them (tests assert them on the raw text). `1.5`, `5.0`, `1e3` and
     out-of-range integers for an integer field are decode errors, not coerced.
+    The exception is what SpaceTraders types as a number, not an integer: a ship
+    component's `condition` and `integrity` (frame, reactor, engine; 0..1) are
+    float64, so `0.999` is a 200 and comes back as `0.999`. Go had them as int64 and
+    answered a worn ship with a 502 (agent-service#62); that case is a fix, not
+    parity, and the Go image fails it.
 23. **Times** are RFC 3339 only (upper-case `T` and `Z`, an offset or `Z` required, no
     space, no date alone, leap second `:60` rejected) and are written back with the
     offset they came with, `Z` for UTC (including `+00:00`), and the shortest exact

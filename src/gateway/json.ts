@@ -302,10 +302,23 @@ export function hasUnencodable(value: unknown): boolean {
   return typeof value === "object" && value !== null && Object.values(value).some(hasUnencodable);
 }
 
-/** The text of a value built from null, booleans, strings, bigints (written as integers of any size), arrays and plain objects, as pieces of modest size. Throws on what Go could not encode. */
+/**
+ * A float64 the way encoding/json writes it: the shortest text that reads back as the same double,
+ * plain from 1e-6 up to (not including) 1e21 and in exponent form outside that, with a two-digit
+ * exponent cut to one ("1e-7", "1e+21"). Number#toString switches at the same two bounds and writes
+ * the same digits and exponent; the one difference is negative zero, which Go writes as "-0". NaN
+ * and the infinities are unsupported values in Go; the decoder never produces them.
+ */
+export function goFloat(v: number): string {
+  if (!Number.isFinite(v)) throw new TypeError(`json: unsupported value: ${String(v)}`);
+  return Object.is(v, -0) ? "-0" : String(v);
+}
+
+/** The text of a value built from null, booleans, strings, bigints (written as integers of any size), numbers (as Go writes a float64), arrays and plain objects, as pieces of modest size. Throws on what Go could not encode. */
 export function* jsonPieces(value: unknown): Generator<string> {
   if (value === null) yield "null";
   else if (typeof value === "bigint") yield value.toString();
+  else if (typeof value === "number") yield goFloat(value);
   else if (typeof value === "boolean") yield value ? "true" : "false";
   else if (typeof value === "string") yield JSON.stringify(value);
   else if (value instanceof UnencodableTime) throw new TypeError("a time Go cannot encode: zone offset of a day or more");

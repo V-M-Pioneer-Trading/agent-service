@@ -139,6 +139,26 @@ describe("GET /api/agent/v1/ships and /contracts", () => {
     expect(ship?.nav.route.arrival).toBe("0001-01-01T00:00:00Z");
   });
 
+  it("a worn ship (condition 0.999, integrity 0.5) is a 200 that keeps the fractions (agent-service#62)", async () => {
+    const part = '{"condition":0.999,"integrity":0.5}';
+    const { app } = await appWith({
+      "GET /proxy/my/ships/RADOMSKY-1": { body: `{"data":{"symbol":"RADOMSKY-1","frame":${part},"reactor":${part},"engine":${part}}}` },
+    });
+    const res = await request(app).get("/api/agent/v1/ships/RADOMSKY-1").set("Authorization", SESSION);
+    expect(res.status).toBe(200);
+    for (const c of ["frame", "reactor", "engine"]) expect(res.text).toMatch(new RegExp(`"${c}":\\{[^}]*"condition":0\\.999,"integrity":0\\.5,`));
+    const ship = JSON.parse(res.text) as Record<"frame" | "reactor" | "engine", { condition: number; integrity: number }>;
+    expect([ship.frame, ship.reactor, ship.engine].map((c) => [c.condition, c.integrity])).toEqual([[0.999, 0.5], [0.999, 0.5], [0.999, 0.5]]);
+  });
+
+  it("a condition that is no number, or beyond float64, is still a 502", async () => {
+    const { app } = await appWith({
+      "GET /proxy/my/ships/S1": { body: '{"data":{"frame":{"condition":"0.999"}}}' },
+      "GET /proxy/my/ships/S2": { body: '{"data":{"engine":{"integrity":1e400}}}' },
+    });
+    for (const s of ["S1", "S2"]) expect((await request(app).get(`/api/agent/v1/ships/${s}`).set("Authorization", SESSION)).status).toBe(502);
+  });
+
   it("a contract with a bad time is a 502", async () => {
     const { app } = await appWith({ "GET /proxy/my/contracts/C1": { body: '{"data":{"id":"C1","expiration":"2026-12-31T23:59:60Z"}}' } });
     expect((await request(app).get("/api/agent/v1/contracts/C1").set("Authorization", SESSION)).status).toBe(502);

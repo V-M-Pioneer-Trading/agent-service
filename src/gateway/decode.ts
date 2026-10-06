@@ -2,11 +2,11 @@
  * @file Typed decoding of the gateway's JSON: what Go's `json.Unmarshal` into
  * a struct does, and nothing a JavaScript object would do by itself.
  *
- * A schema is built from `text`, `int64`, `bool`, `time`, `list(of)` and
- * `struct({...})`. `decode(schema, bytes)` returns a value of exactly that
+ * A schema is built from `text`, `int64`, `float64`, `bool`, `time`, `list(of)`
+ * and `struct({...})`. `decode(schema, bytes)` returns a value of exactly that
  * shape (see `Decoded`), following contract/README.md notes 19-24:
  *
- *  - missing members are zero values ("", 0n, false, the zero time); a missing
+ *  - missing members are zero values ("", 0n, 0, false, the zero time); a missing
  *    list is `null`; an empty one stays `[]`; unknown members are dropped; a
  *    JSON `null` changes nothing (so it is a zero value unless an earlier
  *    repeat of the key already set one), except that it resets a list to null;
@@ -15,6 +15,10 @@
  *    or array is merged into the earlier one, like Go does;
  *  - integers are int64: bigint, exact, and "1.5", "5.0", "1e3" or a value out
  *    of range are errors, not coerced;
+ *  - floats are float64 (a JavaScript number), Go's strconv.ParseFloat: any JSON
+ *    number, fraction and exponent included, rounded to the nearest double; one
+ *    beyond the float64 range is an error, one too small for it is 0 (Go's
+ *    underflow), and "-0" stays negative zero;
  *  - times are RFC 3339 only and come back normalised the way Go writes them;
  *  - anything that does not fit is a `DecodeError` (the caller answers 502).
  *
@@ -35,6 +39,7 @@ export class DecodeError extends Error {
 export type Schema =
   | { readonly kind: "string" }
   | { readonly kind: "int" }
+  | { readonly kind: "float" }
   | { readonly kind: "bool" }
   | { readonly kind: "time" }
   | { readonly kind: "list"; readonly of: Schema }
@@ -44,6 +49,7 @@ interface FieldLookup { readonly exact: ReadonlyMap<string, string>; readonly fo
 
 export const text = { kind: "string" } as const;
 export const int64 = { kind: "int" } as const;
+export const float64 = { kind: "float" } as const;
 export const bool = { kind: "bool" } as const;
 export const time = { kind: "time" } as const;
 export const list = <S extends Schema>(of: S) => ({ kind: "list", of }) as const;
@@ -56,18 +62,20 @@ export function struct<F extends Record<string, Schema>>(fields: F) {
   return { kind: "struct", fields, lookup } as const;
 }
 
-/** The value a schema decodes to. int64 is bigint, a list is `null` when absent, a time is its normalised text. */
+/** The value a schema decodes to. int64 is bigint, float64 is number, a list is `null` when absent, a time is its normalised text. */
 export type Decoded<S> = S extends { kind: "string" | "time" }
   ? string
   : S extends { kind: "int" }
     ? bigint
-    : S extends { kind: "bool" }
-      ? boolean
-      : S extends { kind: "list"; of: infer E }
-        ? Decoded<E>[] | null
-        : S extends { kind: "struct"; fields: infer F }
-          ? { -readonly [K in keyof F]: Decoded<F[K]> }
-          : never;
+    : S extends { kind: "float" }
+      ? number
+      : S extends { kind: "bool" }
+        ? boolean
+        : S extends { kind: "list"; of: infer E }
+          ? Decoded<E>[] | null
+          : S extends { kind: "struct"; fields: infer F }
+            ? { -readonly [K in keyof F]: Decoded<F[K]> }
+            : never;
 
 // --- member names ----------------------------------------------------------
 
@@ -151,6 +159,17 @@ function parseInt64(raw: string): bigint {
   return v;
 }
 
+/**
+ * strconv.ParseFloat(literal, 64) on what the JSON grammar let through: Number() rounds the same way
+ * (to nearest, ties to even) and underflows to 0 the same way. Overflow is Go's ErrRange, which
+ * encoding/json reports as a type error naming the literal.
+ */
+function parseFloat64(raw: string): number {
+  const v = Number(raw);
+  if (!Number.isFinite(v)) throw new DecodeError(`cannot unmarshal number ${raw} into a float64`);
+  return v;
+}
+
 // --- binding ---------------------------------------------------------------
 
 export function zero(schema: Schema): unknown {
@@ -159,6 +178,8 @@ export function zero(schema: Schema): unknown {
       return "";
     case "int":
       return 0n;
+    case "float":
+      return 0;
     case "bool":
       return false;
     case "time":
@@ -187,6 +208,9 @@ function bind(node: JsonNode, schema: Schema, existing: unknown): unknown {
     case "int":
       if (node.t !== "num") throw mismatch(node, "int64");
       return parseInt64(node.raw);
+    case "float":
+      if (node.t !== "num") throw mismatch(node, "float64");
+      return parseFloat64(node.raw);
     case "time":
       // Go parses the text between the quotes without unescaping it: an escape, or anything that is not ASCII, can never be a time.
       if (node.t !== "str") throw mismatch(node, "time.Time");

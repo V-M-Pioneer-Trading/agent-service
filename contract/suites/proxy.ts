@@ -297,6 +297,31 @@ describe('agent: number handling', () => {
   });
 });
 
+// Not part of the port's parity record: the Go image fails these. SpaceTraders types a ship
+// component's condition and integrity as numbers in 0..1, and a worn ship's 0.999 was a 502
+// (agent-service#62); the TypeScript service reads them as float64.
+describe('ship: component condition and integrity are fractions', () => {
+  const part = '{"condition":0.999,"integrity":0.5}';
+
+  async function ship(members: string) {
+    gateway.clearScripts();
+    gateway.on('GET', '/proxy/my/ships/S1', { raw: `{"data":{${members}}}` });
+    return call({ path: `${API}/ships/S1`, headers: authed() });
+  }
+
+  it('a worn ship is a 200 and the fractions come back as they went in', async () => {
+    const res = await ship(`"symbol":"S1","frame":${part},"reactor":${part},"engine":${part}`);
+    assert.equal(res.status, 200);
+    for (const c of ['frame', 'reactor', 'engine']) {
+      assert.match(res.text, new RegExp(`"${c}"\\s*:\\s*\\{[^}]*"condition"\\s*:\\s*0\\.999\\b[^}]*"integrity"\\s*:\\s*0\\.5\\b`));
+    }
+  });
+
+  it('a string where the fraction belongs is still a 502', async () => {
+    expectDecodeError(await ship('"frame":{"condition":"0.999"}'), 502);
+  });
+});
+
 describe('agent: string handling', () => {
   async function agentWith(rawBody: string | Buffer) {
     gateway.on('GET', '/proxy/my/agent', { raw: rawBody });

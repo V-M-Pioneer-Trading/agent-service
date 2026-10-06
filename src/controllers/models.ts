@@ -7,7 +7,9 @@
  *
  * Every integer is an int64 (`@isLong`). In memory it is a bigint, because a
  * JavaScript number loses what is above 2^53; the answer is written with the
- * exact digits (gateway/json.ts). Times are RFC 3339 text.
+ * exact digits (gateway/json.ts). What the decoder reads as float64 (a ship
+ * component's condition and integrity, 0..1) is a double (`@isDouble`),
+ * written as Go writes a float64. Times are RFC 3339 text.
  */
 
 import type { Delivery as StoredDelivery, Transaction as StoredTransaction, TransactionType as StoredTransactionType } from "../db/history";
@@ -92,9 +94,9 @@ export interface ShipFrame {
   symbol: string;
   name: string;
   description: string;
-  /** @isLong */
+  /** @isDouble */
   condition: number;
-  /** @isLong */
+  /** @isDouble */
   integrity: number;
   /** @isLong */
   moduleSlots: number;
@@ -109,9 +111,9 @@ export interface ShipReactor {
   symbol: string;
   name: string;
   description: string;
-  /** @isLong */
+  /** @isDouble */
   condition: number;
-  /** @isLong */
+  /** @isDouble */
   integrity: number;
   /** @isLong */
   powerOutput: number;
@@ -122,9 +124,9 @@ export interface ShipEngine {
   symbol: string;
   name: string;
   description: string;
-  /** @isLong */
+  /** @isDouble */
   condition: number;
-  /** @isLong */
+  /** @isDouble */
   integrity: number;
   /** @isLong */
   speed: number;
