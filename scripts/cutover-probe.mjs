@@ -62,11 +62,40 @@ const GARBAGE = "probe-garbage-not-a-token";
 // An unsigned, alg=none token shaped like a JWT: a verifier that trusts the header would let it in.
 const FORGED = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJwcm9iZSIsInNjb3BlIjoiZmxlZXQ6Y29udHJvbCJ9.";
 const PROBE_ID = "PROBE-NOT-A-REAL-ID";
-// The event that means one healthy automation cycle read agent-service.
-// agent_credits_snapshot is the one event that proves an M2M read through agent-service: the balance it
-// records comes from GET /agent with the machine token, which went through introspection. The planner's
-// own events prove only that the planner ran.
-const CYCLE_EVENT = "agent_credits_snapshot";
+// The events that mean one automation cycle read agent-service with its machine token, by the mode the
+// autopilot reports (automation-service src/scheduler.ts and src/anomalyScheduler.ts):
+//   shadow: planner_shadow_assignment. runShadowCycle writes one per tick, after GET /ships/{symbol} on
+//           agent-service.
+//   live:   agent_credits_snapshot (maybeSnapshotCredits: GET /agent on agent-service, every anomaly tick
+//           while armed live) or planner_assignment (assignTarget, after GET /ships/{symbol}; only when the
+//           ship is idle).
+// Each follows an M2M-authenticated read, so the token went through introspection. Shadow writes no
+// agent_credits_snapshot and live no planner_shadow_assignment: only the reported mode's events count.
+export const CYCLE_EVIDENCE = Object.freeze({ shadow: ["planner_shadow_assignment"], live: ["agent_credits_snapshot", "planner_assignment"] });
+// How to arm. A hint only: this script never calls a state-changing automation route with a valid token.
+const ARM_HINT =
+  'arm it in the dashboard\'s autopilot panel (pick the mode, Arm), or POST /api/automation/v1/autopilot/arm {"mode":"shadow"} with a fleet:control session (shadow is enough and trades nothing; {"mode":"live"} trades)';
+
+/**
+ * The automation-cycle verdict, a pure function of what the public routes answered: status and mode are
+ * GET /autopilot/status's members as found, types the event types at or after SINCE. Only an armed
+ * autopilot runs a cycle (a paused one starts nothing new). Returns { ok, detail }.
+ */
+export function cycleVerdict(status, mode, types) {
+  if (status !== "armed") {
+    const was = status === "paused" ? `paused (${mode ?? "no mode"})` : String(status);
+    return {
+      ok: false,
+      detail: `autopilot is ${was}, not armed, so no cycle runs and the M2M read path is unproven: ${ARM_HINT}. A restart does not disarm it (automation-service#46: armed or paused comes back so, in shadow), so this is how it was left`,
+    };
+  }
+  const wanted = mode === "live" || mode === "shadow" ? CYCLE_EVIDENCE[mode] : null;
+  if (wanted === null) return { ok: false, detail: `autopilot is armed in mode ${String(mode)}, neither live nor shadow: no known event proves its cycle` };
+  if (types.some((t) => wanted.includes(t))) return { ok: true, detail: `armed (${mode})` };
+  const other = CYCLE_EVIDENCE[mode === "live" ? "shadow" : "live"].filter((t) => types.includes(t));
+  const note = other.length > 0 ? ` (the ${other.join(", ")} in the window predate a mode switch or a restart; a restart resumes a live autopilot in shadow, automation-service#46)` : "";
+  return { ok: false, detail: `armed (${mode}) but no ${wanted.join(" or ")} event${note}` };
+}
 // Event types that mean the cycle broke (the *_error types) or an action failed.
 const ERROR_TYPES = new Set(["mining_tick_error", "contract_discovery_error", "observation_write_error"]);
 const WARN_TYPES = new Set(["mining_task_failed"]);
@@ -392,13 +421,13 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
   );
 
   // One healthy automation cycle, read from automation-service's public event log. Names and times only.
-  check("automation cycle", "automation-service is armed and its event log shows a healthy cycle since SINCE", async () => {
+  check("automation cycle", "automation-service is armed and its event log shows its mode's cycle evidence since SINCE (shadow: planner_shadow_assignment; live: agent_credits_snapshot or planner_assignment)", async () => {
     const status = await call("GET", "/api/automation/v1/autopilot/status");
     expectStatus(status, 200);
     expectJson(status);
     const lifecycle = typeof status.json.status === "string" ? status.json.status : "(no status member)";
-    const mode = typeof status.json.mode === "string" ? status.json.mode : "none";
-    if (lifecycle !== "armed") throw new Skip(`autopilot is ${lifecycle}, not armed, so no cycle runs (arming it, live or shadow, is the owner's call, with the fleet:control token; shadow is enough)`);
+    const mode = typeof status.json.mode === "string" ? status.json.mode : null;
+    if (lifecycle !== "armed") fail(cycleVerdict(lifecycle, mode, []).detail);
     const res = await call("GET", "/api/automation/v1/autopilot/events?limit=200");
     expectStatus(res, 200);
     expectJson(res);
@@ -409,9 +438,10 @@ export async function run(argv, env, write = (line) => process.stdout.write(line
     const summary = Object.entries(count).sort().map(([t, n]) => `${t}x${n}`).join(" ") || "(none)";
     const errors = recent.filter((e) => ERROR_TYPES.has(e.type));
     if (errors.length > 0) fail(`error events since SINCE: ${summary}`);
-    if (!recent.some((e) => e.type === CYCLE_EVENT)) fail(`armed (${mode}) but no ${CYCLE_EVENT} event since ${new Date(sinceMs).toISOString()}: ${summary}`);
+    const verdict = cycleVerdict(lifecycle, mode, recent.map((e) => e.type));
+    if (!verdict.ok) fail(`${verdict.detail} since ${new Date(sinceMs).toISOString()}: ${summary}`);
     const warn = recent.filter((e) => WARN_TYPES.has(e.type)).length;
-    return `armed (${mode}); events since SINCE: ${summary}${warn > 0 ? `; NOTE ${warn} action failure event(s): read them on the host` : ""}`;
+    return `${verdict.detail}; events since SINCE: ${summary}${warn > 0 ? `; NOTE ${warn} action failure event(s): read them on the host` : ""}`;
   });
   check("automation cycle", "agent-service history since SINCE (automation's M2M writes land here)", async () => {
     const res = await call("GET", "/api/agent/v1/transactions?limit=20");
