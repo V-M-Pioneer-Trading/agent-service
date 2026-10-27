@@ -17,7 +17,7 @@ Agent profile, ships, contracts, and credit-moving actions (purchase, sell) for 
 
 - Calls: st-gateway `/proxy`, auth-service `POST /auth/v1/introspect` (1 s, no retry, no cache).
 - Called by: command-interface, automation-service, fleet-service.
-- Port 8081 in compose; MySQL 9 (`docker compose up -d mysql`).
+- Port 80 in the container (`PORT`), published as 8080 in compose; MySQL 9 (`docker compose up -d mysql`).
 - CI `container.yml`: `test` (deps, audit, typecheck, lint, build, openapi drift, tests on real MySQL), `contract`, `image` (PR), `docker` (main: ghcr push + SSM redeploy).
 
 ## Reference docs
