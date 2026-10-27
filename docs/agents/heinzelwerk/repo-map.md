@@ -19,3 +19,9 @@ Agent profile, ships, contracts, and credit-moving actions (purchase, sell) for 
 - Called by: command-interface, automation-service, fleet-service.
 - Port 8081 in compose; MySQL 9 (`docker compose up -d mysql`).
 - CI `container.yml`: `test` (deps, audit, typecheck, lint, build, openapi drift, tests on real MySQL), `contract`, `image` (PR), `docker` (main: ghcr push + SSM redeploy).
+
+## Reference docs
+
+- `README.md` "Configuration", "API", "Error responses": read when changing env config, routes or error answers.
+- `README.md` "Deploying and rolling back", "Storage": read when deploying, rolling back, or changing the schema.
+- `contract/README.md` "Behaviour notes": read when changing routing, auth, gateway decoding, request bodies or history.

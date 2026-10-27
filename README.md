@@ -162,8 +162,9 @@ it needs no server or DB, and CI fails if it is stale:
 npm run openapi
 ```
 
-Syncing `openapi.json` to meta's `openapi/agent-service.json` waits for meta#26's org secrets
-(`OPENAPI_SYNC_*`) to be granted to this repository; there is no sync job here yet.
+Syncing `openapi.json` to meta's `openapi/agent-service.json` is the `sync-openapi` job in
+`.github/workflows/container.yml`, which calls meta's `openapi-sync.yml` on pushes to main (it uses
+the `OPENAPI_SYNC_*` secrets).
 
 ### Tests
 
@@ -306,7 +307,7 @@ ever needed to differ between environments.
 
 | Constant | Value | Where | What it bounds |
 |---|---|---|---|
-| request timeout | 30s | `src/gateway/client.ts` | A single upstream call |
+| request timeout | 30s | `src/gateway/errors.ts` | A single upstream call |
 | redirects | 10 | `src/gateway/client.ts` | Hops followed by hand, then a 504 |
 | request body | 1 MiB | `src/http/body.ts` | An inbound request body |
 | introspection timeout | 1s | clerk-client | One call to auth-service, body read included. Fixed by the fixture's contract |
