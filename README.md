@@ -165,6 +165,8 @@ npm run openapi
 Syncing `openapi.json` to meta's `openapi/agent-service.json` waits for meta#26's org secrets
 (`OPENAPI_SYNC_*`) to be granted to this repository; there is no sync job here yet.
 
+Correction (2026-10-29): the sync job exists, `sync-openapi` calls meta's openapi-sync workflow with the `OPENAPI_SYNC_*` secrets, see .github/workflows/container.yml:332-343.
+
 ### Tests
 
 ```bash
@@ -209,6 +211,8 @@ earlier Go implementation used, unchanged, so a rollback across the cutover need
 A memory cap for the container (`--memory` on its `docker run`, and/or
 `NODE_OPTIONS=--max-old-space-size=…`) belongs in the bootstrap document in infrastructure: a client
 that pipelines requests and never reads the answers grows Node's heap.
+
+Correction (2026-10-29): the cap exists, the bootstrap document sets `--memory 512m --memory-swap 512m` and `--max-old-space-size=384`, see ../V-M-Pioneer-Trading_infrastructure/agent-service/main.tf:368.
 
 `scripts/cutover-probe.mjs` is the production probe used for the Go to TypeScript cutover
 (see its header); it is safe to re-run after any deploy of this service.
