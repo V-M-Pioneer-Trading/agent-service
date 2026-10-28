@@ -165,6 +165,8 @@ npm run openapi
 Syncing `openapi.json` to meta's `openapi/agent-service.json` waits for meta#26's org secrets
 (`OPENAPI_SYNC_*`) to be granted to this repository; there is no sync job here yet.
 
+Correction (2026-10-28): a sync-openapi job pushes openapi.json to meta's openapi/ on every push to main, see .github/workflows/container.yml:335.
+
 ### Tests
 
 ```bash

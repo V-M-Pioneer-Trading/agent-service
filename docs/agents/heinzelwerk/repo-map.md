@@ -41,3 +41,8 @@ Facts verified against origin/main 0502eba on 2026-10-27, each with `path:line`.
 - Contract skip list empty; dynamic-skips=1 in contract-skip.expected (CLAUDE.md:32-38). openapi.json committed, drift fails CI; copied into image (Dockerfile:37). contract/fixtures/gateway-errors.json sha256-pinned copy of meta's (CLAUDE.md:53-55); normative errors meta/docs/design/upstream-errors.md (CLAUDE.md:174-175)
 - Only tip of main deploys; stale run skips with warning, recover by dispatch (.github/workflows/container.yml:30-35)
 11. EXISTING DOCS: README.md (372 lines: what/why, architecture, request flow, credit-moving walkthrough, run/deploy/rollback, API, config, storage, limitations; headings README.md:1,17,54,95,120,181,216,283,321,341); CLAUDE.md (264 lines: commands, module map, invariants, public surface, testing, extending); contract/README.md (353 lines; notes 19-30 cited CLAUDE.md:50, redirect deviations CLAUDE.md:73); contract/fixtures/SOURCE.txt; openapi.json; allowed-dependencies.txt + dependency-snapshot.txt (check:deps, CLAUDE.md:257)
+
+## Reference docs
+
+- `README.md` (Error responses, Configuration, Tunable values): read when changing error mapping or env vars.
+- `contract/README.md` "Behaviour notes": read when changing routing, auth, errors or the gateway relay.
