@@ -15,7 +15,7 @@ Verified against 0502eba 2026-10-29.
 - Swagger UI over `openapi.json`: `src/swagger.ts`.
 - src/generated/ is tsoa output, gitignored `.gitignore:3`, made by `scripts/codegen.cjs:9-14` (adds `// @ts-nocheck`).
 - `openapi.json` committed; `npm run openapi` `package.json:15`.
-- Existing docs: `README.md`, `CLAUDE.md`, `contract/README.md`, `contract/fixtures/SOURCE.txt`; no `docs/` dir (verified 2026-10-29 @ 0502eba: ls).
+- Existing docs: `README.md`, `CLAUDE.md`, `contract/README.md`, `contract/fixtures/SOURCE.txt`; no docs outside `docs/agents/` (verified 2026-10-29 @ 0502eba: `git ls-tree -r --name-only origin/main | grep '^docs/'` → no output).
 
 ## Entry points and auth
 - Every route is in `routePolicy`. `src/auth.ts:22-44`

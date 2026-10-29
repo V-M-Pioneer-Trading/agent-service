@@ -9,14 +9,14 @@ including why the read routes need a signed-in session but no particular permiss
 anonymous caller has nothing to read regardless), and why the two history endpoints need no
 session at all (they never touch SpaceTraders).
 
-Correction (2026-10-29): the caller sends no SpaceTraders token; `Authorization` is the Clerk session, verified then relayed to st-gateway, which injects the agent token, see agent-service/CLAUDE.md:153.
+Correction (2026-10-29): the caller sends no SpaceTraders token; `Authorization` is the Clerk session, verified then relayed to st-gateway, which injects the agent token, see src/gateway/client.ts:187 and CLAUDE.md:153.
 
 What the service *does* keep is history. Ship purchases, cargo purchases and cargo sells are
 the actions that spend or earn credits, so they are owned here rather than in fleet-service,
 and each one is written to a local MySQL transaction log after the game confirms it. Contract
 accepts, fulfils and deliveries are recorded the same way.
 
-Correction (2026-10-29): a delivery is a plain MySQL insert reported by fleet-service, with no gateway call; a DB failure answers 500, see agent-service/src/controllers/contracts.controller.ts:83-89.
+Correction (2026-10-29): a delivery is a plain MySQL insert reported by fleet-service, with no gateway call; a DB failure answers 500, see src/controllers/contracts.controller.ts:86,89.
 
 ## Architecture
 
@@ -169,7 +169,9 @@ npm run openapi
 Syncing `openapi.json` to meta's `openapi/agent-service.json` waits for meta#26's org secrets
 (`OPENAPI_SYNC_*`) to be granted to this repository; there is no sync job here yet.
 
-Correction (2026-10-29): job `sync-openapi` syncs openapi.json to meta on every main push, see agent-service/.github/workflows/container.yml:335-338.
+Correction (2026-10-29): job `sync-openapi` syncs openapi.json to meta on every main push, see .github/workflows/container.yml:336-338.
+
+Correction (2026-10-29): the sync job waits for the `test` job and runs only for a push or manual dispatch on main (`.github/workflows/container.yml:336-337`); meta's workflow skips a commit that is no longer the tip of main (`V-M-Pioneer-Trading/meta .github/workflows/openapi-sync.yml:198-200`) and does not write to meta's main: it opens a pull request (`V-M-Pioneer-Trading/meta .github/workflows/openapi-sync.yml:223`) with auto-merge on (`V-M-Pioneer-Trading/meta .github/workflows/openapi-sync.yml:227`).
 
 ### Tests
 
