@@ -9,7 +9,7 @@ including why the read routes need a signed-in session but no particular permiss
 anonymous caller has nothing to read regardless), and why the two history endpoints need no
 session at all (they never touch SpaceTraders).
 
-Correction (2026-10-29): the caller sends no SpaceTraders token; `Authorization` is the Clerk session, verified then relayed to st-gateway, which injects the agent token, see agent-service/src/gateway/client.ts:57-59.
+Correction (2026-10-29): the caller sends no SpaceTraders token; `Authorization` is the Clerk session, verified then relayed to st-gateway, which injects the agent token, see agent-service/CLAUDE.md:153.
 
 What the service *does* keep is history. Ship purchases, cargo purchases and cargo sells are
 the actions that spend or earn credits, so they are owned here rather than in fleet-service,
@@ -89,8 +89,6 @@ flowchart TD
     gw -->|"2xx"| persist["persist history<br/>(best effort)"] --> ok
     gw -->|"4xx / 5xx"| passthru["upstream status<br/>passed through"]
 ```
-
-Correction (2026-10-29): the tiers are `ignore` / `none` (public) / `session` (read) / scope `fleet:control` (write), see agent-service/src/auth.ts:17-43.
 
 `Authorization` is the only credential, and it is always the Clerk session. It is verified
 by auth-service, then forwarded verbatim to st-gateway, which derives queue priority from it: a human
@@ -250,8 +248,6 @@ they are not part of the resource API's compatibility surface.
 `401`, never a visitor. `read` needs a verified session (any scope, or none). `write`
 additionally needs the `fleet:control` scope. Every `GET` route also answers `HEAD` under the
 same requirement.
-
-Correction (2026-10-29): the code names the tiers `none` (public), `session` (read) and scope `fleet:control` (write), see agent-service/src/auth.ts:17-43.
 
 ### `GET /transactions` parameters
 

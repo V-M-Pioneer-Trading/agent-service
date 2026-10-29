@@ -40,7 +40,7 @@ Verified against 0502eba 2026-10-29.
 - Out: st-gateway `ST_GATEWAY_URL` (default `http://localhost:3002`), trailing slashes trimmed, plus `/proxy`. `src/config.ts:217`, `src/config.ts:234`
 - Out: auth-service via clerk-client v2.0.1 release tarball. `package.json:24`
 - Out: MySQL, defaults host `mysql`, user `root`, db `vnm-agent-db`. `src/config.ts:238-242`
-- In: command-interface `../command-interface/src/api/agentService.ts:21-46`; automation-service `../automation-service/src/gameClients.ts:351-380`; fleet-service POST deliveries `../fleet-service/src/controllers/contracts.controller.ts:50`.
+- In: command-interface `../command-interface/src/api/agentService.ts:21-46`; automation-service `../automation-service/src/gameClients.ts:351-383` (`agentShipAction` :351, sell :410, purchase :422); fleet-service POST deliveries `../fleet-service/src/controllers/contracts.controller.ts:50`.
 - In: Caddy routes `/api/agent/*`. `../V-M-Pioneer-Trading_infrastructure/caddy/Caddyfile.tftpl:54`
 - No sibling calls GET `/transactions` or GET deliveries (verified 2026-10-29 @ 0502eba: grep across sibling checkouts, per map).
 - Vendored `contract/fixtures/gateway-errors.json` = meta copy, line 2 differs; sha256 pinned `contract/fixtures/SOURCE.txt:5`, asserted `contract/suites/pins.ts:22-24`; re-vendor `contract/fixtures/SOURCE.txt:14-20`; unit test `src/__tests__/gatewayErrors.test.ts:37`.
@@ -78,7 +78,7 @@ Verified against 0502eba 2026-10-29.
 - No body parser, query parser off. `src/server.ts:120`, `:136`
 - Path symbols read with `lastSegmentOf` `src/http/muxCompat.ts:86`, re-escaped with `pathEscape` `src/http/muxCompat.ts:80`.
 - New dependency: line in `allowed-dependencies.txt` plus `npm run snapshot:deps`. `CLAUDE.md:257`
-- Lint: shared `base`, ignores `contract/`. `eslint.config.mjs:1,8`; eslint-config tarball v1.1.0 `package.json:34`; disables need `-- <why>` `CLAUDE.md:18`.
+- Lint: shared `base`, ignores `contract/`. `eslint.config.mjs:1,10`; eslint-config tarball v1.1.0 `package.json:34`; disables need `-- <why>` `CLAUDE.md:18`.
 
 ## Traps
 - `lint` does not run codegen; CI runs it after typecheck. `.github/workflows/container.yml:81-86`
