@@ -8,6 +8,8 @@ passes it unchanged.
 
 It is step 3 of the Go to TypeScript migration (the epic in `meta`; link to follow).
 
+Correction (2026-10-29): the epic is meta#103 "Epic: agent-service and auth-service move to TypeScript (decision 23)", see agent-service/scripts/cutover-probe.mjs:3.
+
 ## Parity, as decided
 
 * Same status codes.

@@ -9,10 +9,14 @@ including why the read routes need a signed-in session but no particular permiss
 anonymous caller has nothing to read regardless), and why the two history endpoints need no
 session at all (they never touch SpaceTraders).
 
+Correction (2026-10-29): the caller sends no SpaceTraders token; `Authorization` is the Clerk session, verified then relayed to st-gateway, which injects the agent token, see agent-service/src/gateway/client.ts:57-59.
+
 What the service *does* keep is history. Ship purchases, cargo purchases and cargo sells are
 the actions that spend or earn credits, so they are owned here rather than in fleet-service,
 and each one is written to a local MySQL transaction log after the game confirms it. Contract
 accepts, fulfils and deliveries are recorded the same way.
+
+Correction (2026-10-29): a delivery is a plain MySQL insert reported by fleet-service, with no gateway call; a DB failure answers 500, see agent-service/src/controllers/contracts.controller.ts:83-89.
 
 ## Architecture
 
@@ -85,6 +89,8 @@ flowchart TD
     gw -->|"2xx"| persist["persist history<br/>(best effort)"] --> ok
     gw -->|"4xx / 5xx"| passthru["upstream status<br/>passed through"]
 ```
+
+Correction (2026-10-29): the tiers are `ignore` / `none` (public) / `session` (read) / scope `fleet:control` (write), see agent-service/src/auth.ts:17-43.
 
 `Authorization` is the only credential, and it is always the Clerk session. It is verified
 by auth-service, then forwarded verbatim to st-gateway, which derives queue priority from it: a human
@@ -165,6 +171,8 @@ npm run openapi
 Syncing `openapi.json` to meta's `openapi/agent-service.json` waits for meta#26's org secrets
 (`OPENAPI_SYNC_*`) to be granted to this repository; there is no sync job here yet.
 
+Correction (2026-10-29): job `sync-openapi` syncs openapi.json to meta on every main push, see agent-service/.github/workflows/container.yml:335-338.
+
 ### Tests
 
 ```bash
@@ -242,6 +250,8 @@ they are not part of the resource API's compatibility surface.
 `401`, never a visitor. `read` needs a verified session (any scope, or none). `write`
 additionally needs the `fleet:control` scope. Every `GET` route also answers `HEAD` under the
 same requirement.
+
+Correction (2026-10-29): the code names the tiers `none` (public), `session` (read) and scope `fleet:control` (write), see agent-service/src/auth.ts:17-43.
 
 ### `GET /transactions` parameters
 

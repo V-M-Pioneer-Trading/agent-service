@@ -57,6 +57,7 @@ Verified against 0502eba 2026-10-29.
 - Install `npm ci --ignore-scripts` only. `CLAUDE.md:16`
 - Scripts build/typecheck/test (pretest runs codegen): `package.json:12-13`, `:19-20`; lint `package.json:18`.
 - Real MySQL tests: `TEST_MYSQL_HOST=127.0.0.1 npm test`; contract: build, then `node scripts/run-contract.cjs` with `CONTRACT_MYSQL_*`. `CLAUDE.md:19-22`
+- Post-deploy prod probe, safe to re-run: `OPERATOR_TOKEN=<fleet:control session> node scripts/cutover-probe.mjs --strict` (`--dry-run` calls nothing). `scripts/cutover-probe.mjs:5-26`
 - Env defaults: PORT 80, `CORS_ALLOWED_ORIGIN`, `ST_GATEWAY_URL`, `MYSQL_*`. `src/config.ts:233-242`
 - Lockfiles `package-lock.json`, `contract/package-lock.json`. `.github/workflows/container.yml:69`, `:133`
 
@@ -86,3 +87,15 @@ Verified against 0502eba 2026-10-29.
 - Dockerfile deps stage fails on compiled files. `./Dockerfile:24-27`
 - Keep `mysql:9` equal to prod. `../V-M-Pioneer-Trading_infrastructure/agent-service/main.tf:258-259`
 - Deploy target instance is hard-coded. `.github/workflows/container.yml:293-294`
+
+## Reference docs
+- `./README.md` "Deploying and rolling back": read when rolling back agent-service or deploying a `sha-` tag.
+- `./README.md` "Error responses": read when debugging a 4xx/5xx from agent-service or changing error shapes.
+- `./README.md` "Tunable values": read when tuning timeouts, pool size or body limits.
+- `contract/README.md` "Parity, as decided": read when touching response shape, headers or doing any parity-sensitive change.
+- `contract/README.md` "Routing and HTTP": read when changing routing, CORS, path cleaning or HEAD/OPTIONS.
+- `contract/README.md` "Authorization": read when changing auth tiers or the center client.
+- `contract/README.md` "What comes back from the gateway": read when changing gateway decoding, error relay or body caps.
+- `contract/README.md` "Persistence and queries": read when changing history writes or `/transactions` params.
+- `contract/README.md` "Start-up": read when changing config parsing or startup refusals.
+- `contract/README.md` "How it is built": read when changing the contract harness.
