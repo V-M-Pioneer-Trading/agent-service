@@ -7,8 +7,8 @@ of its own**: the caller sends their Clerk session on every request, the service
 and relays it verbatim to st-gateway, and st-gateway injects the agent's SpaceTraders token.
 That single fact explains most of the design —
 including why the two history endpoints need no session at all (they never touch SpaceTraders).
-The read routes need a signed-in session but no particular permission: the tier decision 18
-set before st-gateway injected the token, and decision 21 kept.
+The read routes need a signed-in session but no particular permission: the tier auth-design.md
+decision 18 set before st-gateway injected the token, and decision 21 kept.
 
 What the service *does* keep is history. Ship purchases, cargo purchases and cargo sells are
 the actions that spend or earn credits, so they are owned here rather than in fleet-service,
