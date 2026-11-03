@@ -5,7 +5,7 @@ How heinzelwerk agents work in this repo. Mode rules (single repo vs workspace) 
 - **Autonomy**: full. Agents merge and apply on their own; breakages are learnings. Secrets are never published (name the variable, never the value); the gate never merges its own policy.
 - **Backend paths**: whole repo except `contract/` (`src/`, `scripts/`, `Dockerfile`, `openapi.json`, `.github/`)
 - **Worktree setup** (run once in every new task worktree): `npm ci --ignore-scripts`
-- **Checks** (validator runs every one, in order; copied from CI, quiet flags only):
+- **Checks** (validator runs every one, in order; copied from CI, quiet flags only; a status note goes after the closing backtick, never inside the span, which must run as pasted):
   - `npm run check:deps`
   - `npm audit --audit-level=high` (red on main: V-M-Pioneer-Trading/meta#136)
   - `npm run typecheck`
