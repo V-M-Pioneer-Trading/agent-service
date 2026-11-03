@@ -3,8 +3,8 @@
 The agent's view of itself: profile, fleet, contracts — and the actions that move credits.
 
 Everything the service reads lives on SpaceTraders, not here. It holds **no game credential
-of its own**: the caller sends their Clerk session on every request, the service verifies it
-and relays it verbatim to st-gateway, and st-gateway injects the agent's SpaceTraders token.
+of its own**: the caller sends a Clerk session or machine token, auth-service verifies it, the
+service relays it verbatim to st-gateway, and st-gateway injects the agent's SpaceTraders token.
 That single fact explains most of the design —
 including why the two history endpoints need no session at all (they never touch SpaceTraders).
 The read routes need a signed-in session but no particular permission: the tier auth-design.md
@@ -166,8 +166,8 @@ npm run openapi
 
 The `sync-openapi` job syncs `openapi.json` to meta's `openapi/agent-service.json` (meta#26)
 after the `test` job, on a push or manual dispatch on `main`. meta's workflow skips a commit
-that is no longer the tip of `main` and never writes to meta's `main`: it opens a pull request
-there with auto-merge on.
+that is no longer the tip of `main` and never pushes to meta's `main` directly: it opens a pull
+request there with auto-merge on, which lands on `main` once meta's required checks pass.
 
 ### Tests
 
