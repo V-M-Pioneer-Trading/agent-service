@@ -2,7 +2,7 @@
 
 Ledger of docs whose content was adopted into the agent structure. `<hash>` is `git hash-object <path>` at adoption. Rerun /heinzelwerk:adopt-docs to process new or changed docs.
 
-- README.md @ 94b36a794f106773b195a83cae135ced4f401aa7: stale, gotcha, reference, how-to, planned → repo-map.md#Reference docs, repo-map.md#Build, test, run, gotchas to learnings; stale: 3 corrected, 0 marked, 0 ignored
-- contract/README.md @ 8b8ee71d4ae54a1bfd8a5525647a3355a1e0c0fd: stale, gotcha, reference → repo-map.md#Reference docs, gotchas to learnings; stale: 1 corrected, 0 marked, 0 ignored
+- README.md @ 71dd18e0b04009b67958bd2fdbaa811fae3c5f03: stale, gotcha, reference, how-to, planned → repo-map.md#Reference docs, repo-map.md#Build, test, run, gotchas to learnings; stale: 4 corrected, 0 marked, 0 ignored
+- contract/README.md @ 2e119321142bc225fe9a2a8a1f6376d4bb909589: stale, gotcha, reference → repo-map.md#Reference docs, gotchas to learnings; stale: 1 corrected, 0 marked, 0 ignored
 - contract/fixtures/SOURCE.txt @ d7c628025b3c47c165c4ecd6837465371059f83c: covered → dropped (covered); stale: 0 corrected, 0 marked, 0 ignored
-- CLAUDE.md @ de833bf8de9f0a65e59c1bd3daf7224f9d91b4dc: stale only (outside the heinzelwerk block) → none found; stale: 0 corrected, 0 marked, 0 ignored
+- CLAUDE.md @ 02450396ce2413789bcbf400b7ce57136038f329: stale only (outside the heinzelwerk block) → none found; stale: 0 corrected, 0 marked, 0 ignored

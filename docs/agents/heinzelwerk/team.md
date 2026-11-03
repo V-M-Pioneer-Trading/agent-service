@@ -7,14 +7,14 @@ How heinzelwerk agents work in this repo. Mode rules (single repo vs workspace) 
 - **Worktree setup** (run once in every new task worktree): `npm ci --ignore-scripts`
 - **Checks** (validator runs every one, in order; copied from CI, quiet flags only):
   - `npm run check:deps`
-  - `npm audit --audit-level=high (red on main: V-M-Pioneer-Trading/meta#136)`
+  - `npm audit --audit-level=high` (red on main: V-M-Pioneer-Trading/meta#136)
   - `npm run typecheck`
   - `npm run lint`
   - `npm run build`
   - `npm run openapi && test -z "$(git status --porcelain -- openapi.json)"`
-  - `TEST_MYSQL_HOST=127.0.0.1 TEST_MYSQL_PORT=3306 npm test (unverified locally: needs mysql:9 on 3306, docker daemon not running; plain npm test green, real-MySQL tests skip)`
-  - `docker build -t agent-service:contract . && (cd contract && npm ci --ignore-scripts && npm run typecheck) && CONTRACT_IMAGE=agent-service:contract CONTRACT_MYSQL_HOST=host.docker.internal CONTRACT_MYSQL_PORT=3306 CONTRACT_MYSQL_USER=root CONTRACT_MYSQL_PASSWORD=example CONTRACT_MYSQL_DATABASE=vnm-agent-db node scripts/run-contract.cjs (unverified locally: docker daemon not running; also needs mysql:9)`
-  - `docker buildx build --platform linux/arm64 . (unverified locally: docker daemon not running)`
+  - `TEST_MYSQL_HOST=127.0.0.1 TEST_MYSQL_PORT=3306 npm test` (unverified locally: needs mysql:9 on 3306, docker daemon not running; plain npm test green, real-MySQL tests skip)
+  - `docker build -t agent-service:contract . && (cd contract && npm ci --ignore-scripts && npm run typecheck) && CONTRACT_IMAGE=agent-service:contract CONTRACT_MYSQL_HOST=host.docker.internal CONTRACT_MYSQL_PORT=3306 CONTRACT_MYSQL_USER=root CONTRACT_MYSQL_PASSWORD=example CONTRACT_MYSQL_DATABASE=vnm-agent-db node scripts/run-contract.cjs` (unverified locally: docker daemon not running; also needs mysql:9)
+  - `docker buildx build --platform linux/arm64 .` (unverified locally: docker daemon not running)
 - **Verified against**: 0502eba 2026-10-29 (checks and every ref in this file; retro bumps it)
 - **Coding standards**: `eslint.config.mjs:1` (shared `base` from `@v-m-pioneer-trading/eslint-config`, `package.json:34`), `eslint . --max-warnings 0` (`package.json:18`); lint disables carry `-- <why>` (`CLAUDE.md:18`); `CLAUDE.md` "## Invariants" (:149) and "### Dependency rules" (:138)
 - **Risk areas** (validator reviews diffs touching these on Opus):
