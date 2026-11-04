@@ -176,7 +176,9 @@ dev @bcoe/v8-coverage@0.2.3 sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2n
 dev @cacheable/memory@2.2.0 sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==
 dev @cacheable/utils@2.5.0 sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==
 dev @emnapi/core@1.10.0 sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==
+dev @emnapi/core@1.11.3 sha512-zLpS5asjEb7lq8jYLq37N6XKaE41DIexlY1rF/z4/tIl3wo13Sqm28fRyfIsKZD+NZ8mM5RoKkpW/rBcuoSZSg==
 dev @emnapi/runtime@1.10.0 sha512-ewvYlk86xUoGI0zQRNq/mC+16R1QeDlKQy21Ki3oSYXNgLb45GV1P6A0M+/s6nyCuNDqe5VpaY84BzXGwVbwFA==
+dev @emnapi/runtime@1.11.3 sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==
 dev @emnapi/wasi-threads@1.2.1 sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==
 dev @emnapi/wasi-threads@1.2.3 sha512-ELEBe8PsLvvJ6QMr0zLt8ffvOHW/dc1m3CEzNMg7aJUv3bMaoDtw2TXyDAwkYBuroxxuHEwhRTLJSe5sya547g==
 dev @eslint-community/eslint-plugin-eslint-comments@4.8.1 sha512-vafrdi15JHBFh1qWOAucyJwlEEuhdoMof28jOdKdgnwZ7bXwd6v4wzHYSmAVLwnx0yc7bqAtfJ0EZQV1WAzV/Q==
