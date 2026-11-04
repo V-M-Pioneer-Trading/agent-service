@@ -19,17 +19,19 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
     open-pull-requests-limit: 5
 
-  # The Dockerfile: node:24-slim build stages and the distroless runtime.
-  # Node majors are ignored so the build stages cannot diverge from the
-  # nodejs24 runtime (whose major is in the image name, so Dependabot never
-  # proposes one): moving Node is one reviewed PR that changes all FROM lines,
-  # the engines field and the runtime floor together.
+  # The Dockerfile: node:24-slim build stages and the nodejs24-debian13
+  # distroless runtime, all three pinned by digest, so an update is a digest
+  # bump. Majors are ignored for both so the build stages cannot diverge from
+  # the runtime (node 24 stages, nodejs24 distroless): moving Node is one
+  # reviewed PR that changes all three FROM lines and the engines field together.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
     ignore:
       - dependency-name: node
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "gcr.io/distroless/nodejs*"
         update-types: ["version-update:semver-major"]
 
   # The workflows.
