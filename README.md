@@ -3,16 +3,18 @@
 The agent's view of itself: profile, fleet, contracts — and the actions that move credits.
 
 Everything the service reads lives on SpaceTraders, not here. It holds **no game credential
-of its own**: the caller sends their own SpaceTraders token on every request and the service
-forwards it upstream verbatim and forgets it. That single fact explains most of the design —
-including why the read routes need a signed-in session but no particular permission (an
-anonymous caller has nothing to read regardless), and why the two history endpoints need no
-session at all (they never touch SpaceTraders).
+of its own**: the caller sends a Clerk session or machine token, auth-service verifies it, the
+service relays it verbatim to st-gateway, and st-gateway injects the agent's SpaceTraders token.
+That single fact explains most of the design —
+including why the two history endpoints need no session at all (they never touch SpaceTraders).
+The read routes need a signed-in session but no particular permission: the tier auth-design.md
+decision 18 set before st-gateway injected the token, and decision 21 kept.
 
 What the service *does* keep is history. Ship purchases, cargo purchases and cargo sells are
 the actions that spend or earn credits, so they are owned here rather than in fleet-service,
 and each one is written to a local MySQL transaction log after the game confirms it. Contract
-accepts, fulfils and deliveries are recorded the same way.
+accepts and fulfils are recorded the same way. Deliveries are made by fleet-service, which
+reports each one here: a plain insert with no gateway call, answering 500 if the write fails.
 
 ## Architecture
 
@@ -162,8 +164,10 @@ it needs no server or DB, and CI fails if it is stale:
 npm run openapi
 ```
 
-Syncing `openapi.json` to meta's `openapi/agent-service.json` waits for meta#26's org secrets
-(`OPENAPI_SYNC_*`) to be granted to this repository; there is no sync job here yet.
+The `sync-openapi` job syncs `openapi.json` to meta's `openapi/agent-service.json` (meta#26)
+after the `test` job, on a push or manual dispatch on `main`. meta's workflow skips a commit
+that is no longer the tip of `main` and never pushes to meta's `main` directly: it opens a pull
+request there with auto-merge on, which lands on `main` once meta's required checks pass.
 
 ### Tests
 

@@ -6,7 +6,7 @@ plays st-gateway and auth-service itself. It was written against the Go image an
 of the port: the TypeScript service, which replaced Go at the cutover (agent-service#38),
 passes it unchanged.
 
-It is step 3 of the Go to TypeScript migration (the epic in `meta`; link to follow).
+It is step 3 of the Go to TypeScript migration (the epic, meta#103).
 
 ## Parity, as decided
 
