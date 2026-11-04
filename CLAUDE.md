@@ -28,6 +28,8 @@ CI is `.github/workflows/container.yml`. Required checks on `main` (enforce_admi
 `test`, `image`, `contract`. A job must keep exactly those names. The deploy job (`docker`)
 needs `test`, builds the root `Dockerfile` for arm64, and only on the tip of `main` tags
 `:latest` and redeploys through SSM; a `v*` tag pushes `sha-<tip>` and deploys nothing.
+The image is `node:24-slim` build stages on a `gcr.io/distroless/nodejs24-debian13` runtime (the debian12 tag is
+frozen at Node 24.14), all three pinned by digest and moved by Dependabot; never drop a digest or go back to debian12.
 
 * **Skip list.** `contract-skip.txt` is empty: the whole contract suite runs and has to pass, bar the
   one case the suite skips itself (`dynamic-skips=1` in `contract-skip.expected`: the swagger page
