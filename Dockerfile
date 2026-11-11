@@ -31,7 +31,7 @@ RUN npm ci --ignore-scripts --omit=dev --omit=optional \
 # nodejs24-debian13, not debian12: the debian12 tag is frozen at Node 24.14.0 (deprecated upstream) and never gets
 # another Node patch. The debian13 image is maintained. All three FROM lines are pinned by digest, which Dependabot
 # moves weekly (.github/dependabot.yml); engines asks only for Node >=24.
-FROM gcr.io/distroless/nodejs24-debian13@sha256:03980f6fd2a3245fa06e371c36fd33528ebbc676a1d0f84e3e21d95cd291b807
+FROM gcr.io/distroless/nodejs24-debian13@sha256:b770c59f44ed459329508a73794e6d284f6c10143f83c8012a8f775cd514eca2
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json ./
